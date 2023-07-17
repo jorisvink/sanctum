@@ -94,6 +94,7 @@ sanctum_proc_start(void)
 	io.arwin = sanctum_alloc_shared(sizeof(struct sanctum_arwin), NULL);
 
 	io.key = sanctum_ring_alloc(2);
+	io.offer = sanctum_ring_alloc(1);
 	io.clear = sanctum_ring_alloc(1024);
 	io.crypto = sanctum_ring_alloc(1024);
 	io.encrypt = sanctum_ring_alloc(1024);
@@ -108,6 +109,7 @@ sanctum_proc_start(void)
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
 	sanctum_shm_detach(io.key);
+	sanctum_shm_detach(io.offer);
 	sanctum_shm_detach(io.arwin);
 	sanctum_shm_detach(io.clear);
 	sanctum_shm_detach(io.crypto);

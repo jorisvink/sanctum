@@ -178,6 +178,7 @@ struct sanctum_proc_io {
 	struct sanctum_arwin	*arwin;
 
 	struct sanctum_ring	*key;
+	struct sanctum_ring	*offer;
 	struct sanctum_ring	*clear;
 	struct sanctum_ring	*crypto;
 	struct sanctum_ring	*encrypt;

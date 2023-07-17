@@ -41,6 +41,7 @@ struct rx_offer {
 static void	keying_offer_check(void);
 static void	keying_offer_pulse(u_int64_t);
 static void	keying_offer_create(u_int64_t);
+static void	keying_derive_key(struct sanctum_key *, void *, size_t);
 
 static void	keying_drop_access(void);
 static void	keying_install(struct sanctum_key *, u_int32_t, void *, size_t);
@@ -93,6 +94,7 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 		if (offer != NULL && now >= offer->pulse)
 			keying_offer_pulse(now);
 
+		/* XXX - if no active RX, do it as well. */
 		if (now >= next_keying) {
 			next_keying = now + 120;
 			keying_offer_create(now);
@@ -150,11 +152,24 @@ keying_offer_create(u_int64_t now)
 }
 
 /*
- * Resubmit the current offer to our peer.
+ * Generate a new encrypted packet containing our current offer for
+ * our peer and submit it via the crypto process.
+ *
+ * We send an encrypted ESP packet with spi set, sequence number set to 0,
+ * and the 64-bit "pn" member set to our unique identifier.
+ *
+ * The nonce is randomized and the AAD is set to the ESP header and pn.
  */
 static void
 keying_offer_pulse(u_int64_t now)
 {
+	struct sanctum_key		key;
+	struct sanctum_packet		*pkt;
+	struct sanctum_ipsec_hdr	*hdr;
+	u_int8_t			*data;
+	struct sanctum_cipher		*cipher;
+	u_int8_t			seed[64], nonce[12];
+
 	PRECOND(offer != NULL);
 
 	if (offer->ttl == 0) {
@@ -165,10 +180,41 @@ keying_offer_pulse(u_int64_t now)
 		return;
 	}
 
-	printf("pulse (%u)\n", offer->ttl);
-
 	offer->ttl--;
 	offer->pulse = now + 5;
+	printf("pulse (%u)\n", offer->ttl);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	hdr = sanctum_packet_head(pkt);
+
+	hdr->pn = htobe64(0);
+	hdr->esp.seq = htobe32(0);
+	hdr->esp.spi = htobe32(offer->spi);
+
+	data = sanctum_packet_data(pkt);
+	memcpy(data, offer->key, sizeof(offer->key));
+
+	keying_derive_key(&key, seed, sizeof(seed));
+	cipher = sanctum_cipher_setup(&key);
+
+	sanctum_mem_zero(nonce, sizeof(nonce));
+	nonce[0] = 0x01;
+
+	sanctum_cipher_encrypt(cipher,
+	    nonce, sizeof(nonce), hdr, sizeof(*hdr), pkt);
+	sanctum_cipher_cleanup(cipher);
+
+	pkt->target = SANCTUM_PROC_PURGATORY;
+	pkt->length = sizeof(*hdr) + sizeof(offer->key);
+
+	if (sanctum_ring_queue(io->offer, pkt) == -1)
+		sanctum_packet_release(pkt);
+
+	sanctum_mem_zero(&key, sizeof(key));
+	sanctum_mem_zero(seed, sizeof(seed));
+	sanctum_mem_zero(nonce, sizeof(nonce));
 }
 
 /*
@@ -216,4 +262,18 @@ keying_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
 	if (!sanctum_atomic_cas_simple(&state->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
 		fatal("failed to swap key state to pending");
+}
+
+/*
+ * Derive a new key from the configured secret.
+ */
+static void
+keying_derive_key(struct sanctum_key *key, void *seed, size_t seed_len)
+{
+	PRECOND(key != NULL);
+	PRECOND(seed != NULL);
+	PRECOND(seed_len == 64);
+
+	memset(seed, 'S', seed_len);
+	memset(key->key, 'A', sizeof(key->key));
 }

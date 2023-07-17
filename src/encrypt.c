@@ -94,12 +94,14 @@ encrypt_drop_access(void)
 {
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->key);
+	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->arwin);
 	sanctum_shm_detach(io->clear);
 	sanctum_shm_detach(io->decrypt);
 
 	io->rx = NULL;
 	io->key = NULL;
+	io->offer = NULL;
 	io->arwin = NULL;
 	io->clear = NULL;
 	io->decrypt = NULL;

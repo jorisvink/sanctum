@@ -105,11 +105,13 @@ decrypt_drop_access(void)
 {
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->key);
+	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->crypto);
 	sanctum_shm_detach(io->encrypt);
 
 	io->tx = NULL;
 	io->key = NULL;
+	io->offer = NULL;
 	io->crypto = NULL;
 	io->encrypt = NULL;
 }

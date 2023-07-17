@@ -93,6 +93,9 @@ sanctum_crypto_entry(struct sanctum_proc *proc)
 		if (pfd.revents & POLLIN)
 			crypto_recv_packets(fd);
 
+		if ((pkt = sanctum_ring_dequeue(io->offer)))
+			crypto_send_packet(fd, pkt);
+
 		while ((pkt = sanctum_ring_dequeue(io->crypto)))
 			crypto_send_packet(fd, pkt);
 
