@@ -19,11 +19,35 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 
+#include <arpa/inet.h>
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
 
 #include "sanctum.h"
+
+/*
+ * Update the address of the peer if it does not match with the
+ * one from the packet.
+ *
+ * This MUST ONLY be called AFTER integrity has been verified.
+ */
+void
+sanctum_peer_update(struct sanctum_packet *pkt)
+{
+	PRECOND(pkt != NULL);
+
+	if (pkt->addr.sin_addr.s_addr != sanctum->peer_ip ||
+	    pkt->addr.sin_port != sanctum->peer_port) {
+		syslog(LOG_NOTICE, "peer address change (new=%s:%u)",
+		    inet_ntoa(pkt->addr.sin_addr), ntohs(pkt->addr.sin_port));
+
+		sanctum_atomic_write(&sanctum->peer_ip,
+		    pkt->addr.sin_addr.s_addr);
+		sanctum_atomic_write(&sanctum->peer_port, pkt->addr.sin_port);
+	}
+}
 
 /*
  * Install the key pending under the given `key` data structure into

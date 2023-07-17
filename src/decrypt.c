@@ -18,7 +18,6 @@
 #include <sys/socket.h>
 
 #include <netinet/in.h>
-#include <arpa/inet.h>
 
 #include <poll.h>
 #include <inttypes.h>
@@ -182,6 +181,9 @@ decrypt_packet_process(struct sanctum_packet *pkt)
 
 	syslog(LOG_NOTICE, "swapping RX SA (spi=0x%08x)", state.slot_2.spi);
 
+	io->arwin->bitmap = 0;
+	sanctum_atomic_write(&io->arwin->last, 0);
+
 	sanctum_cipher_cleanup(state.slot_1.cipher);
 
 	state.slot_1.spi = state.slot_2.spi;
@@ -226,16 +228,7 @@ decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		return (-1);
 
 	decrypt_arwin_update(pkt, hdr);
-
-	if (pkt->addr.sin_addr.s_addr != sanctum->peer_ip ||
-	    pkt->addr.sin_port != sanctum->peer_port) {
-		syslog(LOG_NOTICE, "peer address change (new=%s:%u)",
-		    inet_ntoa(pkt->addr.sin_addr), ntohs(pkt->addr.sin_port));
-
-		sanctum_atomic_write(&sanctum->peer_ip,
-		    pkt->addr.sin_addr.s_addr);
-		sanctum_atomic_write(&sanctum->peer_port, pkt->addr.sin_port);
-	}
+	sanctum_peer_update(pkt);
 
 	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
 	pkt->length -= sizeof(struct sanctum_ipsec_tail);

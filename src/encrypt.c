@@ -68,6 +68,7 @@ sanctum_encrypt_entry(struct sanctum_proc *proc)
 		}
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
+			state.seqnr = 1;
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 			syslog(LOG_NOTICE, "new TX SA (spi=0x%08x)",
 			    state.spi);
@@ -123,6 +124,7 @@ encrypt_packet_process(struct sanctum_packet *pkt)
 
 	/* Install any pending TX key first. */
 	if (sanctum_key_install(io->tx, &state) != -1) {
+		state.seqnr = 1;
 		sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		syslog(LOG_NOTICE, "new TX SA (spi=0x%08x)", state.spi);
 	}

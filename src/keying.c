@@ -25,6 +25,9 @@
 #include <unistd.h>
 
 #include "sanctum.h"
+#include "libnyfe.h"
+
+#define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRISTY.KDF"
 
 /*
  * An RX offer we send to our peer (meaning the peer can use this key as
@@ -38,10 +41,10 @@ struct rx_offer {
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 };
 
-static void	keying_offer_check(void);
-static void	keying_offer_pulse(u_int64_t);
 static void	keying_offer_create(u_int64_t);
-static void	keying_derive_key(struct sanctum_key *, void *, size_t);
+static void	keying_offer_encrypt(u_int64_t);
+static void	keying_offer_kdf(struct nyfe_agelas *, void *, size_t);
+static void	keying_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 static void	keying_drop_access(void);
 static void	keying_install(struct sanctum_key *, u_int32_t, void *, size_t);
@@ -62,11 +65,14 @@ static struct rx_offer		*offer = NULL;
 void
 sanctum_keying_entry(struct sanctum_proc *proc)
 {
+	struct sanctum_packet	*pkt;
 	int			sig, running;
 	u_int64_t		now, next_keying;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
+
+	nyfe_random_init();
 
 	io = proc->arg;
 	keying_drop_access();
@@ -88,11 +94,13 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 			}
 		}
 
-		keying_offer_check();
 		now = sanctum_atomic_read(&sanctum->uptime);
 
+		if ((pkt = sanctum_ring_dequeue(io->key)) != NULL)
+			keying_offer_decrypt(pkt, now);
+
 		if (offer != NULL && now >= offer->pulse)
-			keying_offer_pulse(now);
+			keying_offer_encrypt(now);
 
 		/* XXX - if no active RX, do it as well. */
 		if (now >= next_keying) {
@@ -144,31 +152,56 @@ keying_offer_create(u_int64_t now)
 	if ((offer = calloc(1, sizeof(*offer))) == NULL)
 		fatal("calloc");
 
-	offer->ttl = 2;
+	offer->ttl = 1;
 	offer->pulse = now + 5;
-	offer->spi = 0xdeadbeef;
+
+	nyfe_random_bytes(offer->key, sizeof(offer->key));
+	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
+	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
 	printf("creating new RX offer for peer\n");
+
+	printf("key offer = ");
+	for (size_t idx = 0; idx < sizeof(offer->key); idx++)
+		printf("%02x", offer->key[idx]);
+	printf("\n");
+
+	keying_install(io->rx, offer->spi, offer->key, sizeof(offer->key));
+}
+
+static void
+dump(const char *label, void *ptr, size_t len)
+{
+	u_int8_t	*p = ptr;
+	size_t		idx, col;
+
+	printf("%s (%zu) =\n", label, len);
+
+	col = 0;
+
+	for (idx = 0; idx < len; idx++) {
+		printf("%02x", p[idx]);
+
+		if (col++ == 15) {
+			printf("\n");
+			col = 0;
+		}
+	}
+
+	if (col == 15)
+		printf("\n");
 }
 
 /*
  * Generate a new encrypted packet containing our current offer for
  * our peer and submit it via the crypto process.
- *
- * We send an encrypted ESP packet with spi set, sequence number set to 0,
- * and the 64-bit "pn" member set to our unique identifier.
- *
- * The nonce is randomized and the AAD is set to the ESP header and pn.
  */
 static void
-keying_offer_pulse(u_int64_t now)
+keying_offer_encrypt(u_int64_t now)
 {
-	struct sanctum_key		key;
+	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
-	struct sanctum_ipsec_hdr	*hdr;
-	u_int8_t			*data;
-	struct sanctum_cipher		*cipher;
-	u_int8_t			seed[64], nonce[12];
+	struct nyfe_agelas		cipher;
 
 	PRECOND(offer != NULL);
 
@@ -187,55 +220,70 @@ keying_offer_pulse(u_int64_t now)
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
-	hdr = sanctum_packet_head(pkt);
+	op = sanctum_packet_head(pkt);
 
-	hdr->pn = htobe64(0);
-	hdr->esp.seq = htobe32(0);
-	hdr->esp.spi = htobe32(offer->spi);
+	op->hdr.spi = htobe32(offer->spi);
+	op->hdr.magic = htobe64(SANCTUM_KEY_OFFER_MAGIC);
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
-	data = sanctum_packet_data(pkt);
-	memcpy(data, offer->key, sizeof(offer->key));
+	op->data.salt = offer->salt;
+	memcpy(op->data.key, offer->key, sizeof(offer->key));
 
-	keying_derive_key(&key, seed, sizeof(seed));
-	cipher = sanctum_cipher_setup(&key);
+	keying_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
+	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	sanctum_mem_zero(&cipher, sizeof(cipher));
 
-	sanctum_mem_zero(nonce, sizeof(nonce));
-	nonce[0] = 0x01;
-
-	sanctum_cipher_encrypt(cipher,
-	    nonce, sizeof(nonce), hdr, sizeof(*hdr), pkt);
-	sanctum_cipher_cleanup(cipher);
-
+	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY;
-	pkt->length = sizeof(*hdr) + sizeof(offer->key);
+
+	dump("packet", sanctum_packet_head(pkt), pkt->length);
 
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
-
-	sanctum_mem_zero(&key, sizeof(key));
-	sanctum_mem_zero(seed, sizeof(seed));
-	sanctum_mem_zero(nonce, sizeof(nonce));
 }
 
 /*
  * Check if there are any offers on the queue that must be processed.
  */
 static void
-keying_offer_check(void)
+keying_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
-	struct sanctum_packet	*pkt;
-	u_int8_t		key[32];
+	struct sanctum_offer		*op;
+	struct nyfe_agelas		cipher;
+	u_int8_t			tag[32];
 
+	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);
 
-	if ((pkt = sanctum_ring_dequeue(io->key)) == NULL)
+	if (pkt->length != sizeof(*op)) {
+		sanctum_packet_release(pkt);
 		return;
+	}
 
 	printf("got offer\n");
 
-	sanctum_packet_release(pkt);
+	op = sanctum_packet_head(pkt);
 
-	keying_install(io->rx, 0xdeadbeef, key, sizeof(key));
+	keying_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
+	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
+	sanctum_mem_zero(&cipher, sizeof(cipher));
+
+	if (memcmp(op->tag, tag, sizeof(op->tag))) {
+		printf("tag mismatch\n");
+		sanctum_packet_release(pkt);
+		return;
+	}
+
+	sanctum_peer_update(pkt);
+
+	op->hdr.spi = be32toh(op->hdr.spi);
+	keying_install(io->tx, op->hdr.spi, op->data.key, sizeof(op->data.key));
+
+	sanctum_packet_release(pkt);
 }
 
 /*
@@ -265,15 +313,36 @@ keying_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
 }
 
 /*
- * Derive a new key from the configured secret.
+ * Derive a symmetrical key from our secret and the given seed and
+ * setup the given agelas cipher context.
  */
 static void
-keying_derive_key(struct sanctum_key *key, void *seed, size_t seed_len)
+keying_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
 {
-	PRECOND(key != NULL);
+	int				fd;
+	struct nyfe_kmac256		kdf;
+	u_int8_t			len;
+	u_int8_t			okm[64], secret[SANCTUM_KEY_LENGTH];
+
+	PRECOND(cipher != NULL);
 	PRECOND(seed != NULL);
 	PRECOND(seed_len == 64);
 
-	memset(seed, 'S', seed_len);
-	memset(key->key, 'A', sizeof(key->key));
+	fd = nyfe_file_open(sanctum->secret, NYFE_FILE_READ);
+	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
+		fatal("failed to read secret");
+	(void)close(fd);
+
+	len = 64;
+
+	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
+	    CHAPEL_DERIVE_LABEL, sizeof(CHAPEL_DERIVE_LABEL) - 1);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, seed, seed_len);
+	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
+	sanctum_mem_zero(&kdf, sizeof(kdf));
+
+	nyfe_agelas_init(cipher, okm, sizeof(okm));
+	dump("okm", okm, sizeof(okm));
+	sanctum_mem_zero(&okm, sizeof(okm));
 }

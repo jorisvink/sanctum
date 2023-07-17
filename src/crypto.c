@@ -117,13 +117,11 @@ crypto_drop_access(void)
 {
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
-	sanctum_shm_detach(io->key);
 	sanctum_shm_detach(io->clear);
 	sanctum_shm_detach(io->encrypt);
 
 	io->tx = NULL;
 	io->rx = NULL;
-	io->key = NULL;
 	io->clear = NULL;
 	io->encrypt = NULL;
 }
@@ -274,9 +272,16 @@ crypto_recv_packets(int fd)
 			continue;
 		}
 
-		if (sanctum_ring_queue(io->decrypt, pkt) == -1)
-			sanctum_packet_release(pkt);
+		if (pkt->target == SANCTUM_PROC_CONFESS) {
+			ret = sanctum_ring_queue(io->decrypt, pkt);
+		} else if (pkt->target == SANCTUM_PROC_CHAPEL) {
+			ret = sanctum_ring_queue(io->key, pkt);
+		} else {
+			ret = -1;
+		}
 
+		if (ret == -1)
+			sanctum_packet_release(pkt);
 	}
 }
 
@@ -314,17 +319,17 @@ crypto_packet_check(struct sanctum_packet *pkt)
 	if (spi == 0)
 		return (-1);
 
-	/*
-	 * If the the SPI isn't known to us it may be a key offer,
-	 * forward it to the keying process.
-	 *
-	 * XXX - rate limit this hard.
-	 */
+	/* If this has the key offer magic, kick it to the chapel. */
+	if ((spi & (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
+	    (seq & (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
+		pkt->target = SANCTUM_PROC_CHAPEL;
+		return (0);
+	}
+
+	/* If we don't know this SPI, drop the packet here. */
 	if (spi != sanctum_atomic_read(&sanctum->rx.spi)) {
-		if (spi != sanctum_atomic_read(&sanctum->rx_pending)) {
-			/* XXX forward to key process. */
+		if (spi != sanctum_atomic_read(&sanctum->rx_pending))
 			return (-1);
-		}
 	}
 
 	if ((pn & 0xffffffff) != seq)

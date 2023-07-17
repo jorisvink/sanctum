@@ -117,6 +117,32 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_STATUS		6
 #define SANCTUM_PROC_MAX		7
 
+/* The magic for a key offer packet (SACRISTY). */
+#define SANCTUM_KEY_OFFER_MAGIC		0x5341435249535459
+
+/* The length of the seed in a key offer packet. */
+#define SANCTUM_KEY_OFFER_SALT_LEN	64
+
+/*
+ * Packets used when doing key offering.
+ */
+struct sanctum_offer_hdr {
+	u_int64_t		magic;
+	u_int32_t		spi;
+	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
+} __attribute__((packed));
+
+struct sanctum_offer_data {
+	u_int32_t		salt;
+	u_int8_t		key[SANCTUM_KEY_LENGTH];
+} __attribute__((packed));
+
+struct sanctum_offer {
+	struct sanctum_offer_hdr	hdr;
+	struct sanctum_offer_data	data;
+	u_int8_t			tag[32];
+} __attribute__((packed));
+
 /* Key states. */
 #define SANCTUM_KEY_EMPTY		0
 #define SANCTUM_KEY_GENERATING		1
@@ -365,6 +391,7 @@ void	sanctum_shm_detach(void *);
 void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);
 int	sanctum_unix_socket(struct sanctum_sun *);
+void	sanctum_peer_update(struct sanctum_packet *);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 
 /* platform bits. */
