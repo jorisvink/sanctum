@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -36,6 +36,7 @@ static void	config_parse_local(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_keying(char *);
 static void	config_parse_status(char *);
+static void	config_parse_secret(char *);
 static void	config_parse_instance(char *);
 static void	config_parse_host(char *, struct sockaddr_in *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
@@ -53,6 +54,7 @@ static const struct {
 	{ "run",		config_parse_runas },
 	{ "keying",		config_parse_keying },
 	{ "status",		config_parse_status },
+	{ "secret",		config_parse_secret },
 	{ "instance",		config_parse_instance },
 	{ NULL,			NULL },
 };
@@ -61,11 +63,11 @@ static const struct {
 	const char		*name;
 	u_int16_t		type;
 } proctab[] = {
-	{ "clear",		SANCTUM_PROC_HAVEN },
-	{ "crypto",		SANCTUM_PROC_PURGATORY },
-	{ "keying",		SANCTUM_PROC_CHAPEL },
-	{ "encrypt",		SANCTUM_PROC_BLESS },
-	{ "decrypt",		SANCTUM_PROC_CONFESS },
+	{ "heaven",		SANCTUM_PROC_HEAVEN },
+	{ "purgatory",		SANCTUM_PROC_PURGATORY },
+	{ "chapel",		SANCTUM_PROC_CHAPEL },
+	{ "bless",		SANCTUM_PROC_BLESS },
+	{ "confess",		SANCTUM_PROC_CONFESS },
 	{ "status",		SANCTUM_PROC_STATUS },
 	{ NULL,			0 },
 };
@@ -213,6 +215,13 @@ config_parse_status(char *path)
 	PRECOND(path != NULL);
 
 	config_parse_unix(path, &sanctum->status);
+}
+
+static void
+config_parse_secret(char *path)
+{
+	if ((sanctum->secret = strdup(path)) == NULL)
+		fatal("strdup failed");
 }
 
 static void

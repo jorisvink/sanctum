@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -99,7 +99,7 @@ sanctum_proc_start(void)
 	io.encrypt = sanctum_ring_alloc(1024);
 	io.decrypt = sanctum_ring_alloc(1024);
 
-	sanctum_proc_create(SANCTUM_PROC_HAVEN, sanctum_clear_entry, &io);
+	sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_clear_entry, &io);
 	sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_keying_entry, &io);
 	sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_encrypt_entry, &io);
 	sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_decrypt_entry, &io);
@@ -126,7 +126,7 @@ sanctum_proc_create(u_int16_t type,
 	struct passwd		*pw;
 	struct sanctum_proc	*proc;
 
-	PRECOND(type == SANCTUM_PROC_HAVEN ||
+	PRECOND(type == SANCTUM_PROC_HEAVEN ||
 	    type == SANCTUM_PROC_PURGATORY ||
 	    type == SANCTUM_PROC_BLESS ||
 	    type == SANCTUM_PROC_CONFESS ||
@@ -179,7 +179,7 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 
 	switch (proc->type) {
-	case SANCTUM_PROC_HAVEN:
+	case SANCTUM_PROC_HEAVEN:
 	case SANCTUM_PROC_PURGATORY:
 	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_STATUS:

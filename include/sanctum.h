@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -109,7 +109,7 @@ extern int daemon(int, int);
 #define SANCTUM_KEY_LENGTH		32
 
 /* Process types */
-#define SANCTUM_PROC_HAVEN		1
+#define SANCTUM_PROC_HEAVEN		1
 #define SANCTUM_PROC_PURGATORY		2
 #define SANCTUM_PROC_BLESS		3
 #define SANCTUM_PROC_CONFESS		4
@@ -284,6 +284,9 @@ struct sanctum_state {
 	/* The actual peer ip and port. */
 	volatile u_int32_t	peer_ip;
 	volatile u_int16_t	peer_port;
+
+	/* The path to the secret, for chapel. */
+	char			*secret;
 
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];

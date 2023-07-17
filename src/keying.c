@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -26,25 +26,34 @@
 
 #include "sanctum.h"
 
-static void	keying_offer_check(void);
-static void	keying_offer_create(void);
-
-static void	keying_drop_access(void);
-static void	keying_install(struct sanctum_key *, u_int32_t, void *, size_t);
-
-/* The local queues. */
-static struct sanctum_proc_io	*io = NULL;
-
-/* The current RX key being offered to our peer. */
-struct {
+/*
+ * An RX offer we send to our peer (meaning the peer can use this key as
+ * a TX key and we will be able to decrypt traffic with it).
+ */
+struct rx_offer {
+	u_int16_t		ttl;
 	u_int32_t		spi;
 	u_int32_t		salt;
 	u_int64_t		pulse;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
-} rx_offer;
+};
+
+static void	keying_offer_check(void);
+static void	keying_offer_pulse(u_int64_t);
+static void	keying_offer_create(u_int64_t);
+
+static void	keying_drop_access(void);
+static void	keying_install(struct sanctum_key *, u_int32_t, void *, size_t);
+
+
+/* The local queues. */
+static struct sanctum_proc_io	*io = NULL;
+
+/* The current offer for our peer. */
+static struct rx_offer		*offer = NULL;
 
 /*
- * The keying process.
+ * Chapel - The keying process.
  *
  * This process is responsible sending key offers to our peer, if
  * it is known, as long as we have not seen any RX traffic from it.
@@ -52,8 +61,8 @@ struct {
 void
 sanctum_keying_entry(struct sanctum_proc *proc)
 {
-	int		sig, running;
-	u_int64_t	now, last_keying;
+	int			sig, running;
+	u_int64_t		now, next_keying;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -65,7 +74,7 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 	sanctum_signal_ignore(SIGINT);
 
 	running = 1;
-	last_keying = 0;
+	next_keying = 0;
 	sanctum_proc_privsep(proc);
 
 	while (running) {
@@ -81,10 +90,12 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 		keying_offer_check();
 		now = sanctum_atomic_read(&sanctum->uptime);
 
-		if (last_keying == 0 || (now - last_keying) >= 300) {
-			printf("%llu, %llu\n", now, last_keying);
-			last_keying = now;
-			keying_offer_create();
+		if (offer != NULL && now >= offer->pulse)
+			keying_offer_pulse(now);
+
+		if (now >= next_keying) {
+			next_keying = now + 120;
+			keying_offer_create(now);
 		}
 
 		usleep(250000);
@@ -121,16 +132,43 @@ keying_drop_access(void)
  * encrypted with said key.
  */
 static void
-keying_offer_create(void)
+keying_offer_create(u_int64_t now)
 {
+	PRECOND(offer == NULL);
+
 	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
 		return;
 
-	sanctum_mem_zero(&rx_offer, sizeof(rx_offer));
+	if ((offer = calloc(1, sizeof(*offer))) == NULL)
+		fatal("calloc");
 
-	rx_offer.spi = 0xdeadbeef;
+	offer->ttl = 2;
+	offer->pulse = now + 5;
+	offer->spi = 0xdeadbeef;
 
 	printf("creating new RX offer for peer\n");
+}
+
+/*
+ * Resubmit the current offer to our peer.
+ */
+static void
+keying_offer_pulse(u_int64_t now)
+{
+	PRECOND(offer != NULL);
+
+	if (offer->ttl == 0) {
+		printf("clearing offer, expired\n");
+		sanctum_mem_zero(offer, sizeof(*offer));
+		free(offer);
+		offer = NULL;
+		return;
+	}
+
+	printf("pulse (%u)\n", offer->ttl);
+
+	offer->ttl--;
+	offer->pulse = now + 5;
 }
 
 /*

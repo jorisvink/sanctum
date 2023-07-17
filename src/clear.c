@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -131,7 +131,7 @@ clear_send_packet(int fd, struct sanctum_packet *pkt)
 
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
-	PRECOND(pkt->target == SANCTUM_PROC_HAVEN);
+	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN);
 
 	for (;;) {
 		if ((ret = sanctum_platform_tundev_write(fd, pkt)) == -1) {

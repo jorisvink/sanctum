@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -34,7 +34,7 @@ static struct sanctum_proc_io	*io = NULL;
 static struct sanctum_sa	state;
 
 /*
- * The process responsible for encryption of packets coming
+ * Bless - The process responsible for encryption of packets coming
  * from the clear side of the tunnel.
  */
 void

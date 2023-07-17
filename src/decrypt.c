@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023 Joris Vink <joris@coders.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -49,7 +49,7 @@ static struct {
 } state;
 
 /*
- * The worker process responsible for encryption of packets coming
+ * Confess - The process responsible for encryption of packets coming
  * from the clear side of the tunnel.
  */
 void
@@ -243,7 +243,7 @@ decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->pad != 0 || tail->next != IPPROTO_IP)
 		return (-1);
 
-	pkt->target = SANCTUM_PROC_HAVEN;
+	pkt->target = SANCTUM_PROC_HEAVEN;
 
 	if (sanctum_ring_queue(io->clear, pkt) == -1)
 		sanctum_packet_release(pkt);
