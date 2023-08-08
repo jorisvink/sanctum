@@ -15,7 +15,7 @@ This is a very small, reviewable, experimental and fully privilege
 seperated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
-This is a work in progress and is not considered done yet.
+**This is a work in progress and is not considered done.**
 
 ### Mythology
 
