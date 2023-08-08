@@ -48,8 +48,8 @@ static struct {
 } state;
 
 /*
- * Confess - The process responsible for the decryption of packets coming
- * from the crypto side of the tunnel.
+ * Confess - The process responsible for the confession of packets coming
+ * from the purgatory side.
  */
 void
 sanctum_confess(struct sanctum_proc *proc)

@@ -34,8 +34,8 @@ static struct sanctum_proc_io	*io = NULL;
 static struct sanctum_sa	state;
 
 /*
- * Bless - The process responsible for encryption of packets coming
- * from the clear side of the tunnel.
+ * Bless - The process responsible for the blessing of packets coming
+ * from the heaven side.
  */
 void
 sanctum_bless(struct sanctum_proc *proc)

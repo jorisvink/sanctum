@@ -47,7 +47,7 @@ static struct sanctum_proc_io	*io = NULL;
 
 /*
  * The process responsible for receiving packets on the purgatory side
- * and submitting them to the decryption worker.
+ * and submitting them to confession.
  */
 void
 sanctum_purgatory(struct sanctum_proc *proc)

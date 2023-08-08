@@ -40,7 +40,7 @@ static struct sanctum_proc_io	*io = NULL;
 
 /*
  * The process responsible for receiving packets on the heaven side
- * and submitting them to the encryption worker.
+ * and submitting them for blessing.
  */
 void
 sanctum_heaven(struct sanctum_proc *proc)
