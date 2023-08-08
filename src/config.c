@@ -34,7 +34,7 @@
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_runas(char *);
-static void	config_parse_keying(char *);
+static void	config_parse_chapel(char *);
 static void	config_parse_status(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_instance(char *);
@@ -52,7 +52,7 @@ static const struct {
 	{ "peer",		config_parse_peer },
 	{ "local",		config_parse_local },
 	{ "run",		config_parse_runas },
-	{ "keying",		config_parse_keying },
+	{ "chapel",		config_parse_chapel },
 	{ "status",		config_parse_status },
 	{ "secret",		config_parse_secret },
 	{ "instance",		config_parse_instance },
@@ -78,7 +78,7 @@ sanctum_config_init(void)
 	PRECOND(sanctum != NULL);
 
 	config_unix_set(&sanctum->status, "/tmp/sanctum-status", "root");
-	config_unix_set(&sanctum->keying, "/tmp/sanctum-keying", "root");
+	config_unix_set(&sanctum->chapel, "/tmp/sanctum-chapel", "root");
 }
 
 void
@@ -202,11 +202,11 @@ config_parse_runas(char *runas)
 }
 
 static void
-config_parse_keying(char *path)
+config_parse_chapel(char *path)
 {
 	PRECOND(path != NULL);
 
-	config_parse_unix(path, &sanctum->keying);
+	config_parse_unix(path, &sanctum->chapel);
 }
 
 static void

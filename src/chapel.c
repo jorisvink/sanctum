@@ -41,13 +41,13 @@ struct rx_offer {
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 };
 
-static void	keying_offer_create(u_int64_t);
-static void	keying_offer_encrypt(u_int64_t);
-static void	keying_offer_kdf(struct nyfe_agelas *, void *, size_t);
-static void	keying_offer_decrypt(struct sanctum_packet *, u_int64_t);
+static void	chapel_offer_create(u_int64_t);
+static void	chapel_offer_encrypt(u_int64_t);
+static void	chapel_offer_kdf(struct nyfe_agelas *, void *, size_t);
+static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
-static void	keying_drop_access(void);
-static void	keying_install(struct sanctum_key *, u_int32_t, void *, size_t);
+static void	chapel_drop_access(void);
+static void	chapel_install(struct sanctum_key *, u_int32_t, void *, size_t);
 
 
 /* The local queues. */
@@ -63,11 +63,11 @@ static struct rx_offer		*offer = NULL;
  * it is known, as long as we have not seen any RX traffic from it.
  */
 void
-sanctum_keying_entry(struct sanctum_proc *proc)
+sanctum_chapel_entry(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
 	int			sig, running;
-	u_int64_t		now, next_keying;
+	u_int64_t		now, next_chapel;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -75,13 +75,13 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 	nyfe_random_init();
 
 	io = proc->arg;
-	keying_drop_access();
+	chapel_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
 	running = 1;
-	next_keying = 0;
+	next_chapel = 0;
 	sanctum_proc_privsep(proc);
 
 	while (running) {
@@ -97,15 +97,15 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if ((pkt = sanctum_ring_dequeue(io->key)) != NULL)
-			keying_offer_decrypt(pkt, now);
+			chapel_offer_decrypt(pkt, now);
 
 		if (offer != NULL && now >= offer->pulse)
-			keying_offer_encrypt(now);
+			chapel_offer_encrypt(now);
 
 		/* XXX - if no active RX, do it as well. */
-		if (now >= next_keying) {
-			next_keying = now + 120;
-			keying_offer_create(now);
+		if (now >= next_chapel) {
+			next_chapel = now + 120;
+			chapel_offer_create(now);
 		}
 
 		usleep(250000);
@@ -117,10 +117,10 @@ sanctum_keying_entry(struct sanctum_proc *proc)
 }
 
 /*
- * Drop access to queues that keying does not need.
+ * Drop access to queues that chapel does not need.
  */
 static void
-keying_drop_access(void)
+chapel_drop_access(void)
 {
 	sanctum_shm_detach(io->arwin);
 	sanctum_shm_detach(io->clear);
@@ -142,7 +142,7 @@ keying_drop_access(void)
  * encrypted with said key.
  */
 static void
-keying_offer_create(u_int64_t now)
+chapel_offer_create(u_int64_t now)
 {
 	PRECOND(offer == NULL);
 
@@ -166,7 +166,7 @@ keying_offer_create(u_int64_t now)
 		printf("%02x", offer->key[idx]);
 	printf("\n");
 
-	keying_install(io->rx, offer->spi, offer->key, sizeof(offer->key));
+	chapel_install(io->rx, offer->spi, offer->key, sizeof(offer->key));
 }
 
 static void
@@ -197,7 +197,7 @@ dump(const char *label, void *ptr, size_t len)
  * our peer and submit it via the crypto process.
  */
 static void
-keying_offer_encrypt(u_int64_t now)
+chapel_offer_encrypt(u_int64_t now)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
@@ -229,7 +229,7 @@ keying_offer_encrypt(u_int64_t now)
 	op->data.salt = offer->salt;
 	memcpy(op->data.key, offer->key, sizeof(offer->key));
 
-	keying_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
+	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
@@ -248,7 +248,7 @@ keying_offer_encrypt(u_int64_t now)
  * Check if there are any offers on the queue that must be processed.
  */
 static void
-keying_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
+chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
 	struct sanctum_offer		*op;
 	struct nyfe_agelas		cipher;
@@ -266,7 +266,7 @@ keying_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	op = sanctum_packet_head(pkt);
 
-	keying_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
+	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
@@ -281,7 +281,7 @@ keying_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	sanctum_peer_update(pkt);
 
 	op->hdr.spi = be32toh(op->hdr.spi);
-	keying_install(io->tx, op->hdr.spi, op->data.key, sizeof(op->data.key));
+	chapel_install(io->tx, op->hdr.spi, op->data.key, sizeof(op->data.key));
 
 	sanctum_packet_release(pkt);
 }
@@ -290,7 +290,7 @@ keying_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
  * Install the given key into shared memory so that RX/TX can pick these up.
  */
 static void
-keying_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
+chapel_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
 {
 	PRECOND(state != NULL);
 	PRECOND(spi > 0);
@@ -317,7 +317,7 @@ keying_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
  * setup the given agelas cipher context.
  */
 static void
-keying_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
+chapel_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;

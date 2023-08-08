@@ -150,7 +150,7 @@ struct sanctum_offer {
 #define SANCTUM_KEY_INSTALLING		3
 
 /*
- * Used to swap TX / RX keys between keying and encrypt and decrypt processes.
+ * Used to swap TX / RX keys between chapel and encrypt and decrypt processes.
  */
 struct sanctum_key {
 	volatile u_int32_t	spi;
@@ -318,8 +318,8 @@ struct sanctum_state {
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
 
-	/* The keying socket. */
-	struct sanctum_sun	keying;
+	/* The chapel socket. */
+	struct sanctum_sun	chapel;
 
 	/* The status socket. */
 	struct sanctum_sun	status;
@@ -402,7 +402,7 @@ ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
 /* Worker entry points. */
 void	sanctum_clear_entry(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_status_entry(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_keying_entry(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_chapel_entry(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_crypto_entry(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_decrypt_entry(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_encrypt_entry(struct sanctum_proc *) __attribute__((noreturn));

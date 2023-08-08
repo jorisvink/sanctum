@@ -101,7 +101,7 @@ sanctum_proc_start(void)
 	io.decrypt = sanctum_ring_alloc(1024);
 
 	sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_clear_entry, &io);
-	sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_keying_entry, &io);
+	sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_chapel_entry, &io);
 	sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_encrypt_entry, &io);
 	sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_decrypt_entry, &io);
 	sanctum_proc_create(SANCTUM_PROC_PURGATORY, sanctum_crypto_entry, &io);
