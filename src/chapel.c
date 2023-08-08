@@ -63,7 +63,7 @@ static struct rx_offer		*offer = NULL;
  * it is known, as long as we have not seen any RX traffic from it.
  */
 void
-sanctum_chapel_entry(struct sanctum_proc *proc)
+sanctum_chapel(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
 	int			sig, running;
@@ -96,7 +96,7 @@ sanctum_chapel_entry(struct sanctum_proc *proc)
 
 		now = sanctum_atomic_read(&sanctum->uptime);
 
-		if ((pkt = sanctum_ring_dequeue(io->key)) != NULL)
+		if ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL)
 			chapel_offer_decrypt(pkt, now);
 
 		if (offer != NULL && now >= offer->pulse)
@@ -123,16 +123,16 @@ static void
 chapel_drop_access(void)
 {
 	sanctum_shm_detach(io->arwin);
-	sanctum_shm_detach(io->clear);
-	sanctum_shm_detach(io->crypto);
-	sanctum_shm_detach(io->encrypt);
-	sanctum_shm_detach(io->decrypt);
+	sanctum_shm_detach(io->bless);
+	sanctum_shm_detach(io->heaven);
+	sanctum_shm_detach(io->confess);
+	sanctum_shm_detach(io->purgatory);
 
-	io->clear = NULL;
 	io->arwin = NULL;
-	io->crypto = NULL;
-	io->encrypt = NULL;
-	io->decrypt = NULL;
+	io->bless = NULL;
+	io->heaven = NULL;
+	io->confess = NULL;
+	io->purgatory = NULL;
 }
 
 /*

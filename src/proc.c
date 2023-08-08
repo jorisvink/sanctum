@@ -87,34 +87,34 @@ sanctum_proc_start(void)
 {
 	struct sanctum_proc_io		io;
 
-	sanctum_proc_create(SANCTUM_PROC_STATUS, sanctum_status_entry, NULL);
+	sanctum_proc_create(SANCTUM_PROC_STATUS, sanctum_status, NULL);
 
 	io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
 	io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
 	io.arwin = sanctum_alloc_shared(sizeof(struct sanctum_arwin), NULL);
 
-	io.key = sanctum_ring_alloc(2);
 	io.offer = sanctum_ring_alloc(1);
-	io.clear = sanctum_ring_alloc(1024);
-	io.crypto = sanctum_ring_alloc(1024);
-	io.encrypt = sanctum_ring_alloc(1024);
-	io.decrypt = sanctum_ring_alloc(1024);
+	io.chapel = sanctum_ring_alloc(2);
+	io.bless = sanctum_ring_alloc(1024);
+	io.heaven = sanctum_ring_alloc(1024);
+	io.confess = sanctum_ring_alloc(1024);
+	io.purgatory = sanctum_ring_alloc(1024);
 
-	sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_clear_entry, &io);
-	sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_chapel_entry, &io);
-	sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_encrypt_entry, &io);
-	sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_decrypt_entry, &io);
-	sanctum_proc_create(SANCTUM_PROC_PURGATORY, sanctum_crypto_entry, &io);
+	sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
+	sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_heaven, &io);
+	sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_chapel, &io);
+	sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
+	sanctum_proc_create(SANCTUM_PROC_PURGATORY, sanctum_purgatory, &io);
 
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
-	sanctum_shm_detach(io.key);
+	sanctum_shm_detach(io.bless);
 	sanctum_shm_detach(io.offer);
 	sanctum_shm_detach(io.arwin);
-	sanctum_shm_detach(io.clear);
-	sanctum_shm_detach(io.crypto);
-	sanctum_shm_detach(io.encrypt);
-	sanctum_shm_detach(io.decrypt);
+	sanctum_shm_detach(io.chapel);
+	sanctum_shm_detach(io.heaven);
+	sanctum_shm_detach(io.confess);
+	sanctum_shm_detach(io.purgatory);
 }
 
 /*

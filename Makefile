@@ -17,15 +17,15 @@ CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -Iinclude
 CFLAGS+=-g
 
 SRC=	src/sanctum.c \
+	src/bless.c \
 	src/chapel.c \
+	src/confess.c \
 	src/config.c \
-	src/crypto.c \
-	src/clear.c \
-	src/decrypt.c \
-	src/encrypt.c \
+	src/heaven.c \
 	src/proc.c \
 	src/packet.c \
 	src/pool.c \
+	src/purgatory.c \
 	src/ring.c \
 	src/status.c \
 	src/utils.c

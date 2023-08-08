@@ -33,11 +33,11 @@
 /* The number of packets in a single run we try to read. */
 #define PACKETS_PER_EVENT		64
 
-static void	crypto_drop_access(void);
-static void	crypto_recv_packets(int);
-static int	crypto_bind_address(void);
-static int	crypto_packet_check(struct sanctum_packet *);
-static void	crypto_send_packet(int, struct sanctum_packet *);
+static void	purgatory_drop_access(void);
+static void	purgatory_recv_packets(int);
+static int	purgatory_bind_address(void);
+static int	purgatory_packet_check(struct sanctum_packet *);
+static void	purgatory_send_packet(int, struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
@@ -46,11 +46,11 @@ static struct sanctum_packet	tpkt;
 static struct sanctum_proc_io	*io = NULL;
 
 /*
- * The process responsible for receiving packets on the crypto side
+ * The process responsible for receiving packets on the purgatory side
  * and submitting them to the decryption worker.
  */
 void
-sanctum_crypto_entry(struct sanctum_proc *proc)
+sanctum_purgatory(struct sanctum_proc *proc)
 {
 	struct pollfd			pfd;
 	struct sanctum_packet		*pkt;
@@ -60,12 +60,12 @@ sanctum_crypto_entry(struct sanctum_proc *proc)
 	PRECOND(proc->arg != NULL);
 
 	io = proc->arg;
-	crypto_drop_access();
+	purgatory_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	fd = crypto_bind_address();
+	fd = purgatory_bind_address();
 
 	pfd.fd = fd;
 	pfd.revents = 0;
@@ -91,13 +91,13 @@ sanctum_crypto_entry(struct sanctum_proc *proc)
 		}
 
 		if (pfd.revents & POLLIN)
-			crypto_recv_packets(fd);
+			purgatory_recv_packets(fd);
 
 		if ((pkt = sanctum_ring_dequeue(io->offer)))
-			crypto_send_packet(fd, pkt);
+			purgatory_send_packet(fd, pkt);
 
-		while ((pkt = sanctum_ring_dequeue(io->crypto)))
-			crypto_send_packet(fd, pkt);
+		while ((pkt = sanctum_ring_dequeue(io->purgatory)))
+			purgatory_send_packet(fd, pkt);
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
 		usleep(500);
@@ -113,25 +113,25 @@ sanctum_crypto_entry(struct sanctum_proc *proc)
  * Drop access to the queues and fds it does not need.
  */
 static void
-crypto_drop_access(void)
+purgatory_drop_access(void)
 {
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
-	sanctum_shm_detach(io->clear);
-	sanctum_shm_detach(io->encrypt);
+	sanctum_shm_detach(io->bless);
+	sanctum_shm_detach(io->heaven);
 
 	io->tx = NULL;
 	io->rx = NULL;
-	io->clear = NULL;
-	io->encrypt = NULL;
+	io->bless = NULL;
+	io->heaven = NULL;
 }
 
 /*
- * Setup the crypto interface by creating a new socket, binding
+ * Setup the purgatory interface by creating a new socket, binding
  * it locally to the specified port and connecting it to the remote peer.
  */
 static int
-crypto_bind_address(void)
+purgatory_bind_address(void)
 {
 	int		fd, val;
 
@@ -167,11 +167,11 @@ crypto_bind_address(void)
 }
 
 /*
- * Send the given packet onto the crypto interface.
+ * Send the given packet onto the purgatory interface.
  * This function will return the packet to the packet pool.
  */
 static void
-crypto_send_packet(int fd, struct sanctum_packet *pkt)
+purgatory_send_packet(int fd, struct sanctum_packet *pkt)
 {
 	ssize_t			ret;
 	struct sockaddr_in	peer;
@@ -201,7 +201,7 @@ crypto_send_packet(int fd, struct sanctum_packet *pkt)
 				break;
 			if (errno == EMSGSIZE) {
 				syslog(LOG_INFO,
-				    "packet (size=%zu) too large for crypto, "
+				    "packet (size=%zu) too large, "
 				    "lower tunnel MTU", pkt->length);
 				break;
 			}
@@ -228,7 +228,7 @@ crypto_send_packet(int fd, struct sanctum_packet *pkt)
  * for decryption via the decryption queue.
  */
 static void
-crypto_recv_packets(int fd)
+purgatory_recv_packets(int fd)
 {
 	int			idx;
 	ssize_t			ret;
@@ -259,7 +259,7 @@ crypto_recv_packets(int fd)
 		}
 
 		if (ret == 0)
-			fatal("eof on crypto interface");
+			fatal("eof on purgatory interface");
 
 		if (pkt == &tpkt)
 			continue;
@@ -267,15 +267,15 @@ crypto_recv_packets(int fd)
 		pkt->length = ret;
 		pkt->target = SANCTUM_PROC_CONFESS;
 
-		if (crypto_packet_check(pkt) == -1) {
+		if (purgatory_packet_check(pkt) == -1) {
 			sanctum_packet_release(pkt);
 			continue;
 		}
 
 		if (pkt->target == SANCTUM_PROC_CONFESS) {
-			ret = sanctum_ring_queue(io->decrypt, pkt);
+			ret = sanctum_ring_queue(io->confess, pkt);
 		} else if (pkt->target == SANCTUM_PROC_CHAPEL) {
-			ret = sanctum_ring_queue(io->key, pkt);
+			ret = sanctum_ring_queue(io->chapel, pkt);
 		} else {
 			ret = -1;
 		}
@@ -300,7 +300,7 @@ crypto_recv_packets(int fd)
  * worst case scenario.
  */
 static int
-crypto_packet_check(struct sanctum_packet *pkt)
+purgatory_packet_check(struct sanctum_packet *pkt)
 {
 	struct sanctum_ipsec_hdr	*hdr;
 	u_int32_t			seq, spi;

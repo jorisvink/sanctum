@@ -33,7 +33,7 @@ static void	status_request(int, struct sockaddr_un *);
  * The status process, handles incoming status requests.
  */
 void
-sanctum_status_entry(struct sanctum_proc *proc)
+sanctum_status(struct sanctum_proc *proc)
 {
 	struct pollfd	pfd;
 	int		sig, running;

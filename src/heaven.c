@@ -28,9 +28,9 @@
 /* The number of packets in a single run we try to read. */
 #define PACKETS_PER_EVENT		64
 
-static void	clear_drop_access(void);
-static void	clear_recv_packets(int);
-static void	clear_send_packet(int, struct sanctum_packet *);
+static void	heaven_drop_access(void);
+static void	heaven_recv_packets(int);
+static void	heaven_send_packet(int, struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
@@ -39,11 +39,11 @@ static struct sanctum_packet	tpkt;
 static struct sanctum_proc_io	*io = NULL;
 
 /*
- * The process responsible for receiving packets on the clear side
+ * The process responsible for receiving packets on the heaven side
  * and submitting them to the encryption worker.
  */
 void
-sanctum_clear_entry(struct sanctum_proc *proc)
+sanctum_heaven(struct sanctum_proc *proc)
 {
 	struct pollfd			pfd;
 	struct sanctum_packet		*pkt;
@@ -53,7 +53,7 @@ sanctum_clear_entry(struct sanctum_proc *proc)
 	PRECOND(proc->arg != NULL);
 
 	io = proc->arg;
-	clear_drop_access();
+	heaven_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
@@ -82,10 +82,10 @@ sanctum_clear_entry(struct sanctum_proc *proc)
 		}
 
 		if (pfd.revents & POLLIN)
-			clear_recv_packets(fd);
+			heaven_recv_packets(fd);
 
-		while ((pkt = sanctum_ring_dequeue(io->clear)))
-			clear_send_packet(fd, pkt);
+		while ((pkt = sanctum_ring_dequeue(io->heaven)))
+			heaven_send_packet(fd, pkt);
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
 		usleep(500);
@@ -103,31 +103,31 @@ sanctum_clear_entry(struct sanctum_proc *proc)
  * Drop access to the queues and fds it does not need.
  */
 static void
-clear_drop_access(void)
+heaven_drop_access(void)
 {
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
-	sanctum_shm_detach(io->key);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->arwin);
-	sanctum_shm_detach(io->crypto);
-	sanctum_shm_detach(io->decrypt);
+	sanctum_shm_detach(io->chapel);
+	sanctum_shm_detach(io->confess);
+	sanctum_shm_detach(io->purgatory);
 
 	io->tx = NULL;
 	io->rx = NULL;
-	io->key = NULL;
 	io->offer = NULL;
 	io->arwin = NULL;
-	io->crypto = NULL;
-	io->decrypt = NULL;
+	io->chapel = NULL;
+	io->confess = NULL;
+	io->purgatory = NULL;
 }
 
 /*
- * Send the given packet onto the clear interface.
+ * Send the given packet onto the heaven interface.
  * This function will return the packet to the packet pool.
  */
 static void
-clear_send_packet(int fd, struct sanctum_packet *pkt)
+heaven_send_packet(int fd, struct sanctum_packet *pkt)
 {
 	ssize_t		ret;
 
@@ -161,7 +161,7 @@ clear_send_packet(int fd, struct sanctum_packet *pkt)
  * for encryption via the encryption queue.
  */
 static void
-clear_recv_packets(int fd)
+heaven_recv_packets(int fd)
 {
 	int				idx;
 	ssize_t				ret;
@@ -200,7 +200,7 @@ clear_recv_packets(int fd)
 		pkt->length = ret;
 		pkt->target = SANCTUM_PROC_BLESS;
 
-		if (sanctum_ring_queue(io->encrypt, pkt) == -1)
+		if (sanctum_ring_queue(io->bless, pkt) == -1)
 			sanctum_packet_release(pkt);
 	}
 }

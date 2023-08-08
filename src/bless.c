@@ -24,8 +24,8 @@
 
 #include "sanctum.h"
 
-static void	encrypt_drop_access(void);
-static void	encrypt_packet_process(struct sanctum_packet *);
+static void	bless_drop_access(void);
+static void	bless_packet_process(struct sanctum_packet *);
 
 /* The shared queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -38,7 +38,7 @@ static struct sanctum_sa	state;
  * from the clear side of the tunnel.
  */
 void
-sanctum_encrypt_entry(struct sanctum_proc *proc)
+sanctum_bless(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
 	int			sig, running;
@@ -47,7 +47,7 @@ sanctum_encrypt_entry(struct sanctum_proc *proc)
 	PRECOND(proc->arg != NULL);
 
 	io = proc->arg;
-	encrypt_drop_access();
+	bless_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
@@ -74,8 +74,8 @@ sanctum_encrypt_entry(struct sanctum_proc *proc)
 			    state.spi);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->encrypt)))
-			encrypt_packet_process(pkt);
+		while ((pkt = sanctum_ring_dequeue(io->bless)))
+			bless_packet_process(pkt);
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
 		usleep(500);
@@ -88,31 +88,31 @@ sanctum_encrypt_entry(struct sanctum_proc *proc)
 }
 
 /*
- * Drop access to queues the encrypt process does not need.
+ * Drop access to queues the bless process does not need.
  */
 static void
-encrypt_drop_access(void)
+bless_drop_access(void)
 {
 	sanctum_shm_detach(io->rx);
-	sanctum_shm_detach(io->key);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->arwin);
-	sanctum_shm_detach(io->clear);
-	sanctum_shm_detach(io->decrypt);
+	sanctum_shm_detach(io->heaven);
+	sanctum_shm_detach(io->chapel);
+	sanctum_shm_detach(io->confess);
 
 	io->rx = NULL;
-	io->key = NULL;
 	io->offer = NULL;
 	io->arwin = NULL;
-	io->clear = NULL;
-	io->decrypt = NULL;
+	io->heaven = NULL;
+	io->chapel = NULL;
+	io->confess = NULL;
 }
 
 /*
  * Encrypt a single packet under the current TX key.
  */
 static void
-encrypt_packet_process(struct sanctum_packet *pkt)
+bless_packet_process(struct sanctum_packet *pkt)
 {
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
@@ -178,7 +178,7 @@ encrypt_packet_process(struct sanctum_packet *pkt)
 	pkt->length += sizeof(*hdr);
 	pkt->target = SANCTUM_PROC_PURGATORY;
 
-	/* Ship it. */
-	if (sanctum_ring_queue(io->crypto, pkt) == -1)
+	/* Send it into purgatory. */
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		sanctum_packet_release(pkt);
 }

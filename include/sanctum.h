@@ -194,7 +194,7 @@ struct sanctum_arwin {
 #define SANCTUM_ARWIN_SIZE	64
 
 /*
- * Used to pass all the queues to the clear and crypto sides.
+ * Used to pass all the queues to the clear (heaven) and crypto (purgatory).
  * Each process is responsible for removing the queues they
  * do not need themselves.
  */
@@ -203,12 +203,12 @@ struct sanctum_proc_io {
 	struct sanctum_key	*rx;
 	struct sanctum_arwin	*arwin;
 
-	struct sanctum_ring	*key;
 	struct sanctum_ring	*offer;
-	struct sanctum_ring	*clear;
-	struct sanctum_ring	*crypto;
-	struct sanctum_ring	*encrypt;
-	struct sanctum_ring	*decrypt;
+	struct sanctum_ring	*bless;
+	struct sanctum_ring	*chapel;
+	struct sanctum_ring	*heaven;
+	struct sanctum_ring	*confess;
+	struct sanctum_ring	*purgatory;
 };
 
 /*
@@ -400,12 +400,12 @@ ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);
 ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
 
 /* Worker entry points. */
-void	sanctum_clear_entry(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_status_entry(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_chapel_entry(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_crypto_entry(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_decrypt_entry(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_encrypt_entry(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_heaven(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_status(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_chapel(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_confess(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_purgatory(struct sanctum_proc *) __attribute__((noreturn));
 
 /* The cipher goo. */
 size_t	sanctum_cipher_overhead(void);

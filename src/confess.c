@@ -28,14 +28,14 @@
 
 #include "sanctum.h"
 
-static void	decrypt_drop_access(void);
-static void	decrypt_keys_install(void);
-static void	decrypt_packet_process(struct sanctum_packet *);
-static int	decrypt_with_slot(struct sanctum_sa *, struct sanctum_packet *);
+static void	confess_drop_access(void);
+static void	confess_keys_install(void);
+static void	confess_packet_process(struct sanctum_packet *);
+static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
-static int	decrypt_arwin_check(struct sanctum_packet *,
+static int	confess_arwin_check(struct sanctum_packet *,
 		    struct sanctum_ipsec_hdr *);
-static void	decrypt_arwin_update(struct sanctum_packet *,
+static void	confess_arwin_update(struct sanctum_packet *,
 		    struct sanctum_ipsec_hdr *);
 
 /* The local queues. */
@@ -48,11 +48,11 @@ static struct {
 } state;
 
 /*
- * Confess - The process responsible for encryption of packets coming
- * from the clear side of the tunnel.
+ * Confess - The process responsible for the decryption of packets coming
+ * from the crypto side of the tunnel.
  */
 void
-sanctum_decrypt_entry(struct sanctum_proc *proc)
+sanctum_confess(struct sanctum_proc *proc)
 {
 	struct sanctum_packet		*pkt;
 	int				sig, running;
@@ -61,7 +61,7 @@ sanctum_decrypt_entry(struct sanctum_proc *proc)
 	PRECOND(proc->arg != NULL);
 
 	io = proc->arg;
-	decrypt_drop_access();
+	confess_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
@@ -81,10 +81,10 @@ sanctum_decrypt_entry(struct sanctum_proc *proc)
 			}
 		}
 
-		decrypt_keys_install();
+		confess_keys_install();
 
-		while ((pkt = sanctum_ring_dequeue(io->decrypt)))
-			decrypt_packet_process(pkt);
+		while ((pkt = sanctum_ring_dequeue(io->confess)))
+			confess_packet_process(pkt);
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
 		usleep(500);
@@ -97,22 +97,22 @@ sanctum_decrypt_entry(struct sanctum_proc *proc)
 }
 
 /*
- * Drop access to queues the decrypt process does not need.
+ * Drop access to queues the confess process does not need.
  */
 static void
-decrypt_drop_access(void)
+confess_drop_access(void)
 {
 	sanctum_shm_detach(io->tx);
-	sanctum_shm_detach(io->key);
+	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->offer);
-	sanctum_shm_detach(io->crypto);
-	sanctum_shm_detach(io->encrypt);
+	sanctum_shm_detach(io->chapel);
+	sanctum_shm_detach(io->purgatory);
 
 	io->tx = NULL;
-	io->key = NULL;
+	io->bless = NULL;
 	io->offer = NULL;
-	io->crypto = NULL;
-	io->encrypt = NULL;
+	io->chapel = NULL;
+	io->purgatory = NULL;
 }
 
 /*
@@ -122,7 +122,7 @@ decrypt_drop_access(void)
  * pending will be installed under slot_2 first.
  */
 static void
-decrypt_keys_install(void)
+confess_keys_install(void)
 {
 	if (state.slot_1.cipher == NULL) {
 		if (sanctum_key_install(io->rx, &state.slot_1) != -1) {
@@ -149,14 +149,14 @@ decrypt_keys_install(void)
  * If the pending RX key was used, it becomes the active one.
  */
 static void
-decrypt_packet_process(struct sanctum_packet *pkt)
+confess_packet_process(struct sanctum_packet *pkt)
 {
 	struct sanctum_ipsec_hdr	*hdr;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_CONFESS);
 
-	decrypt_keys_install();
+	confess_keys_install();
 
 	if (sanctum_packet_crypto_checklen(pkt) == -1) {
 		sanctum_packet_release(pkt);
@@ -168,10 +168,10 @@ decrypt_packet_process(struct sanctum_packet *pkt)
 	hdr->esp.seq = be32toh(hdr->esp.seq);
 	hdr->pn = be64toh(hdr->pn);
 
-	if (decrypt_with_slot(&state.slot_1, pkt) != -1)
+	if (confess_with_slot(&state.slot_1, pkt) != -1)
 		return;
 
-	if (decrypt_with_slot(&state.slot_2, pkt) == -1) {
+	if (confess_with_slot(&state.slot_2, pkt) == -1) {
 		sanctum_packet_release(pkt);
 		return;
 	}
@@ -195,10 +195,10 @@ decrypt_packet_process(struct sanctum_packet *pkt)
 }
 
 /*
- * Attempt to verify and decrypt a packet using the given SA.
+ * Attempt to verify and confess a packet using the given SA.
  */
 static int
-decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
+confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
@@ -214,7 +214,7 @@ decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (hdr->esp.spi != sa->spi)
 		return (-1);
 
-	if (decrypt_arwin_check(pkt, hdr) == -1)
+	if (confess_arwin_check(pkt, hdr) == -1)
 		return (-1);
 
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
@@ -227,7 +227,7 @@ decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	    aad, sizeof(aad), pkt) == -1)
 		return (-1);
 
-	decrypt_arwin_update(pkt, hdr);
+	confess_arwin_update(pkt, hdr);
 	sanctum_peer_update(pkt);
 
 	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
@@ -238,9 +238,9 @@ decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->pad != 0 || tail->next != IPPROTO_IP)
 		return (-1);
 
+	/* The packet checks out, it is bound for heaven. */
 	pkt->target = SANCTUM_PROC_HEAVEN;
-
-	if (sanctum_ring_queue(io->clear, pkt) == -1)
+	if (sanctum_ring_queue(io->heaven, pkt) == -1)
 		sanctum_packet_release(pkt);
 
 	return (0);
@@ -250,7 +250,7 @@ decrypt_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
  * Check if the given packet was too old, or already seen.
  */
 static int
-decrypt_arwin_check(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
+confess_arwin_check(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
 {
 	u_int64_t	bit;
 
@@ -280,7 +280,7 @@ decrypt_arwin_check(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
  * Update the anti-replay window.
  */
 static void
-decrypt_arwin_update(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
+confess_arwin_update(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
 {
 	u_int64_t	bit;
 
