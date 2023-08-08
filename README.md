@@ -5,7 +5,7 @@
 # Sanctum
 
 "Thee packets that are chosen needeth not fear purgatory, for thee
-shall be safe with my blessing. Confess thy sins and pass into heaven."
+shall be safe with my blessing. Confess thy sins and moveth into heaven."
 
 Sanctum 1:1
 
@@ -16,6 +16,12 @@ seperated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
 This is a work in progress and is not considered done yet.
+
+### Mythology
+
+Whats with the weird mythology around this project?
+
+It's fun, but doesn't make it less of a serious project.
 
 ## Privilege separation
 
