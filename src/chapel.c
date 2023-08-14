@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@coders.se>
+ * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -108,7 +108,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			chapel_offer_create(now);
 		}
 
-		usleep(250000);
+		sleep(1);
 	}
 
 	syslog(LOG_NOTICE, "exiting");
