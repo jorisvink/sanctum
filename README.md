@@ -15,13 +15,13 @@ This is a very small, reviewable, experimental and fully privilege
 seperated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
-**This is a work in progress and is not considered done.**
+**This is a work in progress and is not in a useable state yet.**
 
 ### Mythology
 
 Whats with the weird mythology around this project?
 
-It's fun, but doesn't make it less of a serious project.
+It's fun, but it doesn't make it less of a serious project.
 
 ## Privilege separation
 
@@ -64,7 +64,7 @@ process.
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
 64-bit sequence numbers and encrypted under AES256-GCM using keys
-derived from a shared symmetrical key.
+exchanged via the chapel sacristy key exchange.
 
 ## High performance mode
 
