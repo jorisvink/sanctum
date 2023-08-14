@@ -36,8 +36,12 @@ SRC=	src/sanctum.c \
 CFLAGS+=-fsanitize=address,undefined
 LDFLAGS+=-fsanitize=address,undefined
 
-CFLAGS+=-I/Users/joris/src/nyfe/include
-LDFLAGS+=/Users/joris/src/nyfe/libnyfe.a
+ifeq ("$(NYFE)", "")
+$(error "No NYFE path set")
+endif
+
+CFLAGS+=-I$(NYFE)/include
+LDFLAGS+=$(NYFE)/libnyfe.a
 
 ifeq ("$(HPERF)", "1")
 	CFLAGS+=-DSANCTUM_HIGH_PERFORMANCE=1
