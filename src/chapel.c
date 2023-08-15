@@ -203,9 +203,9 @@ chapel_offer_encrypt(u_int64_t now)
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
 	op->data.salt = offer->salt;
-	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 	memcpy(op->data.key, offer->key, sizeof(offer->key));
 
 	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
