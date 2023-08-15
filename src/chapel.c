@@ -56,7 +56,8 @@ static void	chapel_offer_kdf(struct nyfe_agelas *, void *, size_t);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_drop_access(void);
-static void	chapel_install(struct sanctum_key *, u_int32_t, void *, size_t);
+static void	chapel_install(struct sanctum_key *,
+		    u_int32_t, u_int32_t, void *, size_t);
 
 
 /* The local queues. */
@@ -171,7 +172,8 @@ chapel_offer_create(u_int64_t now)
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
 	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
-	chapel_install(io->rx, offer->spi, offer->key, sizeof(offer->key));
+	chapel_install(io->rx, offer->spi,
+	    offer->salt, offer->key, sizeof(offer->key));
 }
 
 /*
@@ -227,7 +229,10 @@ cleanup:
 }
 
 /*
- * Check if there are any offers on the queue that must be processed.
+ * Attempt to verify the given offer in pkt.
+ *
+ * If we can verify that it was sent by the peer and it is not
+ * too old then we will install it as the TX key for it.
  */
 static void
 chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
@@ -261,23 +266,25 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	    op->data.timestamp > ((u_int64_t)ts.tv_sec + CHAPEL_OFFER_VALID))
 		return;
 
+	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi == last_spi)
 		return;
-
-	last_spi = op->hdr.spi;
 
 	if (sanctum_peer_update(pkt))
 		next_chapel = 0;
 
-	op->hdr.spi = be32toh(op->hdr.spi);
-	chapel_install(io->tx, op->hdr.spi, op->data.key, sizeof(op->data.key));
+	chapel_install(io->tx, op->hdr.spi,
+	    op->data.salt, op->data.key, sizeof(op->data.key));
+
+	last_spi = op->hdr.spi;
 }
 
 /*
  * Install the given key into shared memory so that RX/TX can pick these up.
  */
 static void
-chapel_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
+chapel_install(struct sanctum_key *state, u_int32_t spi, u_int32_t salt,
+    void *key, size_t len)
 {
 	PRECOND(state != NULL);
 	PRECOND(spi > 0);
@@ -293,6 +300,7 @@ chapel_install(struct sanctum_key *state, u_int32_t spi, void *key, size_t len)
 
 	memcpy(state->key, key, len);
 	sanctum_atomic_write(&state->spi, spi);
+	sanctum_atomic_write(&state->salt, salt);
 
 	if (!sanctum_atomic_cas_simple(&state->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))

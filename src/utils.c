@@ -79,6 +79,7 @@ sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 
 	sa->seqnr = 1;
 	sa->spi = sanctum_atomic_read(&key->spi);
+	sa->salt = sanctum_atomic_read(&key->salt);
 
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))

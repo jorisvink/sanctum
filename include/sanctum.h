@@ -158,6 +158,7 @@ struct sanctum_offer {
  */
 struct sanctum_key {
 	volatile u_int32_t	spi;
+	volatile u_int32_t	salt;
 	volatile int		state;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 };
