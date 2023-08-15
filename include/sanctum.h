@@ -108,6 +108,9 @@ extern int daemon(int, int);
 /* Length of our symmetrical keys, in bytes. */
 #define SANCTUM_KEY_LENGTH		32
 
+/* Value for heartbeat */
+#define SANCTUM_PKT_HEARTBEAT		0xfc
+
 /* Process types */
 #define SANCTUM_PROC_HEAVEN		1
 #define SANCTUM_PROC_PURGATORY		2
@@ -134,6 +137,7 @@ struct sanctum_offer_hdr {
 
 struct sanctum_offer_data {
 	u_int32_t		salt;
+	u_int64_t		timestamp;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 } __attribute__((packed));
 
@@ -165,6 +169,7 @@ struct sanctum_sa {
 	u_int32_t		spi;
 	u_int32_t		salt;
 	u_int64_t		seqnr;
+	u_int64_t		bitmap;
 	void			*cipher;
 };
 
@@ -183,14 +188,6 @@ struct sanctum_proc {
 	LIST_ENTRY(sanctum_proc)	list;
 };
 
-/*
- * The anti-replay window.
- */
-struct sanctum_arwin {
-	volatile u_int64_t	last;
-	u_int64_t		bitmap;
-};
-
 #define SANCTUM_ARWIN_SIZE	64
 
 /*
@@ -201,7 +198,6 @@ struct sanctum_arwin {
 struct sanctum_proc_io {
 	struct sanctum_key	*tx;
 	struct sanctum_key	*rx;
-	struct sanctum_arwin	*arwin;
 
 	struct sanctum_ring	*offer;
 	struct sanctum_ring	*bless;
@@ -282,6 +278,7 @@ struct sanctum_ipsec_tail {
  */
 struct sanctum_packet {
 	struct sockaddr_in	addr;
+	u_int8_t		next;
 	size_t			length;
 	u_int32_t		target;
 	u_int8_t		buf[SANCTUM_PACKET_MAX_LEN];
@@ -330,7 +327,12 @@ struct sanctum_state {
 	/* Tx and Rx statistics. */
 	struct sanctum_ifstat	tx;
 	struct sanctum_ifstat	rx;
-	u_int32_t		rx_pending;
+
+	/* Last valid sequence number for the current RX SA. */
+	volatile u_int64_t	last_pn;
+
+	/* RX SA pending. */
+	volatile u_int32_t	rx_pending;
 };
 
 extern struct sanctum_state	*sanctum;
@@ -391,7 +393,7 @@ void	sanctum_shm_detach(void *);
 void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);
 int	sanctum_unix_socket(struct sanctum_sun *);
-void	sanctum_peer_update(struct sanctum_packet *);
+int	sanctum_peer_update(struct sanctum_packet *);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 
 /* platform bits. */

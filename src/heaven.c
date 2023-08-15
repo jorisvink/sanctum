@@ -108,7 +108,6 @@ heaven_drop_access(void)
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->offer);
-	sanctum_shm_detach(io->arwin);
 	sanctum_shm_detach(io->chapel);
 	sanctum_shm_detach(io->confess);
 	sanctum_shm_detach(io->purgatory);
@@ -116,7 +115,6 @@ heaven_drop_access(void)
 	io->tx = NULL;
 	io->rx = NULL;
 	io->offer = NULL;
-	io->arwin = NULL;
 	io->chapel = NULL;
 	io->confess = NULL;
 	io->purgatory = NULL;

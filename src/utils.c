@@ -32,8 +32,9 @@
  * one from the packet.
  *
  * This MUST ONLY be called AFTER integrity has been verified.
+ * Returns 1 if the peer address was updated.
  */
-void
+int
 sanctum_peer_update(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
@@ -46,7 +47,11 @@ sanctum_peer_update(struct sanctum_packet *pkt)
 		sanctum_atomic_write(&sanctum->peer_ip,
 		    pkt->addr.sin_addr.s_addr);
 		sanctum_atomic_write(&sanctum->peer_port, pkt->addr.sin_port);
+
+		return (1);
 	}
+
+	return (0);
 }
 
 /*

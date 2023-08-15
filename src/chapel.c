@@ -19,15 +19,24 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "sanctum.h"
 #include "libnyfe.h"
 
+/* The SACRISTY KDF label. */
 #define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRISTY.KDF"
+
+/* The time window in which offers are valid. */
+#define CHAPEL_OFFER_VALID		30
+
+/* Seconds between new offers. */
+#define CHAPEL_OFFER_FREQUENCY		120
 
 /*
  * An RX offer we send to our peer (meaning the peer can use this key as
@@ -56,6 +65,12 @@ static struct sanctum_proc_io	*io = NULL;
 /* The current offer for our peer. */
 static struct rx_offer		*offer = NULL;
 
+/* Last received verified offer its SPI. */
+static u_int32_t		last_spi = 0;
+
+/* Next time we send a key offer. */
+static u_int64_t		next_chapel = 0;
+
 /*
  * Chapel - The keying process.
  *
@@ -65,9 +80,9 @@ static struct rx_offer		*offer = NULL;
 void
 sanctum_chapel(struct sanctum_proc *proc)
 {
+	u_int64_t		now;
 	struct sanctum_packet	*pkt;
 	int			sig, running;
-	u_int64_t		now, next_chapel;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -81,7 +96,6 @@ sanctum_chapel(struct sanctum_proc *proc)
 	sanctum_signal_ignore(SIGINT);
 
 	running = 1;
-	next_chapel = 0;
 	sanctum_proc_privsep(proc);
 
 	while (running) {
@@ -96,15 +110,15 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 		now = sanctum_atomic_read(&sanctum->uptime);
 
-		if ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL)
+		if ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
 			chapel_offer_decrypt(pkt, now);
+			sanctum_packet_release(pkt);
+		}
 
-		if (offer != NULL && now >= offer->pulse)
+		if (offer != NULL && now >= offer->pulse) {
 			chapel_offer_encrypt(now);
-
-		/* XXX - if no active RX, do it as well. */
-		if (now >= next_chapel) {
-			next_chapel = now + 120;
+		} else if (now >= next_chapel) {
+			next_chapel = now + CHAPEL_OFFER_FREQUENCY;
 			chapel_offer_create(now);
 		}
 
@@ -122,13 +136,11 @@ sanctum_chapel(struct sanctum_proc *proc)
 static void
 chapel_drop_access(void)
 {
-	sanctum_shm_detach(io->arwin);
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->heaven);
 	sanctum_shm_detach(io->confess);
 	sanctum_shm_detach(io->purgatory);
 
-	io->arwin = NULL;
 	io->bless = NULL;
 	io->heaven = NULL;
 	io->confess = NULL;
@@ -152,44 +164,14 @@ chapel_offer_create(u_int64_t now)
 	if ((offer = calloc(1, sizeof(*offer))) == NULL)
 		fatal("calloc");
 
-	offer->ttl = 1;
-	offer->pulse = now + 5;
+	offer->ttl = 5;
+	offer->pulse = now;
 
 	nyfe_random_bytes(offer->key, sizeof(offer->key));
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
 	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
-	printf("creating new RX offer for peer\n");
-
-	printf("key offer = ");
-	for (size_t idx = 0; idx < sizeof(offer->key); idx++)
-		printf("%02x", offer->key[idx]);
-	printf("\n");
-
 	chapel_install(io->rx, offer->spi, offer->key, sizeof(offer->key));
-}
-
-static void
-dump(const char *label, void *ptr, size_t len)
-{
-	u_int8_t	*p = ptr;
-	size_t		idx, col;
-
-	printf("%s (%zu) =\n", label, len);
-
-	col = 0;
-
-	for (idx = 0; idx < len; idx++) {
-		printf("%02x", p[idx]);
-
-		if (col++ == 15) {
-			printf("\n");
-			col = 0;
-		}
-	}
-
-	if (col == 15)
-		printf("\n");
 }
 
 /*
@@ -199,26 +181,18 @@ dump(const char *label, void *ptr, size_t len)
 static void
 chapel_offer_encrypt(u_int64_t now)
 {
+	struct timespec			ts;
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct nyfe_agelas		cipher;
 
 	PRECOND(offer != NULL);
 
-	if (offer->ttl == 0) {
-		printf("clearing offer, expired\n");
-		sanctum_mem_zero(offer, sizeof(*offer));
-		free(offer);
-		offer = NULL;
-		return;
-	}
-
 	offer->ttl--;
 	offer->pulse = now + 5;
-	printf("pulse (%u)\n", offer->ttl);
 
 	if ((pkt = sanctum_packet_get()) == NULL)
-		return;
+		goto cleanup;
 
 	op = sanctum_packet_head(pkt);
 
@@ -226,7 +200,10 @@ chapel_offer_encrypt(u_int64_t now)
 	op->hdr.magic = htobe64(SANCTUM_KEY_OFFER_MAGIC);
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+
 	op->data.salt = offer->salt;
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 	memcpy(op->data.key, offer->key, sizeof(offer->key));
 
 	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
@@ -238,10 +215,15 @@ chapel_offer_encrypt(u_int64_t now)
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY;
 
-	dump("packet", sanctum_packet_head(pkt), pkt->length);
-
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
+
+cleanup:
+	if (offer->ttl == 0) {
+		sanctum_mem_zero(offer, sizeof(*offer));
+		free(offer);
+		offer = NULL;
+	}
 }
 
 /*
@@ -250,6 +232,7 @@ chapel_offer_encrypt(u_int64_t now)
 static void
 chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
+	struct timespec			ts;
 	struct sanctum_offer		*op;
 	struct nyfe_agelas		cipher;
 	u_int8_t			tag[32];
@@ -257,12 +240,8 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);
 
-	if (pkt->length != sizeof(*op)) {
-		sanctum_packet_release(pkt);
+	if (pkt->length != sizeof(*op))
 		return;
-	}
-
-	printf("got offer\n");
 
 	op = sanctum_packet_head(pkt);
 
@@ -272,18 +251,26 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
 	sanctum_mem_zero(&cipher, sizeof(cipher));
 
-	if (memcmp(op->tag, tag, sizeof(op->tag))) {
-		printf("tag mismatch\n");
-		sanctum_packet_release(pkt);
+	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return;
-	}
 
-	sanctum_peer_update(pkt);
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = be64toh(op->data.timestamp);
+
+	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - CHAPEL_OFFER_VALID) ||
+	    op->data.timestamp > ((u_int64_t)ts.tv_sec + CHAPEL_OFFER_VALID))
+		return;
+
+	if (op->hdr.spi == last_spi)
+		return;
+
+	last_spi = op->hdr.spi;
+
+	if (sanctum_peer_update(pkt))
+		next_chapel = 0;
 
 	op->hdr.spi = be32toh(op->hdr.spi);
 	chapel_install(io->tx, op->hdr.spi, op->data.key, sizeof(op->data.key));
-
-	sanctum_packet_release(pkt);
 }
 
 /*
@@ -343,6 +330,5 @@ chapel_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
 	sanctum_mem_zero(&kdf, sizeof(kdf));
 
 	nyfe_agelas_init(cipher, okm, sizeof(okm));
-	dump("okm", okm, sizeof(okm));
 	sanctum_mem_zero(&okm, sizeof(okm));
 }

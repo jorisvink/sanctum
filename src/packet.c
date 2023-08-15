@@ -53,6 +53,7 @@ sanctum_packet_get(void)
 #if defined(SANCTUM_HIGH_PERFORMANCE)
 	pkt->length = 0;
 	pkt->target = 0;
+	pkt->next = IPPROTO_IP;
 #else
 	sanctum_mem_zero(pkt, sizeof(*pkt));
 #endif

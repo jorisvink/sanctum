@@ -91,9 +91,8 @@ sanctum_proc_start(void)
 
 	io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
 	io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
-	io.arwin = sanctum_alloc_shared(sizeof(struct sanctum_arwin), NULL);
 
-	io.offer = sanctum_ring_alloc(1);
+	io.offer = sanctum_ring_alloc(2);
 	io.chapel = sanctum_ring_alloc(2);
 	io.bless = sanctum_ring_alloc(1024);
 	io.heaven = sanctum_ring_alloc(1024);
@@ -110,7 +109,6 @@ sanctum_proc_start(void)
 	sanctum_shm_detach(io.rx);
 	sanctum_shm_detach(io.bless);
 	sanctum_shm_detach(io.offer);
-	sanctum_shm_detach(io.arwin);
 	sanctum_shm_detach(io.chapel);
 	sanctum_shm_detach(io.heaven);
 	sanctum_shm_detach(io.confess);

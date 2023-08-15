@@ -33,10 +33,10 @@ static void	confess_keys_install(void);
 static void	confess_packet_process(struct sanctum_packet *);
 static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
-static int	confess_arwin_check(struct sanctum_packet *,
-		    struct sanctum_ipsec_hdr *);
-static void	confess_arwin_update(struct sanctum_packet *,
-		    struct sanctum_ipsec_hdr *);
+static int	confess_arwin_check(struct sanctum_sa *,
+		    struct sanctum_packet *, struct sanctum_ipsec_hdr *);
+static void	confess_arwin_update(struct sanctum_sa *,
+		    struct sanctum_packet *, struct sanctum_ipsec_hdr *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -181,8 +181,9 @@ confess_packet_process(struct sanctum_packet *pkt)
 
 	syslog(LOG_NOTICE, "swapping RX SA (spi=0x%08x)", state.slot_2.spi);
 
-	io->arwin->bitmap = 0;
-	sanctum_atomic_write(&io->arwin->last, 0);
+	state.slot_1.seqnr = 0;
+	state.slot_1.bitmap = 0;
+	sanctum_atomic_write(&sanctum->last_pn, 0);
 
 	sanctum_cipher_cleanup(state.slot_1.cipher);
 
@@ -214,7 +215,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (hdr->esp.spi != sa->spi)
 		return (-1);
 
-	if (confess_arwin_check(pkt, hdr) == -1)
+	if (confess_arwin_check(sa, pkt, hdr) == -1)
 		return (-1);
 
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
@@ -227,7 +228,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	    aad, sizeof(aad), pkt) == -1)
 		return (-1);
 
-	confess_arwin_update(pkt, hdr);
+	confess_arwin_update(sa, pkt, hdr);
 	sanctum_peer_update(pkt);
 
 	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
@@ -235,7 +236,15 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	pkt->length -= sanctum_cipher_overhead();
 
 	tail = sanctum_packet_tail(pkt);
-	if (tail->pad != 0 || tail->next != IPPROTO_IP)
+	if (tail->pad != 0)
+		return (-1);
+
+	if (tail->next == SANCTUM_PKT_HEARTBEAT) {
+		sanctum_packet_release(pkt);
+		return (0);
+	}
+
+	if (tail->next != IPPROTO_IP)
 		return (-1);
 
 	/* The packet checks out, it is bound for heaven. */
@@ -250,28 +259,33 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
  * Check if the given packet was too old, or already seen.
  */
 static int
-confess_arwin_check(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
+confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
+    struct sanctum_ipsec_hdr *hdr)
 {
 	u_int64_t	bit;
 
+	PRECOND(sa != NULL);
 	PRECOND(pkt != NULL);
 	PRECOND(hdr != NULL);
 
 	if ((hdr->pn & 0xffffffff) != hdr->esp.seq)
 		return (-1);
 
-	if (hdr->pn > io->arwin->last)
+	if (hdr->pn > sa->seqnr)
 		return (0);
 
-	if (hdr->pn > 0 && SANCTUM_ARWIN_SIZE > io->arwin->last - hdr->pn) {
-		bit = (SANCTUM_ARWIN_SIZE - 1) - (io->arwin->last - hdr->pn);
-		if (io->arwin->bitmap & ((u_int64_t)1 << bit)) {
+	if (hdr->pn > 0 && SANCTUM_ARWIN_SIZE > sa->seqnr - hdr->pn) {
+		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - hdr->pn);
+		if (sa->bitmap & ((u_int64_t)1 << bit)) {
 			syslog(LOG_INFO,
 			    "packet seq=0x%" PRIx64 " already seen", hdr->pn);
 			return (-1);
 		}
 		return (0);
 	}
+
+	syslog(LOG_INFO,
+	    "packet seq=0x%" PRIx64 " too old", hdr->pn);
 
 	return (-1);
 }
@@ -280,28 +294,31 @@ confess_arwin_check(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
  * Update the anti-replay window.
  */
 static void
-confess_arwin_update(struct sanctum_packet *pkt, struct sanctum_ipsec_hdr *hdr)
+confess_arwin_update(struct sanctum_sa *sa, struct sanctum_packet *pkt,
+    struct sanctum_ipsec_hdr *hdr)
 {
 	u_int64_t	bit;
 
+	PRECOND(sa != NULL);
 	PRECOND(pkt != NULL);
 	PRECOND(hdr != NULL);
 
-	if (hdr->pn > io->arwin->last) {
-		if (hdr->pn - io->arwin->last >= SANCTUM_ARWIN_SIZE) {
-			io->arwin->bitmap = ((u_int64_t)1 << 63);
+	if (hdr->pn > sa->seqnr) {
+		if (hdr->pn - sa->seqnr >= SANCTUM_ARWIN_SIZE) {
+			sa->bitmap = ((u_int64_t)1 << 63);
 		} else {
-			io->arwin->bitmap >>= (hdr->pn - io->arwin->last);
-			io->arwin->bitmap |= ((u_int64_t)1 << 63);
+			sa->bitmap >>= (hdr->pn - sa->seqnr);
+			sa->bitmap |= ((u_int64_t)1 << 63);
 		}
 
-		sanctum_atomic_write(&io->arwin->last, hdr->pn);
+		sa->seqnr = hdr->pn;
+		sanctum_atomic_write(&sanctum->last_pn, sa->seqnr);
 		return;
 	}
 
-	if (io->arwin->last < hdr->pn)
+	if (sa->seqnr < hdr->pn)
 		fatal("%s: window corrupt", __func__);
 
-	bit = (SANCTUM_ARWIN_SIZE - 1) - (io->arwin->last - hdr->pn);
-	io->arwin->bitmap |= ((u_int64_t)1 << bit);
+	bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - hdr->pn);
+	sa->bitmap |= ((u_int64_t)1 << bit);
 }

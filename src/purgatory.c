@@ -320,22 +320,24 @@ purgatory_packet_check(struct sanctum_packet *pkt)
 		return (-1);
 
 	/* If this has the key offer magic, kick it to the chapel. */
-	if ((spi & (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
-	    (seq & (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
+	if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
 		pkt->target = SANCTUM_PROC_CHAPEL;
 		return (0);
 	}
 
-	/* If we don't know this SPI, drop the packet here. */
+	/* If we don't know the SPI, drop the packet. */
 	if (spi != sanctum_atomic_read(&sanctum->rx.spi)) {
-		if (spi != sanctum_atomic_read(&sanctum->rx_pending))
-			return (-1);
+		/* If the SPI matches the pending one, skip initial AR check. */
+		if (spi == sanctum_atomic_read(&sanctum->rx_pending))
+			return (0);
+		return (-1);
 	}
 
 	if ((pn & 0xffffffff) != seq)
 		return (-1);
 
-	last = sanctum_atomic_read(&io->arwin->last);
+	last = sanctum_atomic_read(&sanctum->last_pn);
 
 	if (pn > last)
 		return (0);

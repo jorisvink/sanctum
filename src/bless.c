@@ -25,6 +25,7 @@
 #include "sanctum.h"
 
 static void	bless_drop_access(void);
+static void	bless_packet_heartbeat(void);
 static void	bless_packet_process(struct sanctum_packet *);
 
 /* The shared queues. */
@@ -32,6 +33,10 @@ static struct sanctum_proc_io	*io = NULL;
 
 /* The local state for TX. */
 static struct sanctum_sa	state;
+
+/* Local timekeeping for heartbeats. */
+static u_int64_t		now = 0;
+static u_int64_t		next_heartbeat = 0;
 
 /*
  * Bless - The process responsible for the blessing of packets coming
@@ -72,10 +77,16 @@ sanctum_bless(struct sanctum_proc *proc)
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 			syslog(LOG_NOTICE, "new TX SA (spi=0x%08x)",
 			    state.spi);
+			next_heartbeat = now;
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
 			bless_packet_process(pkt);
+
+		now = sanctum_atomic_read(&sanctum->uptime);
+
+		if (next_heartbeat != 0 && now >= next_heartbeat)
+			bless_packet_heartbeat();
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
 		usleep(500);
@@ -95,17 +106,35 @@ bless_drop_access(void)
 {
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->offer);
-	sanctum_shm_detach(io->arwin);
 	sanctum_shm_detach(io->heaven);
 	sanctum_shm_detach(io->chapel);
 	sanctum_shm_detach(io->confess);
 
 	io->rx = NULL;
 	io->offer = NULL;
-	io->arwin = NULL;
 	io->heaven = NULL;
 	io->chapel = NULL;
 	io->confess = NULL;
+}
+
+/*
+ * Generate a heartbeat packet.
+ */
+static void
+bless_packet_heartbeat(void)
+{
+	struct sanctum_packet		*pkt;
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	pkt->length = 0;
+	pkt->target = SANCTUM_PROC_BLESS;
+	pkt->next = SANCTUM_PKT_HEARTBEAT;
+
+	bless_packet_process(pkt);
+
+	next_heartbeat = now + 5;
 }
 
 /*
@@ -124,7 +153,6 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	/* Install any pending TX key first. */
 	if (sanctum_key_install(io->tx, &state) != -1) {
-		state.seqnr = 1;
 		sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		syslog(LOG_NOTICE, "new TX SA (spi=0x%08x)", state.spi);
 	}
@@ -154,7 +182,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	/* We don't pad, RFC says its a SHOULD not a MUST. */
 	tail->pad = 0;
-	tail->next = IPPROTO_IP;
+	tail->next = pkt->next;
 
 	/* Tail is included in the plaintext. */
 	pkt->length += sizeof(*tail);
@@ -181,4 +209,6 @@ bless_packet_process(struct sanctum_packet *pkt)
 	/* Send it into purgatory. */
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		sanctum_packet_release(pkt);
+
+	next_heartbeat = now + 5;
 }
