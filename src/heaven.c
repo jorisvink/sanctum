@@ -147,7 +147,6 @@ heaven_send_packet(int fd, struct sanctum_packet *pkt)
 		sanctum_atomic_add(&sanctum->rx.pkt, 1);
 		sanctum_atomic_add(&sanctum->rx.bytes, pkt->length);
 		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
-
 		break;
 	}
 
