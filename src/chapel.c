@@ -150,8 +150,8 @@ chapel_drop_access(void)
 /*
  * Create a new RX key and start offering it to the other side.
  *
- * The offer shall continue until the other side sends us a packet
- * encrypted with said key.
+ * The offer shall continue until the ttl of it reaches 0 at which
+ * point another offer can be made.
  */
 static void
 chapel_offer_create(u_int64_t now)
