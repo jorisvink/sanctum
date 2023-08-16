@@ -32,9 +32,8 @@
  * one from the packet.
  *
  * This MUST ONLY be called AFTER integrity has been verified.
- * Returns 1 if the peer address was updated.
  */
-int
+void
 sanctum_peer_update(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
@@ -47,11 +46,7 @@ sanctum_peer_update(struct sanctum_packet *pkt)
 		sanctum_atomic_write(&sanctum->peer_ip,
 		    pkt->addr.sin_addr.s_addr);
 		sanctum_atomic_write(&sanctum->peer_port, pkt->addr.sin_port);
-
-		return (1);
 	}
-
-	return (0);
 }
 
 /*
@@ -78,14 +73,44 @@ sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 	sanctum_mem_zero(key->key, sizeof(key->key));
 
 	sa->seqnr = 1;
+	sa->pending = 1;
 	sa->spi = sanctum_atomic_read(&key->spi);
 	sa->salt = sanctum_atomic_read(&key->salt);
+	sa->age = sanctum_atomic_read(&sanctum->uptime);
 
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
 		fatal("failed to swap key state to empty");
 
 	return (0);
+}
+
+/*
+ * Clear the entire given SA state, wiping its internal keys etc.
+ */
+void
+sanctum_sa_clear(struct sanctum_sa *sa)
+{
+	PRECOND(sa != NULL);
+
+	if (sa->cipher != NULL)
+		sanctum_cipher_cleanup(sa->cipher);
+
+	sanctum_mem_zero(sa, sizeof(*sa));
+}
+
+/*
+ * Reset interface statistics for the given struct.
+ */
+void
+sanctum_stat_clear(struct sanctum_ifstat *ifc)
+{
+	PRECOND(ifc != NULL);
+
+	sanctum_atomic_write(&ifc->age, 0);
+	sanctum_atomic_write(&ifc->spi, 0);
+	sanctum_atomic_write(&ifc->pkt, 0);
+	sanctum_atomic_write(&ifc->bytes, 0);
 }
 
 /*

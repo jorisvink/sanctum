@@ -32,11 +32,8 @@
 /* The SACRISTY KDF label. */
 #define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRISTY.KDF"
 
-/* The time window in which offers are valid. */
-#define CHAPEL_OFFER_VALID		30
-
-/* Seconds between new offers. */
-#define CHAPEL_OFFER_FREQUENCY		120
+/* The half-time window in which offers are valid. */
+#define CHAPEL_OFFER_VALID		5
 
 /*
  * An RX offer we send to our peer (meaning the peer can use this key as
@@ -50,8 +47,10 @@ struct rx_offer {
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 };
 
-static void	chapel_offer_create(u_int64_t);
+static void	chapel_offer_clear(void);
+static void	chapel_offer_check(u_int64_t);
 static void	chapel_offer_encrypt(u_int64_t);
+static void	chapel_offer_create(u_int64_t, const char *);
 static void	chapel_offer_kdf(struct nyfe_agelas *, void *, size_t);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
@@ -69,8 +68,9 @@ static struct rx_offer		*offer = NULL;
 /* Last received verified offer its SPI. */
 static u_int32_t		last_spi = 0;
 
-/* Next time we send a key offer. */
-static u_int64_t		next_chapel = 0;
+/* Current offer TTL and next send intervals. */
+static u_int64_t		offer_ttl = 5;
+static u_int64_t		offer_next_send = 1;
 
 /*
  * Chapel - The keying process.
@@ -82,6 +82,7 @@ void
 sanctum_chapel(struct sanctum_proc *proc)
 {
 	u_int64_t		now;
+	u_int32_t		spi;
 	struct sanctum_packet	*pkt;
 	int			sig, running;
 
@@ -111,16 +112,22 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 		now = sanctum_atomic_read(&sanctum->uptime);
 
-		if ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
+		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
 			chapel_offer_decrypt(pkt, now);
 			sanctum_packet_release(pkt);
 		}
 
-		if (offer != NULL && now >= offer->pulse) {
-			chapel_offer_encrypt(now);
-		} else if (now >= next_chapel) {
-			next_chapel = now + CHAPEL_OFFER_FREQUENCY;
-			chapel_offer_create(now);
+		if (offer != NULL) {
+			spi = sanctum_atomic_read(&sanctum->rx.spi);
+			if (spi == offer->spi &&
+			    sanctum_atomic_read(&sanctum->rx.pkt) > 0) {
+				chapel_offer_clear();
+			} else {
+				if (now >= offer->pulse)
+					chapel_offer_encrypt(now);
+			}
+		} else {
+			chapel_offer_check(now);
 		}
 
 		sleep(1);
@@ -149,15 +156,65 @@ chapel_drop_access(void)
 }
 
 /*
- * Create a new RX key and start offering it to the other side.
+ * Check if an offer must be sent to our peer.
  *
- * The offer shall continue until the ttl of it reaches 0 at which
- * point another offer can be made.
+ * 1) We must have the peer address.
+ * 2) If we have a previous RX SA, the peer must have timed out,
+ *    reached the SA packet limit or SA lifetime limit.
+ * 3) If we do not have a previous RX SA, we always send an offer.
  */
 static void
-chapel_offer_create(u_int64_t now)
+chapel_offer_check(u_int64_t now)
+{
+	const char	*reason;
+	int		offer_now;
+	u_int64_t	pkt, age, hbeat;
+
+	PRECOND(offer == NULL);
+
+	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
+		return;
+
+	offer_now = 0;
+	reason = NULL;
+
+	if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
+		offer_ttl = 30;
+		offer_next_send = 10;
+
+		age = sanctum_atomic_read(&sanctum->rx.age);
+		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
+		hbeat = sanctum_atomic_read(&sanctum->heartbeat);
+
+		if ((now - hbeat) >= SANCTUM_HEARTBEAT_INTERVAL * 2) {
+			offer_now = 1;
+			reason = "heartbeat timeout";
+		} else if (pkt >= SANCTUM_SA_PACKET_SOFT) {
+			offer_now = 1;
+			reason = "SA packet limit";
+		} else  if (now - age >= SANCTUM_SA_LIFETIME_SOFT) {
+			offer_now = 1;
+			reason = "SA age limit";
+		}
+	} else {
+		offer_now = 1;
+		reason = "no keys";
+	}
+
+	if (offer_now == 0)
+		return;
+
+	chapel_offer_create(now, reason);
+}
+
+/*
+ * Generate a new offer that can be sent to the peer.
+ */
+static void
+chapel_offer_create(u_int64_t now, const char *reason)
 {
 	PRECOND(offer == NULL);
+	PRECOND(reason != NULL);
 
 	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
 		return;
@@ -165,8 +222,8 @@ chapel_offer_create(u_int64_t now)
 	if ((offer = calloc(1, sizeof(*offer))) == NULL)
 		fatal("calloc");
 
-	offer->ttl = 5;
 	offer->pulse = now;
+	offer->ttl = offer_ttl;
 
 	nyfe_random_bytes(offer->key, sizeof(offer->key));
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
@@ -174,6 +231,9 @@ chapel_offer_create(u_int64_t now)
 
 	chapel_install(io->rx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));
+
+	syslog(LOG_INFO, "offering fresh key (%s) (spi=0x%08x)",
+	    reason, offer->spi);
 }
 
 /*
@@ -191,13 +251,14 @@ chapel_offer_encrypt(u_int64_t now)
 	PRECOND(offer != NULL);
 
 	offer->ttl--;
-	offer->pulse = now + 5;
+	offer->pulse = now + offer_next_send;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
 		goto cleanup;
 
 	op = sanctum_packet_head(pkt);
 
+	/* Construct the header and data. */
 	op->hdr.spi = htobe32(offer->spi);
 	op->hdr.magic = htobe64(SANCTUM_KEY_OFFER_MAGIC);
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
@@ -208,12 +269,14 @@ chapel_offer_encrypt(u_int64_t now)
 	op->data.salt = offer->salt;
 	memcpy(op->data.key, offer->key, sizeof(offer->key));
 
+	/* Encrypt the offer packet. */
 	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
 	sanctum_mem_zero(&cipher, sizeof(cipher));
 
+	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY;
 
@@ -221,11 +284,21 @@ chapel_offer_encrypt(u_int64_t now)
 		sanctum_packet_release(pkt);
 
 cleanup:
-	if (offer->ttl == 0) {
-		sanctum_mem_zero(offer, sizeof(*offer));
-		free(offer);
-		offer = NULL;
-	}
+	if (offer->ttl == 0)
+		chapel_offer_clear();
+}
+
+/*
+ * Clear the current offer.
+ */
+static void
+chapel_offer_clear(void)
+{
+	PRECOND(offer != NULL);
+
+	sanctum_mem_zero(offer, sizeof(*offer));
+	free(offer);
+	offer = NULL;
 }
 
 /*
@@ -250,6 +323,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	op = sanctum_packet_head(pkt);
 
+	/* Decrypt and verify the integrity of the offer first. */
 	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
@@ -259,6 +333,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return;
 
+	/* Make sure the offer isn't too old. */
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = be64toh(op->data.timestamp);
 
@@ -266,17 +341,31 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	    op->data.timestamp > ((u_int64_t)ts.tv_sec + CHAPEL_OFFER_VALID))
 		return;
 
+	/* If we have seen this offer recently, ignore it. */
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi == last_spi)
 		return;
 
-	if (sanctum_peer_update(pkt))
-		next_chapel = 0;
+	/* Make sure a someone didn't reflect our current offer back to us. */
+	if (offer != NULL) {
+		if (op->hdr.spi == offer->spi && op->data.salt == offer->salt &&
+		    !memcmp(op->data.key, offer->key, sizeof(offer->key))) {
+			return;
+		}
+	}
 
+	/* Everything checks out, update the peer address if needed. */
+	sanctum_peer_update(pkt);
+
+	/* Install received key as the TX key. */
 	chapel_install(io->tx, op->hdr.spi,
 	    op->data.salt, op->data.key, sizeof(op->data.key));
 
 	last_spi = op->hdr.spi;
+
+	/* Reduce initial TTL and next send back to base values. */
+	offer_ttl = 5;
+	offer_next_send = 1;
 }
 
 /*
@@ -332,6 +421,8 @@ chapel_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    CHAPEL_DERIVE_LABEL, sizeof(CHAPEL_DERIVE_LABEL) - 1);
+	sanctum_mem_zero(secret, sizeof(secret));
+
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, seed, seed_len);
 	nyfe_kmac256_final(&kdf, okm, sizeof(okm));

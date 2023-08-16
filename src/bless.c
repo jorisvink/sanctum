@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -72,18 +73,17 @@ sanctum_bless(struct sanctum_proc *proc)
 			}
 		}
 
+		now = sanctum_atomic_read(&sanctum->uptime);
+
 		if (sanctum_key_install(io->tx, &state) != -1) {
 			state.seqnr = 1;
-			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
-			syslog(LOG_NOTICE, "new TX SA (spi=0x%08x)",
-			    state.spi);
 			next_heartbeat = now;
+			sanctum_atomic_write(&sanctum->tx.age, now);
+			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
 			bless_packet_process(pkt);
-
-		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if (next_heartbeat != 0 && now >= next_heartbeat)
 			bless_packet_heartbeat();
@@ -92,6 +92,8 @@ sanctum_bless(struct sanctum_proc *proc)
 		usleep(500);
 #endif
 	}
+
+	sanctum_sa_clear(&state);
 
 	syslog(LOG_NOTICE, "exiting");
 
@@ -125,16 +127,18 @@ bless_packet_heartbeat(void)
 {
 	struct sanctum_packet		*pkt;
 
+	if (state.cipher == NULL)
+		return;
+
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
 	pkt->length = 0;
 	pkt->target = SANCTUM_PROC_BLESS;
-	pkt->next = SANCTUM_PKT_HEARTBEAT;
+	pkt->next = SANCTUM_PACKET_HEARTBEAT;
 
 	bless_packet_process(pkt);
-
-	next_heartbeat = now + 5;
+	next_heartbeat = now + SANCTUM_HEARTBEAT_INTERVAL;
 }
 
 /*
@@ -153,14 +157,34 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	/* Install any pending TX key first. */
 	if (sanctum_key_install(io->tx, &state) != -1) {
+		sanctum_atomic_write(&sanctum->tx.age, now);
 		sanctum_atomic_write(&sanctum->tx.spi, state.spi);
-		syslog(LOG_NOTICE, "new TX SA (spi=0x%08x)", state.spi);
 	}
 
 	/* If we don't have a cipher state, we shall not submit. */
 	if (state.cipher == NULL) {
 		sanctum_packet_release(pkt);
 		return;
+	}
+
+	/*
+	 * If we reached max number of packets that can be transmitted,
+	 * or the SA is too old, we do not submit.
+	 */
+	if (state.seqnr >= SANCTUM_SA_PACKET_HARD ||
+	    ((now - state.age) >= SANCTUM_SA_LIFETIME_HARD)) {
+		syslog(LOG_NOTICE,
+		    "expired TX SA (seqnr=%" PRIu64 ", age=%" PRIu64 ")",
+		    state.seqnr, (now - state.age));
+		sanctum_cipher_cleanup(state.cipher);
+		state.cipher = NULL;
+		sanctum_packet_release(pkt);
+		return;
+	}
+
+	if (state.pending) {
+		state.pending = 0;
+		syslog(LOG_NOTICE, "TX SA active (spi=0x%08x)", state.spi);
 	}
 
 	/* Belts and suspenders. */
@@ -209,6 +233,4 @@ bless_packet_process(struct sanctum_packet *pkt)
 	/* Send it into purgatory. */
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		sanctum_packet_release(pkt);
-
-	next_heartbeat = now + 5;
 }

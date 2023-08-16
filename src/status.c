@@ -129,11 +129,13 @@ status_request(int fd, struct sockaddr_un *peer)
 
 	memset(&resp, 0, sizeof(resp));
 
+	resp.tx.age = sanctum_atomic_read(&sanctum->tx.age);
 	resp.tx.spi = sanctum_atomic_read(&sanctum->tx.spi);
 	resp.tx.pkt = sanctum_atomic_read(&sanctum->tx.pkt);
 	resp.tx.last = sanctum_atomic_read(&sanctum->tx.last);
 	resp.tx.bytes = sanctum_atomic_read(&sanctum->tx.bytes);
 
+	resp.rx.age = sanctum_atomic_read(&sanctum->rx.age);
 	resp.rx.spi = sanctum_atomic_read(&sanctum->rx.spi);
 	resp.rx.pkt = sanctum_atomic_read(&sanctum->rx.pkt);
 	resp.rx.last = sanctum_atomic_read(&sanctum->rx.last);

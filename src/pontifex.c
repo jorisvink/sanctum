@@ -139,18 +139,19 @@ pontifex_dump_ifstat(const char *name, struct sanctum_ifstat *st)
 {
 	struct timespec				ts;
 
+	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+
 	printf("%s\n", name);
 
 	if (st->spi == 0) {
 		printf("  spi            none\n");
 	} else {
-		printf("  spi            0x%08x\n", st->spi);
+		printf("  spi            0x%08x (age: %" PRIu64 " seconds)\n",
+		    st->spi, ts.tv_sec - st->age);
 	}
 
 	printf("  pkt            %" PRIu64 " \n", st->pkt);
 	printf("  bytes          %" PRIu64 " \n", st->bytes);
-
-	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	if (st->last == 0) {
 		printf("  last packet    never\n");

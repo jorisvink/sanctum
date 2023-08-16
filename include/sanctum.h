@@ -108,8 +108,19 @@ extern int daemon(int, int);
 /* Length of our symmetrical keys, in bytes. */
 #define SANCTUM_KEY_LENGTH		32
 
-/* Value for heartbeat */
-#define SANCTUM_PKT_HEARTBEAT		0xfc
+/* ESP next_proto value for a heartbeat. */
+#define SANCTUM_PACKET_HEARTBEAT	0xfc
+
+/* The number of seconds between heartbeats. */
+#define SANCTUM_HEARTBEAT_INTERVAL	15
+
+/* Maximum number of packets that can be sent under an SA. */
+#define SANCTUM_SA_PACKET_SOFT		(1ULL << 33)
+#define SANCTUM_SA_PACKET_HARD		(1ULL << 34)
+
+/* Maximum number of seconds an SA can be alive. */
+#define SANCTUM_SA_LIFETIME_SOFT	3500
+#define SANCTUM_SA_LIFETIME_HARD	3600
 
 /* Process types */
 #define SANCTUM_PROC_HEAVEN		1
@@ -167,10 +178,12 @@ struct sanctum_key {
  * An SA context with an SPI, salt, sequence number and underlying cipher.
  */
 struct sanctum_sa {
+	u_int64_t		age;
 	u_int32_t		spi;
 	u_int32_t		salt;
 	u_int64_t		seqnr;
 	u_int64_t		bitmap;
+	u_int8_t		pending;
 	void			*cipher;
 };
 
@@ -334,6 +347,9 @@ struct sanctum_state {
 
 	/* RX SA pending. */
 	volatile u_int32_t	rx_pending;
+
+	/* The last heartbeat received from the peer. */
+	volatile u_int64_t	heartbeat;
 };
 
 extern struct sanctum_state	*sanctum;
@@ -393,8 +409,10 @@ struct sanctum_ring	*sanctum_ring_alloc(size_t);
 void	sanctum_shm_detach(void *);
 void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);
+void	sanctum_sa_clear(struct sanctum_sa *);
 int	sanctum_unix_socket(struct sanctum_sun *);
-int	sanctum_peer_update(struct sanctum_packet *);
+void	sanctum_stat_clear(struct sanctum_ifstat *);
+void	sanctum_peer_update(struct sanctum_packet *);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 
 /* platform bits. */

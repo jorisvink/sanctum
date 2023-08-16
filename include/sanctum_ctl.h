@@ -22,6 +22,7 @@
  */
 struct sanctum_ifstat {
 	volatile u_int32_t	spi;
+	volatile u_int64_t	age;
 	volatile u_int64_t	pkt;
 	volatile u_int64_t	last;
 	volatile u_int64_t	bytes;

@@ -28,6 +28,7 @@
 
 #include "sanctum.h"
 
+static void	confess_clear_state(void);
 static void	confess_drop_access(void);
 static void	confess_keys_install(void);
 static void	confess_packet_process(struct sanctum_packet *);
@@ -91,6 +92,7 @@ sanctum_confess(struct sanctum_proc *proc)
 #endif
 	}
 
+	confess_clear_state();
 	syslog(LOG_NOTICE, "exiting");
 
 	exit(0);
@@ -116,6 +118,20 @@ confess_drop_access(void)
 }
 
 /*
+ * Clear entire RX state.
+ */
+static void
+confess_clear_state(void)
+{
+	sanctum_sa_clear(&state.slot_1);
+	sanctum_sa_clear(&state.slot_2);
+	sanctum_stat_clear(&sanctum->rx);
+	sanctum_atomic_write(&sanctum->rx_pending, 0);
+
+	sanctum_mem_zero(&state, sizeof(state));
+}
+
+/*
  * Attempt to install any pending keys into the correct slot.
  *
  * Once we have a primary RX key in slot_1, all keys that are
@@ -128,14 +144,12 @@ confess_keys_install(void)
 		if (sanctum_key_install(io->rx, &state.slot_1) != -1) {
 			sanctum_atomic_write(&sanctum->rx.spi,
 			    state.slot_1.spi);
-			syslog(LOG_NOTICE, "new RX SA (spi=0x%08x)",
-			    state.slot_1.spi);
+			sanctum_atomic_write(&sanctum->rx.age,
+			    state.slot_1.age);
 		}
 	} else {
 		if (sanctum_key_install(io->rx, &state.slot_2) != -1) {
 			sanctum_atomic_write(&sanctum->rx_pending,
-			    state.slot_2.spi);
-			syslog(LOG_NOTICE, "pending RX SA (spi=0x%08x)",
 			    state.slot_2.spi);
 		}
 	}
@@ -176,10 +190,12 @@ confess_packet_process(struct sanctum_packet *pkt)
 		return;
 	}
 
+	/* Swap to RX SA in slot_2. */
+	sanctum_atomic_write(&sanctum->rx.age, state.slot_2.age);
 	sanctum_atomic_write(&sanctum->rx.spi, state.slot_2.spi);
 	sanctum_atomic_write(&sanctum->rx_pending, 0);
-
-	syslog(LOG_NOTICE, "swapping RX SA (spi=0x%08x)", state.slot_2.spi);
+	sanctum_atomic_write(&sanctum->rx.bytes, 0);
+	sanctum_atomic_write(&sanctum->rx.pkt, 0);
 
 	state.slot_1.seqnr = 0;
 	state.slot_1.bitmap = 0;
@@ -201,6 +217,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
+	u_int64_t			now;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
 	u_int8_t			nonce[12], aad[12];
@@ -228,6 +245,11 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	    aad, sizeof(aad), pkt) == -1)
 		return (-1);
 
+	if (sa->pending) {
+		sa->pending = 0;
+		syslog(LOG_NOTICE, "RX SA active (spi=0x%08x)", sa->spi);
+	}
+
 	confess_arwin_update(sa, pkt, hdr);
 	sanctum_peer_update(pkt);
 
@@ -239,8 +261,12 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->pad != 0)
 		return (-1);
 
-	if (tail->next == SANCTUM_PKT_HEARTBEAT) {
+	if (tail->next == SANCTUM_PACKET_HEARTBEAT) {
 		sanctum_packet_release(pkt);
+		now = sanctum_atomic_read(&sanctum->uptime);
+		sanctum_atomic_add(&sanctum->rx.pkt, 1);
+		sanctum_atomic_write(&sanctum->heartbeat, now);
+		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
 		return (0);
 	}
 
