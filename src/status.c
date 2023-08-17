@@ -51,7 +51,7 @@ sanctum_status(struct sanctum_proc *proc)
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
-			syslog(LOG_NOTICE, "received signal %d", sig);
+			sanctum_log(LOG_NOTICE, "received signal %d", sig);
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
@@ -72,7 +72,7 @@ sanctum_status(struct sanctum_proc *proc)
 
 	}
 
-	syslog(LOG_NOTICE, "exiting");
+	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
 }

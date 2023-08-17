@@ -74,7 +74,7 @@ sanctum_confess(struct sanctum_proc *proc)
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
-			syslog(LOG_NOTICE, "received signal %d", sig);
+			sanctum_log(LOG_NOTICE, "received signal %d", sig);
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
@@ -93,7 +93,7 @@ sanctum_confess(struct sanctum_proc *proc)
 	}
 
 	confess_clear_state();
-	syslog(LOG_NOTICE, "exiting");
+	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
 }
@@ -247,7 +247,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	if (sa->pending) {
 		sa->pending = 0;
-		syslog(LOG_NOTICE, "RX SA active (spi=0x%08x)", sa->spi);
+		sanctum_log(LOG_NOTICE, "RX SA active (spi=0x%08x)", sa->spi);
 	}
 
 	confess_arwin_update(sa, pkt, hdr);
@@ -303,14 +303,14 @@ confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
 	if (hdr->pn > 0 && SANCTUM_ARWIN_SIZE > sa->seqnr - hdr->pn) {
 		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - hdr->pn);
 		if (sa->bitmap & ((u_int64_t)1 << bit)) {
-			syslog(LOG_INFO,
+			sanctum_log(LOG_INFO,
 			    "packet seq=0x%" PRIx64 " already seen", hdr->pn);
 			return (-1);
 		}
 		return (0);
 	}
 
-	syslog(LOG_INFO,
+	sanctum_log(LOG_INFO,
 	    "packet seq=0x%" PRIx64 " too old", hdr->pn);
 
 	return (-1);

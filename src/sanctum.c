@@ -89,19 +89,20 @@ main(int argc, char *argv[])
 	early = 0;
 
 	if (foreground == 0) {
+		sanctum->flags |= SANCTUM_FLAG_DAEMONIZED;
 		if (daemon(1, 0) == -1)
 			fatal("daemon: %s", errno_s);
 	}
 
 	openlog("sanctum", LOG_NDELAY | LOG_PID, LOG_DAEMON);
-	sanctum_proc_title("overwatch");
+	sanctum_proc_title("guardian");
 
 	running = 1;
-	syslog(LOG_INFO, "sanctum started");
+	sanctum_log(LOG_INFO, "sanctum started");
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
-			syslog(LOG_INFO, "parent received signal %d", sig);
+			sanctum_log(LOG_INFO, "parent received signal %d", sig);
 			switch (sig) {
 			case SIGINT:
 			case SIGHUP:
@@ -187,7 +188,7 @@ fatal(const char *fmt, ...)
 		vfprintf(stderr, fmt, args);
 		fprintf(stderr, "\n");
 	} else {
-		vsyslog(LOG_ERR, fmt, args);
+		sanctum_logv(LOG_ERR, fmt, args);
 	}
 
 	va_end(args);

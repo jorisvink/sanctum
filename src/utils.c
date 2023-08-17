@@ -15,6 +15,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -23,9 +24,60 @@
 
 #include <fcntl.h>
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "sanctum.h"
+
+/*
+ * Log a message to either stdout or sanctum_log, prio is sanctum_log level.
+ */
+void
+sanctum_log(int prio, const char *fmt, ...)
+{
+	va_list		args;
+
+	PRECOND(prio >= 0);
+	PRECOND(fmt != NULL);
+
+	va_start(args, fmt);
+	sanctum_logv(prio, fmt, args);
+	va_end(args);
+}
+
+/*
+ * Log a message to either stdout or sanctum_log, prio is sanctum_log level.
+ */
+void
+sanctum_logv(int prio, const char *fmt, va_list args)
+{
+	struct timespec		ts;
+	struct tm		*t;
+	struct sanctum_proc	*proc;
+	char			tbuf[32];
+
+	PRECOND(prio >= 0);
+	PRECOND(fmt != NULL);
+
+	if (sanctum->flags & SANCTUM_FLAG_DAEMONIZED) {
+		vsyslog(prio, fmt, args);
+	} else {
+		(void)clock_gettime(CLOCK_REALTIME, &ts);
+		t = gmtime(&ts.tv_sec);
+
+		if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0)
+			printf("%s.%03ld UTC ", tbuf, ts.tv_nsec / 1000000);
+
+		if ((proc = sanctum_process()) != NULL)
+			printf("[%s]: ", proc->name);
+		else
+			printf("[guardian]: ");
+
+		vprintf(fmt, args);
+		printf("\n");
+		fflush(stdout);
+	}
+}
 
 /*
  * Update the address of the peer if it does not match with the
@@ -40,7 +92,7 @@ sanctum_peer_update(struct sanctum_packet *pkt)
 
 	if (pkt->addr.sin_addr.s_addr != sanctum->peer_ip ||
 	    pkt->addr.sin_port != sanctum->peer_port) {
-		syslog(LOG_NOTICE, "peer address change (new=%s:%u)",
+		sanctum_log(LOG_NOTICE, "peer address change (new=%s:%u)",
 		    inet_ntoa(pkt->addr.sin_addr), ntohs(pkt->addr.sin_port));
 
 		sanctum_atomic_write(&sanctum->peer_ip,

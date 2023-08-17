@@ -65,7 +65,7 @@ sanctum_bless(struct sanctum_proc *proc)
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
-			syslog(LOG_NOTICE, "received signal %d", sig);
+			sanctum_log(LOG_NOTICE, "received signal %d", sig);
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
@@ -95,7 +95,7 @@ sanctum_bless(struct sanctum_proc *proc)
 
 	sanctum_sa_clear(&state);
 
-	syslog(LOG_NOTICE, "exiting");
+	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
 }
@@ -173,7 +173,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	 */
 	if (state.seqnr >= SANCTUM_SA_PACKET_HARD ||
 	    ((now - state.age) >= SANCTUM_SA_LIFETIME_HARD)) {
-		syslog(LOG_NOTICE,
+		sanctum_log(LOG_NOTICE,
 		    "expired TX SA (seqnr=%" PRIu64 ", age=%" PRIu64 ")",
 		    state.seqnr, (now - state.age));
 		sanctum_cipher_cleanup(state.cipher);
@@ -184,7 +184,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	if (state.pending) {
 		state.pending = 0;
-		syslog(LOG_NOTICE, "TX SA active (spi=0x%08x)", state.spi);
+		sanctum_log(LOG_NOTICE, "TX SA active (spi=0x%08x)", state.spi);
 	}
 
 	/* Belts and suspenders. */

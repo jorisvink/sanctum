@@ -32,6 +32,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
@@ -308,10 +309,16 @@ struct sanctum_sun {
 	char		path[256];		/* XXX */
 };
 
+/* Sanctum was started in the background. */
+#define SANCTUM_FLAG_DAEMONIZED		(1 << 0)
+
 /*
  * The shared state between processes.
  */
 struct sanctum_state {
+	/* Sanctum flags. */
+	u_int32_t		flags;
+
 	/* Time maintained by overwatch. */
 	volatile u_int64_t	uptime;
 
@@ -406,6 +413,9 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
+void	sanctum_log(int, const char *, ...)
+	    __attribute__((format (printf, 2, 3)));
+void	sanctum_logv(int, const char *, va_list);
 void	sanctum_shm_detach(void *);
 void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);

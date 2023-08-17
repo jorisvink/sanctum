@@ -102,7 +102,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
-			syslog(LOG_NOTICE, "received signal %d", sig);
+			sanctum_log(LOG_NOTICE, "received signal %d", sig);
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
@@ -133,7 +133,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 		sleep(1);
 	}
 
-	syslog(LOG_NOTICE, "exiting");
+	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
 }
@@ -232,7 +232,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	chapel_install(io->rx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));
 
-	syslog(LOG_INFO, "offering fresh key (%s) (spi=0x%08x)",
+	sanctum_log(LOG_INFO, "offering fresh key (%s) (spi=0x%08x)",
 	    reason, offer->spi);
 }
 

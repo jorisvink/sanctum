@@ -165,7 +165,7 @@ sanctum_proc_create(u_int16_t type,
 		/* NOTREACHED */
 	}
 
-	syslog(LOG_INFO, "started %s (pid=%d)", proc->name, proc->pid);
+	sanctum_log(LOG_INFO, "started %s (pid=%d)", proc->name, proc->pid);
 
 	LIST_INSERT_HEAD(&proclist, proc, list);
 }
@@ -220,7 +220,7 @@ sanctum_proc_reap(void)
 
 		LIST_FOREACH(proc, &proclist, list) {
 			if (proc->pid == pid) {
-				syslog(LOG_NOTICE, "%s exited (%d)",
+				sanctum_log(LOG_NOTICE, "%s exited (%d)",
 				    proc->name, status);
 				LIST_REMOVE(proc, list);
 				free(proc);
@@ -240,7 +240,7 @@ sanctum_proc_killall(int sig)
 
 	LIST_FOREACH(proc, &proclist, list) {
 		if (kill(proc->pid, sig) == -1) {
-			syslog(LOG_NOTICE, "failed to signal proc %u (%s)\n",
+			sanctum_log(LOG_NOTICE, "failed to signal proc %u (%s)",
 			    proc->type, errno_s);
 		}
 	}

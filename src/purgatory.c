@@ -76,7 +76,7 @@ sanctum_purgatory(struct sanctum_proc *proc)
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
-			syslog(LOG_NOTICE, "received signal %d", sig);
+			sanctum_log(LOG_NOTICE, "received signal %d", sig);
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
@@ -104,7 +104,7 @@ sanctum_purgatory(struct sanctum_proc *proc)
 #endif
 	}
 
-	syslog(LOG_NOTICE, "exiting");
+	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
 }
@@ -200,15 +200,15 @@ purgatory_send_packet(int fd, struct sanctum_packet *pkt)
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
 			if (errno == EMSGSIZE) {
-				syslog(LOG_INFO,
+				sanctum_log(LOG_INFO,
 				    "packet (size=%zu) too large, "
 				    "lower tunnel MTU", pkt->length);
 				break;
 			}
 			if (errno == ENETUNREACH || errno == EHOSTUNREACH) {
-				syslog(LOG_INFO, "host %s unreachable (%s)",
-				    inet_ntoa(sanctum->peer.sin_addr),
-				    errno_s);
+				sanctum_log(LOG_INFO,
+				    "host %s unreachable (%s)",
+				    inet_ntoa(sanctum->peer.sin_addr), errno_s);
 				break;
 			}
 			fatal("sendto: %s", errno_s);
@@ -345,7 +345,7 @@ purgatory_packet_check(struct sanctum_packet *pkt)
 	if (pn > 0 && (SANCTUM_ARWIN_SIZE + 1023) > last - pn)
 		return (0);
 
-	syslog(LOG_INFO, "dropped too old packet, seq=0x%" PRIx64, pn);
+	sanctum_log(LOG_INFO, "dropped too old packet, seq=0x%" PRIx64, pn);
 
 	return (-1);
 }
