@@ -427,6 +427,7 @@ int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 
 /* platform bits. */
 int	sanctum_platform_tundev_create(void);
+void	sanctum_platform_tundev_destroy(void);
 ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);
 ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
 

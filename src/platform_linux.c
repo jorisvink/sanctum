@@ -64,6 +64,12 @@ sanctum_platform_tundev_create(void)
 	return (fd);
 }
 
+/* Destroy the tunnel device, a no-op on Linux. */
+void
+sanctum_platform_tundev_destroy(void)
+{
+}
+
 /* Read a single packet from the tunnel device. */
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)

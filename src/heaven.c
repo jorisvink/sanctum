@@ -94,6 +94,7 @@ sanctum_heaven(struct sanctum_proc *proc)
 
 	close(fd);
 
+	sanctum_platform_tundev_destroy();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

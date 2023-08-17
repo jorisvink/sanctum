@@ -86,6 +86,12 @@ sanctum_platform_tundev_create(void)
 	return (fd);
 }
 
+/* Destroy the tunnel device, a no-op on MacOS. */
+void
+sanctum_platform_tundev_destroy(void)
+{
+}
+
 /*
  * Read a packet from the tunnel device. On MacOS this is prefixed
  * with the protocol (4 bytes), so split up the read into two
