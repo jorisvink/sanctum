@@ -125,6 +125,7 @@ main(int argc, char *argv[])
 	}
 
 	sanctum_proc_shutdown();
+	sanctum_platform_tundev_destroy();
 
 	return (0);
 }
