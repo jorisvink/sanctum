@@ -15,65 +15,39 @@
  */
 
 #include <sys/types.h>
-#include <sys/ioctl.h>
-#include <sys/kern_control.h>
 #include <sys/socket.h>
-#include <sys/sys_domain.h>
-#include <sys/uio.h>
+#include <sys/ioctl.h>
 
-#include <net/if_utun.h>
+#include <net/if.h>
 
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 #include "sanctum.h"
 
-#define APPLE_UTUN_CONTROL	"com.apple.net.utun_control"
-
 /*
- * MacOS tunnel interface creation.
- * Attempts to create a tunnel device, anywhere from utun99 until utun104.
+ * OpenBSD tunnel device creation.
+ * We attempt to open one of the defined tunnel interfaces under /dev.
  */
 int
 sanctum_platform_tundev_create(void)
 {
-	struct sockaddr_ctl	sctl;
-	struct ctl_info		info;
-	int			idx, fd, flags;
+	char		path[128];
+	int		fd, idx, len, flags;
 
-	memset(&info, 0, sizeof(info));
-	memset(&sctl, 0, sizeof(sctl));
+	for (idx = 0; idx < 256; idx++) {
+		len = snprintf(path, sizeof(path), "/dev/tun%d", idx);
+		if (len == -1 || (size_t)len >= sizeof(path))
+			fatal("/dev/tun%d too long", idx);
 
-	if ((fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL)) == -1)
-		fatal("socket: %s", errno_s);
-
-	if (strlcpy(info.ctl_name, APPLE_UTUN_CONTROL,
-	    sizeof(info.ctl_name)) >= sizeof(info.ctl_name))
-		fatal("failed to copy %s", APPLE_UTUN_CONTROL);
-
-	if (ioctl(fd, CTLIOCGINFO, &info) == -1)
-		fatal("ioctl: %s", errno_s);
-
-	for (idx = 100; idx < 105; idx++) {
-		sctl.sc_unit = idx;
-		sctl.sc_id = info.ctl_id;
-		sctl.sc_family = AF_SYSTEM;
-		sctl.ss_sysaddr = AF_SYS_CONTROL;
-
-		if (connect(fd, (struct sockaddr *)&sctl, sizeof(sctl)) == -1) {
-			if (errno == EBUSY)
-				continue;
-			fatal("connect: %s", errno_s);
-		}
-
-		break;
+		if ((fd = open(path, O_RDWR)) != -1)
+			break;
 	}
 
-	if (idx == 105)
-		fatal("no free utun device found");
+	if (idx == 256)
+		fatal("unable to find free tunnel device");
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1)
 		fatal("fcntl: %s", errno_s);
@@ -83,14 +57,12 @@ sanctum_platform_tundev_create(void)
 	if (fcntl(fd, F_SETFL, flags) == -1)
 		fatal("fcntl: %s", errno_s);
 
+	sanctum_log(LOG_INFO, "using tun device '%s'", path);
+
 	return (fd);
 }
 
-/*
- * Read a packet from the tunnel device. On MacOS this is prefixed
- * with the protocol (4 bytes), so split up the read into two
- * parts: the protocol and the actual packet data.
- */
+/* Read a single packet from the tunnel device. */
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 {
@@ -121,10 +93,7 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	return (ret);
 }
 
-/*
- * Write a packet to the tunnel device. We must prefix it with the
- * correct protocol in network byte order.
- */
+/* Write a single packet to the tunnel device. */
 ssize_t
 sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 {

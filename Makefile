@@ -68,6 +68,9 @@ ifeq ("$(OSNAME)", "linux")
 else ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-DPLATFORM_DARWIN
 	SRC+=src/platform_darwin.c
+else ifeq ("$(OSNAME)", "openbsd")
+	CFLAGS+=-DPLATFORM_OPENBSD
+	SRC+=src/platform_openbsd.c
 endif
 
 OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
