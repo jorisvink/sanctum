@@ -38,6 +38,8 @@ static int	pontifex_socket_local(const char *);
 static void	pontifex_socket_fill(struct sockaddr_un *, const char *);
 
 static void	pontifex_request_status(void);
+static void	pontifex_request_communion(void);
+
 static void	pontifex_response(int, void *, size_t);
 static void	pontifex_request(int, const void *, size_t);
 static void	pontifex_dump_ifstat(const char *, struct sanctum_ifstat *);
@@ -46,8 +48,9 @@ static const struct {
 	const char	*name;
 	void		(*cb)(void);
 } cmds[] = {
-	{ "status",	pontifex_request_status },
-	{ NULL,		NULL },
+	{ "status",		pontifex_request_status },
+	{ "communion",		pontifex_request_communion },
+	{ NULL,			NULL },
 };
 
 static void
@@ -116,22 +119,40 @@ static void
 pontifex_request_status(void)
 {
 	int					fd;
-	struct sanctum_ctl_status		req;
+	struct sanctum_ctl			ctl;
 	struct sanctum_ctl_status_response	resp;
 
 	fd = pontifex_socket_local("/tmp/pontifex-status");
 
-	memset(&req, 0, sizeof(req));
+	memset(&ctl, 0, sizeof(ctl));
 
-	req.cmd = SANCTUM_CTL_STATUS;
+	ctl.cmd = SANCTUM_CTL_STATUS;
 
-	pontifex_request(fd, &req, sizeof(req));
+	pontifex_request(fd, &ctl, sizeof(ctl));
 	pontifex_response(fd, &resp, sizeof(resp));
 
 	pontifex_dump_ifstat("tx", &resp.tx);
 	pontifex_dump_ifstat("rx", &resp.rx);
 
 	close(fd);
+}
+
+static void
+pontifex_request_communion(void)
+{
+	int			fd;
+	struct sanctum_ctl	ctl;
+
+	fd = pontifex_socket_local("/tmp/pontifex-status");
+
+	memset(&ctl, 0, sizeof(ctl));
+
+	ctl.cmd = SANCTUM_CTL_COMMUNION;
+
+	pontifex_request(fd, &ctl, sizeof(ctl));
+	close(fd);
+
+	printf("communion requested\n");
 }
 
 static void
@@ -169,7 +190,7 @@ pontifex_request(int fd, const void *req, size_t len)
 	ssize_t			ret;
 	struct sockaddr_un	sun;
 
-	pontifex_socket_fill(&sun, "/tmp/sanctum-status");
+	pontifex_socket_fill(&sun, "/tmp/sanctum-control");
 
 	for (;;) {
 		if ((ret = sendto(fd, req, len, 0,

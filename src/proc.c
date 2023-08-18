@@ -87,7 +87,7 @@ sanctum_proc_start(void)
 {
 	struct sanctum_proc_io		io;
 
-	sanctum_proc_create(SANCTUM_PROC_STATUS, sanctum_status, NULL);
+	sanctum_proc_create(SANCTUM_PROC_CONTROL, sanctum_control, NULL);
 
 	io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
 	io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
@@ -131,7 +131,7 @@ sanctum_proc_create(u_int16_t type,
 	    type == SANCTUM_PROC_BLESS ||
 	    type == SANCTUM_PROC_CONFESS ||
 	    type == SANCTUM_PROC_CHAPEL ||
-	    type == SANCTUM_PROC_STATUS);
+	    type == SANCTUM_PROC_CONTROL);
 	PRECOND(entry != NULL);
 	/* arg is optional. */
 
@@ -179,12 +179,12 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 
 	switch (proc->type) {
-	case SANCTUM_PROC_HEAVEN:
-	case SANCTUM_PROC_PURGATORY:
-	case SANCTUM_PROC_CHAPEL:
-	case SANCTUM_PROC_STATUS:
 	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_HEAVEN:
+	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_CONFESS:
+	case SANCTUM_PROC_CONTROL:
+	case SANCTUM_PROC_PURGATORY:
 		break;
 	default:
 		fatal("%s: unknown process type %d", __func__, proc->type);

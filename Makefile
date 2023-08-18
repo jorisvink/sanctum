@@ -21,13 +21,13 @@ SRC=	src/sanctum.c \
 	src/chapel.c \
 	src/confess.c \
 	src/config.c \
+	src/control.c \
 	src/heaven.c \
 	src/proc.c \
 	src/packet.c \
 	src/pool.c \
 	src/purgatory.c \
 	src/ring.c \
-	src/status.c \
 	src/utils.c
 
 #ifeq ("$(SANITIZE)", "1")

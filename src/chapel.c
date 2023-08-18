@@ -117,6 +117,11 @@ sanctum_chapel(struct sanctum_proc *proc)
 			sanctum_packet_release(pkt);
 		}
 
+		if (sanctum_atomic_read(&sanctum->communion) == 1 &&
+		    offer != NULL) {
+			chapel_offer_clear();
+		}
+
 		if (offer != NULL) {
 			/*
 			 * If we saw traffic on our current offer we
@@ -203,6 +208,11 @@ chapel_offer_check(u_int64_t now)
 	} else {
 		offer_now = 1;
 		reason = "no keys";
+	}
+
+	if (sanctum_atomic_cas_simple(&sanctum->communion, 1, 0)) {
+		offer_now = 1;
+		reason = "communion";
 	}
 
 	if (offer_now == 0)

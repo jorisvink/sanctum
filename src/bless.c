@@ -231,6 +231,11 @@ bless_packet_process(struct sanctum_packet *pkt)
 	pkt->target = SANCTUM_PROC_PURGATORY;
 
 	/* Send it into purgatory. */
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
+	} else {
+		sanctum_atomic_add(&sanctum->tx.pkt, 1);
+		sanctum_atomic_add(&sanctum->tx.bytes, pkt->length);
+		sanctum_atomic_write(&sanctum->tx.last, sanctum->uptime);
+	}
 }

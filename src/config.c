@@ -35,8 +35,8 @@ static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_chapel(char *);
-static void	config_parse_status(char *);
 static void	config_parse_secret(char *);
+static void	config_parse_control(char *);
 static void	config_parse_instance(char *);
 static void	config_parse_host(char *, struct sockaddr_in *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
@@ -53,8 +53,8 @@ static const struct {
 	{ "local",		config_parse_local },
 	{ "run",		config_parse_runas },
 	{ "chapel",		config_parse_chapel },
-	{ "status",		config_parse_status },
 	{ "secret",		config_parse_secret },
+	{ "control",		config_parse_control },
 	{ "instance",		config_parse_instance },
 	{ NULL,			NULL },
 };
@@ -68,7 +68,7 @@ static const struct {
 	{ "chapel",		SANCTUM_PROC_CHAPEL },
 	{ "bless",		SANCTUM_PROC_BLESS },
 	{ "confess",		SANCTUM_PROC_CONFESS },
-	{ "status",		SANCTUM_PROC_STATUS },
+	{ "control",		SANCTUM_PROC_CONTROL },
 	{ NULL,			0 },
 };
 
@@ -77,8 +77,8 @@ sanctum_config_init(void)
 {
 	PRECOND(sanctum != NULL);
 
-	config_unix_set(&sanctum->status, "/tmp/sanctum-status", "root");
 	config_unix_set(&sanctum->chapel, "/tmp/sanctum-chapel", "root");
+	config_unix_set(&sanctum->control, "/tmp/sanctum-control", "root");
 }
 
 void
@@ -210,11 +210,11 @@ config_parse_chapel(char *path)
 }
 
 static void
-config_parse_status(char *path)
+config_parse_control(char *path)
 {
 	PRECOND(path != NULL);
 
-	config_parse_unix(path, &sanctum->status);
+	config_parse_unix(path, &sanctum->control);
 }
 
 static void

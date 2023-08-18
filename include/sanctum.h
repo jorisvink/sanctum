@@ -129,7 +129,7 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_BLESS		3
 #define SANCTUM_PROC_CONFESS		4
 #define SANCTUM_PROC_CHAPEL		5
-#define SANCTUM_PROC_STATUS		6
+#define SANCTUM_PROC_CONTROL		6
 #define SANCTUM_PROC_MAX		7
 
 /* The magic for a key offer packet (SACRISTY). */
@@ -339,8 +339,11 @@ struct sanctum_state {
 	/* The chapel socket. */
 	struct sanctum_sun	chapel;
 
-	/* The status socket. */
-	struct sanctum_sun	status;
+	/* Should a communion take place in the Chapel? */
+	u_int8_t		communion;
+
+	/* The control socket. */
+	struct sanctum_sun	control;
 
 	/* The sanctum instance name. */
 	char			instance[16];	/* XXX */
@@ -433,7 +436,7 @@ ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
 /* Worker entry points. */
 void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_heaven(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_status(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_control(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_chapel(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_confess(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory(struct sanctum_proc *) __attribute__((noreturn));

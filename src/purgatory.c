@@ -213,10 +213,6 @@ purgatory_send_packet(int fd, struct sanctum_packet *pkt)
 			}
 			fatal("sendto: %s", errno_s);
 		}
-
-		sanctum_atomic_add(&sanctum->tx.pkt, 1);
-		sanctum_atomic_add(&sanctum->tx.bytes, pkt->length);
-		sanctum_atomic_write(&sanctum->tx.last, sanctum->uptime);
 		break;
 	}
 

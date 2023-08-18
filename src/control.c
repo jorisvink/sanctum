@@ -26,14 +26,14 @@
 
 #include "sanctum.h"
 
-static void	status_handle_request(int);
-static void	status_request(int, struct sockaddr_un *);
+static void	control_handle_request(int);
+static void	control_status_request(int, struct sockaddr_un *);
 
 /*
- * The status process, handles incoming status requests.
+ * The control process, handles incoming control requests.
  */
 void
-sanctum_status(struct sanctum_proc *proc)
+sanctum_control(struct sanctum_proc *proc)
 {
 	struct pollfd	pfd;
 	int		sig, running;
@@ -44,7 +44,7 @@ sanctum_status(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	pfd.fd = sanctum_unix_socket(&sanctum->status);
+	pfd.fd = sanctum_unix_socket(&sanctum->control);
 
 	running = 1;
 	sanctum_proc_privsep(proc);
@@ -68,7 +68,7 @@ sanctum_status(struct sanctum_proc *proc)
 		}
 
 		if (pfd.revents & POLLIN)
-			status_handle_request(pfd.fd);
+			control_handle_request(pfd.fd);
 
 	}
 
@@ -78,13 +78,13 @@ sanctum_status(struct sanctum_proc *proc)
 }
 
 /*
- * Handle a request on the UNIX socket.
+ * Handle a request on the control socket.
  */
 static void
-status_handle_request(int fd)
+control_handle_request(int fd)
 {
 	ssize_t				ret;
-	struct sanctum_ctl_status	req;
+	struct sanctum_ctl		ctl;
 	struct sockaddr_un		peer;
 	socklen_t			socklen;
 
@@ -93,7 +93,7 @@ status_handle_request(int fd)
 	socklen = sizeof(peer);
 
 	for (;;) {
-		if ((ret = recvfrom(fd, &req, sizeof(req), 0,
+		if ((ret = recvfrom(fd, &ctl, sizeof(ctl), 0,
 		    (struct sockaddr *)&peer, &socklen)) == -1) {
 			if (errno == EINTR)
 				continue;
@@ -103,12 +103,15 @@ status_handle_request(int fd)
 		if (ret == 0)
 			fatal("eof on keying socket");
 
-		if ((size_t)ret != sizeof(req))
+		if ((size_t)ret != sizeof(ctl))
 			break;
 
-		switch (req.cmd) {
+		switch (ctl.cmd) {
 		case SANCTUM_CTL_STATUS:
-			status_request(fd, &peer);
+			control_status_request(fd, &peer);
+			break;
+		case SANCTUM_CTL_COMMUNION:
+			sanctum_atomic_write(&sanctum->communion, 1);
 			break;
 		}
 
@@ -120,7 +123,7 @@ status_handle_request(int fd)
  * Send some generic statistics to the client.
  */
 static void
-status_request(int fd, struct sockaddr_un *peer)
+control_status_request(int fd, struct sockaddr_un *peer)
 {
 	struct sanctum_ctl_status_response	resp;
 

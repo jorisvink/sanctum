@@ -30,16 +30,17 @@ struct sanctum_ifstat {
 
 /* ctl requests, some go to keying, some go to status. */
 #define SANCTUM_CTL_STATUS		1
+#define SANCTUM_CTL_COMMUNION		2
 
 /*
  * A request to the status process for sanctum.
  */
-struct sanctum_ctl_status {
+struct sanctum_ctl {
 	u_int8_t	cmd;
 };
 
 /*
- * The response to a SANCTUM_CTL_STATUS_GET.
+ * The response to a SANCTUM_CTL_STATUS.
  */
 struct sanctum_ctl_status_response {
 	struct sanctum_ifstat	tx;
