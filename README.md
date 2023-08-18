@@ -15,7 +15,9 @@ This is a very small, reviewable, experimental and fully privilege
 seperated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
-**This is a work in progress and is not in a useable state yet.**
+**This is a work in progress.**
+
+**Experimental duplex-sponge based cryptography.**
 
 ### Mythology
 
@@ -38,7 +40,7 @@ sanctum consists of 5 processes:
 Each process can run as its own user.
 
 Each process is sandboxed and only has access to the system calls
-required to perform its task.
+required to perform its task (**syscall limitations not yet implemented**).
 
 ## Packets
 
@@ -102,9 +104,14 @@ $ make
 
 If this is to complicated for you, this isn't your software.
 
+## Platforms
+
+Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux-y things like Ubuntu 22.04.
+
 ## High performance mode
 
 When sanctum is built with the CIPHER=intel-aes-gcm and HPERF=1,
 high performance mode is enabled.
 
-In this mode, sanctum is able to reach 10gbps speeds, depending on hardware.
+In this mode, sanctum is able to reach 10gbps speeds on certain platforms
+and depending on what hardware is used.
