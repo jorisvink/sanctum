@@ -57,7 +57,7 @@ static void
 usage(void)
 {
 	printf("usage: pontifex [cmd]\n");
-	printf("possible cmd: status\n");
+	printf("possible cmd: status, communion\n");
 	exit(1);
 }
 
