@@ -70,6 +70,8 @@ main(int argc, char *argv[])
 		usage();
 
 	sanctum = sanctum_alloc_shared(sizeof(*sanctum), NULL);
+	if (foreground == 0)
+		sanctum->flags |= SANCTUM_FLAG_DAEMONIZED;
 
 	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 	sanctum_atomic_write(&sanctum->uptime, ts.tv_sec);
@@ -89,7 +91,6 @@ main(int argc, char *argv[])
 	early = 0;
 
 	if (foreground == 0) {
-		sanctum->flags |= SANCTUM_FLAG_DAEMONIZED;
 		if (daemon(1, 0) == -1)
 			fatal("daemon: %s", errno_s);
 	}
