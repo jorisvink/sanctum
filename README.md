@@ -60,11 +60,47 @@ Due to the design of sanctum it is impossible to move a packet straight
 from the clear side to the crypto side without passing the encryption
 process.
 
+## Key Exchange
+
+The chapel process is responsible for sending fresh keys on certain
+intervals to the configured peer.
+
+The keys are derived from a shared symmetrical secret that both
+sides must have on disk.
+
+The exchange is protected in transit by a duplex-sponge based
+cryptographic AE cipher, while the keys are derived using KMAC256.
+
 ## Traffic
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
 64-bit sequence numbers and encrypted under AES256-GCM using keys
 exchanged via the chapel sacristy key exchange.
+
+## Building
+
+To be able to build sanctum you need libnyfe.
+
+For now this means you need to clone Nyfe and build the cryptographic
+bits and bobs from there.
+
+```
+$ git clone https://github.com/jorisvink/nyfe
+$ cd nyfe
+$ make lib
+```
+
+After you have built libnyfe, you can build sanctum.
+
+```
+$ git clone https://github.com/jorisvink/sanctum
+$ cd sanctum
+$ export NYFE=/path/to/nyfe
+$ make
+# make install
+```
+
+If this is to complicated for you, this isn't your software.
 
 ## High performance mode
 
