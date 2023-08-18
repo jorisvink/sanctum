@@ -118,6 +118,10 @@ sanctum_chapel(struct sanctum_proc *proc)
 		}
 
 		if (offer != NULL) {
+			/*
+			 * If we saw traffic on our current offer we
+			 * clear it as we know the other side got it.
+			 */
 			spi = sanctum_atomic_read(&sanctum->rx.spi);
 			if (spi == offer->spi &&
 			    sanctum_atomic_read(&sanctum->rx.pkt) > 0) {
