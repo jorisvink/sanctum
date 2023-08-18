@@ -157,7 +157,7 @@ purgatory_bind_address(void)
 	if (setsockopt(fd, IPPROTO_IP,
 	    IP_MTU_DISCOVER, &val, sizeof(val)) == -1)
 		fatal("%s: setsockopt: %s", __func__, errno_s);
-#else
+#elif !defined(__OpenBSD__)
 	val = 1;
 	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val)) == -1)
 		fatal("%s: setsockopt: %s", __func__, errno_s);
