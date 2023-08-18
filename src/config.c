@@ -118,6 +118,9 @@ sanctum_config_load(const char *file)
 		fatal("error reading the configuration file");
 
 	fclose(fp);
+
+	if (sanctum->peer_ip == 0)
+		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
 }
 
 static char *
@@ -154,6 +157,11 @@ static void
 config_parse_peer(char *peer)
 {
 	PRECOND(peer != NULL);
+
+	if (!strcmp(peer, "auto")) {
+		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
+		return;
+	}
 
 	config_parse_host(peer, &sanctum->peer);
 

@@ -128,6 +128,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 		if (sanctum_atomic_read(&sanctum->communion) == 1 &&
 		    offer != NULL) {
+			offer_next = 0;
 			chapel_erase(io->rx, offer->spi);
 			chapel_offer_clear();
 		}
@@ -196,9 +197,16 @@ chapel_peer_check(u_int64_t now)
 
 	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
 
+	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO) {
+		offer_next = 0;
+		sanctum_atomic_write(&sanctum->peer_ip, 0);
+		sanctum_atomic_write(&sanctum->peer_port, 0);
+	} else {
+		offer_next = now + 60;
+	}
+
 	offer_ttl = 5;
 	offer_next_send = 1;
-	offer_next = now + 60;
 
 	chapel_erase(io->rx, spi);
 	if (offer != NULL) {

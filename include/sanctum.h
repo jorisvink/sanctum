@@ -313,6 +313,9 @@ struct sanctum_sun {
 /* Sanctum was started in the background. */
 #define SANCTUM_FLAG_DAEMONIZED		(1 << 0)
 
+/* The peer address is automatically discovered. */
+#define SANCTUM_FLAG_PEER_AUTO		(1 << 1)
+
 /*
  * The shared state between processes.
  */
