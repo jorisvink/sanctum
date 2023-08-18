@@ -102,6 +102,44 @@ sanctum_peer_update(struct sanctum_packet *pkt)
 }
 
 /*
+ * Erase the given sa if the key says it was erased.
+ */
+int
+sanctum_key_erase(const char *s, struct sanctum_key *key, struct sanctum_sa *sa)
+{
+	int		ret;
+
+	PRECOND(s != NULL);
+	PRECOND(key != NULL);
+	PRECOND(sa != NULL);
+
+	if (!sanctum_atomic_cas_simple(&key->state,
+	    SANCTUM_KEY_ERASE, SANCTUM_KEY_INSTALLING))
+		return (-1);
+
+	if (sa->spi == key->spi) {
+		if (sa->cipher != NULL)
+			sanctum_cipher_cleanup(sa->cipher);
+		sanctum_mem_zero(sa, sizeof(*sa));
+
+		sanctum_log(LOG_NOTICE,
+		    "%s SA erased (spi=0x%08x)", s, key->spi);
+
+		ret = 0;
+		if (!sanctum_atomic_cas_simple(&key->state,
+		    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
+			fatal("failed to swap key state to empty");
+	} else {
+		ret = -1;
+		if (!sanctum_atomic_cas_simple(&key->state,
+		    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_ERASE))
+			fatal("failed to swap key state to erasing");
+	}
+
+	return (ret);
+}
+
+/*
  * Install the key pending under the given `key` data structure into
  * the SA context `sa`.
  */

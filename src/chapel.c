@@ -47,6 +47,8 @@ struct rx_offer {
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 };
 
+static void	chapel_peer_check(u_int64_t);
+
 static void	chapel_offer_clear(void);
 static void	chapel_offer_check(u_int64_t);
 static void	chapel_offer_encrypt(u_int64_t);
@@ -55,6 +57,8 @@ static void	chapel_offer_kdf(struct nyfe_agelas *, void *, size_t);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_drop_access(void);
+static void	chapel_erase(struct sanctum_key *, u_int32_t);
+
 static void	chapel_install(struct sanctum_key *,
 		    u_int32_t, u_int32_t, void *, size_t);
 
@@ -68,6 +72,9 @@ static struct rx_offer		*offer = NULL;
 /* Last received verified offer its SPI. */
 static u_int32_t		last_spi = 0;
 
+/* The next time we can offer at the earliest. */
+static u_int64_t		offer_next = 0;
+
 /* Current offer TTL and next send intervals. */
 static u_int64_t		offer_ttl = 5;
 static u_int64_t		offer_next_send = 1;
@@ -77,6 +84,8 @@ static u_int64_t		offer_next_send = 1;
  *
  * This process is responsible sending key offers to our peer, if
  * it is known, as long as we have not seen any RX traffic from it.
+ *
+ * It also tracks heartbeat timeouts for the peer.
  */
 void
 sanctum_chapel(struct sanctum_proc *proc)
@@ -119,8 +128,11 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 		if (sanctum_atomic_read(&sanctum->communion) == 1 &&
 		    offer != NULL) {
+			chapel_erase(io->rx, offer->spi);
 			chapel_offer_clear();
 		}
+
+		chapel_peer_check(now);
 
 		if (offer != NULL) {
 			/*
@@ -165,16 +177,50 @@ chapel_drop_access(void)
 }
 
 /*
- * Check if an offer must be sent to our peer.
+ * Do some form of dead peer detection and wipe keys if we find
+ * the peer to be deadsies.
+ */
+static void
+chapel_peer_check(u_int64_t now)
+{
+	u_int64_t	spi, hbeat;
+
+	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) == 0)
+		return;
+
+	if ((hbeat = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
+		return;
+
+	if ((now - hbeat) < SANCTUM_HEARTBEAT_INTERVAL * 4)
+		return;
+
+	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
+
+	offer_ttl = 5;
+	offer_next_send = 1;
+	offer_next = now + 60;
+
+	chapel_erase(io->rx, spi);
+	if (offer != NULL) {
+		chapel_erase(io->rx, offer->spi);
+		chapel_offer_clear();
+	}
+
+	sanctum_atomic_write(&sanctum->heartbeat, 0);
+}
+
+/*
+ * Check if a new offer needs to be sent.
  *
- * 1) We must have the peer address.
- * 2) If we have a previous RX SA, the peer must have timed out,
- *    reached the SA packet limit or SA lifetime limit.
- * 3) If we do not have a previous RX SA, we always send an offer.
+ * In order to send a new offer, we must have the peer address and the peer
+ * its heartbeats must have stopped, or we reached some form of limit.
+ *
+ * If we have no keys at all, we always send an offer.
  */
 static void
 chapel_offer_check(u_int64_t now)
 {
+	u_int32_t	spi;
 	const char	*reason;
 	int		offer_now;
 	u_int64_t	pkt, age, hbeat;
@@ -184,11 +230,15 @@ chapel_offer_check(u_int64_t now)
 	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
 		return;
 
+	if (now < offer_next)
+		return;
+
 	offer_now = 0;
 	reason = NULL;
 
-	if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
-		offer_ttl = 30;
+	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) != 0) {
+		/* Default is now to offer for 60 seconds. */
+		offer_ttl = 6;
 		offer_next_send = 10;
 
 		age = sanctum_atomic_read(&sanctum->rx.age);
@@ -208,11 +258,14 @@ chapel_offer_check(u_int64_t now)
 	} else {
 		offer_now = 1;
 		reason = "no keys";
+		sanctum_atomic_write(&sanctum->heartbeat, now);
 	}
 
 	if (sanctum_atomic_cas_simple(&sanctum->communion, 1, 0)) {
-		offer_now = 1;
 		reason = "communion";
+		offer_now = 1;
+		offer_ttl = 5;
+		offer_next_send = 1;
 	}
 
 	if (offer_now == 0)
@@ -246,8 +299,9 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	chapel_install(io->rx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));
 
-	sanctum_log(LOG_INFO, "offering fresh key (%s) (spi=0x%08x)",
-	    reason, offer->spi);
+	sanctum_log(LOG_INFO, "offering fresh key (%s) "
+	    "(spi=0x%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
+	    reason, offer->spi, offer_ttl, offer_next_send);
 }
 
 /*
@@ -377,8 +431,9 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	last_spi = op->hdr.spi;
 
-	/* Reduce initial TTL and next send back to base values. */
+	/* Reduce offer settings back to base values. */
 	offer_ttl = 5;
+	offer_next = 0;
 	offer_next_send = 1;
 }
 
@@ -408,6 +463,30 @@ chapel_install(struct sanctum_key *state, u_int32_t spi, u_int32_t salt,
 	if (!sanctum_atomic_cas_simple(&state->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
 		fatal("failed to swap key state to pending");
+}
+
+/*
+ * Mark the given sanctum key as needing to be erased by the owner process.
+ */
+static void
+chapel_erase(struct sanctum_key *state, u_int32_t spi)
+{
+	PRECOND(state != NULL);
+
+	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
+		sanctum_cpu_pause();
+
+	if (!sanctum_atomic_cas_simple(&state->state,
+	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
+		fatal("failed to swap key state to generating");
+
+	sanctum_atomic_write(&state->salt, 0);
+	sanctum_atomic_write(&state->spi, spi);
+	sanctum_mem_zero(state->key, sizeof(state->key));
+
+	if (!sanctum_atomic_cas_simple(&state->state,
+	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
+		fatal("failed to swap key state to erase");
 }
 
 /*

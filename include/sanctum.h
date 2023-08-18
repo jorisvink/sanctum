@@ -164,6 +164,7 @@ struct sanctum_offer {
 #define SANCTUM_KEY_GENERATING		1
 #define SANCTUM_KEY_PENDING		2
 #define SANCTUM_KEY_INSTALLING		3
+#define SANCTUM_KEY_ERASE		4
 
 /*
  * Used to swap TX / RX keys between chapel and encrypt and decrypt processes.
@@ -427,6 +428,8 @@ int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 void	sanctum_peer_update(struct sanctum_packet *);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
+int	sanctum_key_erase(const char *, struct sanctum_key *,
+	    struct sanctum_sa *);
 
 /* platform bits. */
 int	sanctum_platform_tundev_create(void);

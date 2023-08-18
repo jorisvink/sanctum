@@ -75,6 +75,9 @@ sanctum_bless(struct sanctum_proc *proc)
 
 		now = sanctum_atomic_read(&sanctum->uptime);
 
+		if (sanctum_key_erase("TX", io->tx, &state) != -1)
+			sanctum_stat_clear(&sanctum->tx);
+
 		if (sanctum_key_install(io->tx, &state) != -1) {
 			state.seqnr = 1;
 			next_heartbeat = now;
@@ -155,6 +158,9 @@ bless_packet_process(struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
 
+	/* Erase key if requested. */
+	sanctum_key_erase("TX", io->tx, &state);
+
 	/* Install any pending TX key first. */
 	if (sanctum_key_install(io->tx, &state) != -1) {
 		sanctum_atomic_write(&sanctum->tx.age, now);
@@ -171,14 +177,15 @@ bless_packet_process(struct sanctum_packet *pkt)
 	 * If we reached max number of packets that can be transmitted,
 	 * or the SA is too old, we do not submit.
 	 */
-	if (state.seqnr >= SANCTUM_SA_PACKET_HARD ||
-	    ((now - state.age) >= SANCTUM_SA_LIFETIME_HARD)) {
+	if (state.seqnr >= SANCTUM_SA_PACKET_HARD || (now > state.age &&
+	    (now - state.age) >= SANCTUM_SA_LIFETIME_HARD)) {
 		sanctum_log(LOG_NOTICE,
 		    "expired TX SA (seqnr=%" PRIu64 ", age=%" PRIu64 ")",
 		    state.seqnr, (now - state.age));
 		sanctum_cipher_cleanup(state.cipher);
 		state.cipher = NULL;
 		sanctum_packet_release(pkt);
+		sanctum_stat_clear(&sanctum->tx);
 		return;
 	}
 

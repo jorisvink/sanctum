@@ -30,7 +30,7 @@
 
 static void	confess_clear_state(void);
 static void	confess_drop_access(void);
-static void	confess_keys_install(void);
+static void	confess_key_management(void);
 static void	confess_packet_process(struct sanctum_packet *);
 static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
@@ -44,13 +44,15 @@ static struct sanctum_proc_io	*io = NULL;
 
 /* The local state for RX. */
 static struct {
-	struct sanctum_sa	slot_1;
-	struct sanctum_sa	slot_2;
+	struct sanctum_sa	active;
+	struct sanctum_sa	pending;
 } state;
 
 /*
  * Confess - The process responsible for the confession of packets coming
  * from the purgatory side.
+ *
+ * Note that Chapel is responsible for handling ages of RX SAs.
  */
 void
 sanctum_confess(struct sanctum_proc *proc)
@@ -82,7 +84,7 @@ sanctum_confess(struct sanctum_proc *proc)
 			}
 		}
 
-		confess_keys_install();
+		confess_key_management();
 
 		while ((pkt = sanctum_ring_dequeue(io->confess)))
 			confess_packet_process(pkt);
@@ -123,8 +125,8 @@ confess_drop_access(void)
 static void
 confess_clear_state(void)
 {
-	sanctum_sa_clear(&state.slot_1);
-	sanctum_sa_clear(&state.slot_2);
+	sanctum_sa_clear(&state.active);
+	sanctum_sa_clear(&state.pending);
 	sanctum_stat_clear(&sanctum->rx);
 	sanctum_atomic_write(&sanctum->rx_pending, 0);
 
@@ -132,25 +134,31 @@ confess_clear_state(void)
 }
 
 /*
+ * Erase any keys that need to be erased, if we're told too do so.
  * Attempt to install any pending keys into the correct slot.
  *
- * Once we have a primary RX key in slot_1, all keys that are
- * pending will be installed under slot_2 first.
+ * Once we have a primary RX key in active, all keys that are
+ * pending will be installed under the pending slot first.
  */
 static void
-confess_keys_install(void)
+confess_key_management(void)
 {
-	if (state.slot_1.cipher == NULL) {
-		if (sanctum_key_install(io->rx, &state.slot_1) != -1) {
+	if (sanctum_key_erase("RX", io->rx, &state.active) != -1)
+		sanctum_stat_clear(&sanctum->rx);
+
+	(void)sanctum_key_erase("RX", io->rx, &state.pending);
+
+	if (state.active.cipher == NULL) {
+		if (sanctum_key_install(io->rx, &state.active) != -1) {
 			sanctum_atomic_write(&sanctum->rx.spi,
-			    state.slot_1.spi);
+			    state.active.spi);
 			sanctum_atomic_write(&sanctum->rx.age,
-			    state.slot_1.age);
+			    state.active.age);
 		}
 	} else {
-		if (sanctum_key_install(io->rx, &state.slot_2) != -1) {
+		if (sanctum_key_install(io->rx, &state.pending) != -1) {
 			sanctum_atomic_write(&sanctum->rx_pending,
-			    state.slot_2.spi);
+			    state.pending.spi);
 		}
 	}
 }
@@ -170,7 +178,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_CONFESS);
 
-	confess_keys_install();
+	confess_key_management();
 
 	if (sanctum_packet_crypto_checklen(pkt) == -1) {
 		sanctum_packet_release(pkt);
@@ -182,33 +190,28 @@ confess_packet_process(struct sanctum_packet *pkt)
 	hdr->esp.seq = be32toh(hdr->esp.seq);
 	hdr->pn = be64toh(hdr->pn);
 
-	if (confess_with_slot(&state.slot_1, pkt) != -1)
+	if (confess_with_slot(&state.active, pkt) != -1)
 		return;
 
-	if (confess_with_slot(&state.slot_2, pkt) == -1) {
+	if (confess_with_slot(&state.pending, pkt) == -1) {
 		sanctum_packet_release(pkt);
 		return;
 	}
 
-	/* Swap to RX SA in slot_2. */
-	sanctum_atomic_write(&sanctum->rx.age, state.slot_2.age);
-	sanctum_atomic_write(&sanctum->rx.spi, state.slot_2.spi);
-	sanctum_atomic_write(&sanctum->rx_pending, 0);
-	sanctum_atomic_write(&sanctum->rx.bytes, 0);
-	sanctum_atomic_write(&sanctum->rx.pkt, 0);
-
-	state.slot_1.seqnr = 0;
-	state.slot_1.bitmap = 0;
+	/* Swap to RX SA in pending. */
+	state.active.seqnr = 0;
+	state.active.bitmap = 0;
 	sanctum_atomic_write(&sanctum->last_pn, 0);
+	sanctum_atomic_write(&sanctum->rx_pending, 0);
 
-	sanctum_cipher_cleanup(state.slot_1.cipher);
+	sanctum_cipher_cleanup(state.active.cipher);
 
-	state.slot_1.spi = state.slot_2.spi;
-	state.slot_1.salt = state.slot_2.salt;
-	state.slot_1.seqnr = state.slot_2.seqnr;
-	state.slot_1.cipher = state.slot_2.cipher;
+	state.active.spi = state.pending.spi;
+	state.active.salt = state.pending.salt;
+	state.active.seqnr = state.pending.seqnr;
+	state.active.cipher = state.pending.cipher;
 
-	sanctum_mem_zero(&state.slot_2, sizeof(state.slot_2));
+	sanctum_mem_zero(&state.pending, sizeof(state.pending));
 }
 
 /*
@@ -247,6 +250,10 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	if (sa->pending) {
 		sa->pending = 0;
+		sanctum_atomic_write(&sanctum->rx.pkt, 0);
+		sanctum_atomic_write(&sanctum->rx.bytes, 0);
+		sanctum_atomic_write(&sanctum->rx.age, sa->age);
+		sanctum_atomic_write(&sanctum->rx.spi, sa->spi);
 		sanctum_log(LOG_NOTICE, "RX SA active (spi=0x%08x)", sa->spi);
 	}
 
