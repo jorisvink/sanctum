@@ -163,6 +163,8 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	/* Install any pending TX key first. */
 	if (sanctum_key_install(io->tx, &state) != -1) {
+		sanctum_atomic_write(&sanctum->tx.pkt, 0);
+		sanctum_atomic_write(&sanctum->tx.bytes, 0);
 		sanctum_atomic_write(&sanctum->tx.age, now);
 		sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 	}
