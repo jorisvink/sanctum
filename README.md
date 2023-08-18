@@ -15,9 +15,9 @@ This is a very small, reviewable, experimental and fully privilege
 seperated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
-**This is a work in progress.**
+**NOTE: This is a work in progress.**
 
-**Experimental duplex-sponge based cryptography.**
+**WARNING: Experimental duplex-sponge based cryptography.**
 
 ### Mythology
 
