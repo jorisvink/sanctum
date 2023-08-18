@@ -206,6 +206,9 @@ chapel_peer_check(u_int64_t now)
 		chapel_offer_clear();
 	}
 
+	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0)
+		chapel_erase(io->tx, spi);
+
 	sanctum_atomic_write(&sanctum->heartbeat, 0);
 }
 
