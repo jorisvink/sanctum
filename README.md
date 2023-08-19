@@ -121,8 +121,7 @@ and depending on what hardware is used.
 Sanctum uses a configuration file. Find an example of
 a simple configuration below.
 
-```
-
+```config
 # Name of this sanctum instance.
 instance laptop
 
