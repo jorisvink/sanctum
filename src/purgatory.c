@@ -34,16 +34,19 @@
 #define PACKETS_PER_EVENT		64
 
 static void	purgatory_drop_access(void);
-static void	purgatory_recv_packets(int);
-static int	purgatory_bind_address(void);
+static void	purgatory_recv_packets(void);
+static void	purgatory_bind_address(void);
 static int	purgatory_packet_check(struct sanctum_packet *);
-static void	purgatory_send_packet(int, struct sanctum_packet *);
+static void	purgatory_send_packet(struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
+
+/* The purgatory socket. */
+static int			fd = -1;
 
 /*
  * The process responsible for receiving packets on the purgatory side
@@ -54,7 +57,7 @@ sanctum_purgatory(struct sanctum_proc *proc)
 {
 	struct pollfd			pfd;
 	struct sanctum_packet		*pkt;
-	int				fd, sig, running;
+	int				sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -65,9 +68,8 @@ sanctum_purgatory(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	fd = purgatory_bind_address();
+	purgatory_bind_address();
 
-	pfd.fd = fd;
 	pfd.revents = 0;
 	pfd.events = POLLIN;
 
@@ -84,6 +86,7 @@ sanctum_purgatory(struct sanctum_proc *proc)
 			}
 		}
 
+		pfd.fd = fd;
 		if (poll(&pfd, 1, 0) == -1) {
 			if (errno == EINTR)
 				continue;
@@ -91,13 +94,13 @@ sanctum_purgatory(struct sanctum_proc *proc)
 		}
 
 		if (pfd.revents & POLLIN)
-			purgatory_recv_packets(fd);
+			purgatory_recv_packets();
 
 		if ((pkt = sanctum_ring_dequeue(io->offer)))
-			purgatory_send_packet(fd, pkt);
+			purgatory_send_packet(pkt);
 
 		while ((pkt = sanctum_ring_dequeue(io->purgatory)))
-			purgatory_send_packet(fd, pkt);
+			purgatory_send_packet(pkt);
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
 		usleep(500);
@@ -130,10 +133,10 @@ purgatory_drop_access(void)
  * Setup the purgatory interface by creating a new socket, binding
  * it locally to the specified port and connecting it to the remote peer.
  */
-static int
+static void
 purgatory_bind_address(void)
 {
-	int		fd, val;
+	int	val;
 
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("%s: socket: %s", __func__, errno_s);
@@ -162,8 +165,6 @@ purgatory_bind_address(void)
 	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val)) == -1)
 		fatal("%s: setsockopt: %s", __func__, errno_s);
 #endif
-
-	return (fd);
 }
 
 /*
@@ -171,13 +172,12 @@ purgatory_bind_address(void)
  * This function will return the packet to the packet pool.
  */
 static void
-purgatory_send_packet(int fd, struct sanctum_packet *pkt)
+purgatory_send_packet(struct sanctum_packet *pkt)
 {
 	ssize_t			ret;
 	struct sockaddr_in	peer;
 	u_int8_t		*data;
 
-	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_PURGATORY);
 
@@ -197,9 +197,15 @@ purgatory_send_packet(int fd, struct sanctum_packet *pkt)
 		    (struct sockaddr *)&peer, sizeof(peer))) == -1) {
 			if (errno == EINTR)
 				continue;
-			if (errno == EAGAIN || errno == EWOULDBLOCK ||
-			    errno == EADDRNOTAVAIL)
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
+			if (errno == EADDRNOTAVAIL) {
+				sanctum_log(LOG_INFO,
+				    "network change detected");
+				(void)close(fd);
+				purgatory_bind_address();
+				break;
+			}
 			if (errno == EMSGSIZE) {
 				sanctum_log(LOG_INFO,
 				    "packet (size=%zu) too large, "
@@ -225,15 +231,13 @@ purgatory_send_packet(int fd, struct sanctum_packet *pkt)
  * for decryption via the decryption queue.
  */
 static void
-purgatory_recv_packets(int fd)
+purgatory_recv_packets(void)
 {
 	int			idx;
 	ssize_t			ret;
 	struct sanctum_packet	*pkt;
 	u_int8_t		*data;
 	socklen_t		socklen;
-
-	PRECOND(fd >= 0);
 
 	for (idx = 0; idx < PACKETS_PER_EVENT; idx++) {
 		if ((pkt = sanctum_packet_get()) == NULL)
