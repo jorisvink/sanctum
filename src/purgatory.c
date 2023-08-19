@@ -195,7 +195,7 @@ purgatory_send_packet(int fd, struct sanctum_packet *pkt)
 
 		if ((ret = sendto(fd, data, pkt->length, 0,
 		    (struct sockaddr *)&peer, sizeof(peer))) == -1) {
-			if (errno == EINTR)
+			if (errno == EINTR || errno == EADDRNOTAVAIL)
 				continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
