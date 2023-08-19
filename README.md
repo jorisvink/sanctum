@@ -115,3 +115,38 @@ high performance mode is enabled.
 
 In this mode, sanctum is able to reach 10gbps speeds on certain platforms
 and depending on what hardware is used.
+
+## Configuring
+
+Sanctum uses a configuration file. Find an example of
+a simple configuration below.
+
+```
+
+# Name of this sanctum instance.
+instance laptop
+
+# Path to the shared secret.
+secret /etc/sanctum/laptop_secret.key
+
+# The control socket for pontifex.
+run control as joris
+control /tmp/sanctum-control joris
+
+local x.x.x.x:2333
+
+# Optional peer address, ignore if you have a peer that
+# moves networks a lot.
+peer y.y.y.y:2333
+
+# Processes can run as different users.
+run bless as _sanctum
+run heaven as _sanctum
+run confess as _sanctum
+run chapel as _sanctum
+run purgatory as _sanctum
+```
+
+You configure the network yourself afterwards, sanctum
+provides the encrypted transport via the tunnel interface
+but how you want your traffic to flow is up to you.
