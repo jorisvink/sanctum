@@ -202,7 +202,7 @@ chapel_peer_check(u_int64_t now)
 		sanctum_atomic_write(&sanctum->peer_ip, 0);
 		sanctum_atomic_write(&sanctum->peer_port, 0);
 	} else {
-		offer_next = now + 60;
+		offer_next = now + 25;
 	}
 
 	offer_ttl = 5;
