@@ -152,7 +152,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			chapel_offer_check(now);
 		}
 
-		sleep(1);
+		usleep(10000);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
