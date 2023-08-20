@@ -210,7 +210,8 @@ chapel_peer_check(u_int64_t now)
 
 	chapel_erase(io->rx, spi);
 	if (offer != NULL) {
-		chapel_erase(io->rx, offer->spi);
+		if (offer->spi != spi)
+			chapel_erase(io->rx, offer->spi);
 		chapel_offer_clear();
 	}
 
