@@ -260,6 +260,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	confess_arwin_update(sa, pkt, hdr);
 	sanctum_peer_update(pkt);
 
+	/* The length was checked earlier by the caller. */
 	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
 	pkt->length -= sizeof(struct sanctum_ipsec_tail);
 	pkt->length -= sanctum_cipher_overhead();
