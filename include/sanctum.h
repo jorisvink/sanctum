@@ -102,6 +102,11 @@ extern int daemon(int, int);
 	do {							\
 		__asm__ volatile("pause" ::: "memory");		\
 	} while (0)
+#elif defined(__riscv)
+#define sanctum_cpu_pause()						\
+	do {								\
+		__asm__ volatile(".4byte 0x100000F" ::: "memory");	\
+	} while (0)
 #else
 #error "unsupported architecture"
 #endif
