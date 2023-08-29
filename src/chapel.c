@@ -347,7 +347,7 @@ chapel_offer_encrypt(u_int64_t now)
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
 	op->data.salt = offer->salt;
-	memcpy(op->data.key, offer->key, sizeof(offer->key));
+	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
 
 	/* Encrypt the offer packet. */
 	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
@@ -468,7 +468,7 @@ chapel_install(struct sanctum_key *state, u_int32_t spi, u_int32_t salt,
 	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
 		fatal("failed to swap key state to generating");
 
-	memcpy(state->key, key, len);
+	nyfe_memcpy(state->key, key, len);
 	sanctum_atomic_write(&state->spi, spi);
 	sanctum_atomic_write(&state->salt, salt);
 
