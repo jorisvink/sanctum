@@ -269,11 +269,12 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->pad != 0)
 		return (-1);
 
+	now = sanctum_atomic_read(&sanctum->uptime);
+	sanctum_atomic_write(&sanctum->heartbeat, now);
+
 	if (tail->next == SANCTUM_PACKET_HEARTBEAT) {
 		sanctum_packet_release(pkt);
-		now = sanctum_atomic_read(&sanctum->uptime);
 		sanctum_atomic_add(&sanctum->rx.pkt, 1);
-		sanctum_atomic_write(&sanctum->heartbeat, now);
 		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
 		return (0);
 	}
