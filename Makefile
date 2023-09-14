@@ -30,11 +30,10 @@ SRC=	src/sanctum.c \
 	src/ring.c \
 	src/utils.c
 
-#ifeq ("$(SANITIZE)", "1")
-#endif
-
-CFLAGS+=-fsanitize=address,undefined
-LDFLAGS+=-fsanitize=address,undefined
+ifeq ("$(SANITIZE)", "1")
+	CFLAGS+=-fsanitize=address,undefined
+	LDFLAGS+=-fsanitize=address,undefined
+endif
 
 ifeq ("$(NYFE)", "")
 $(error "No NYFE path set")
