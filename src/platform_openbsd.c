@@ -27,6 +27,8 @@
 
 #include "sanctum.h"
 
+#define PATH_SKIP	(sizeof("/dev/") - 1)
+
 /*
  * OpenBSD tunnel device creation.
  * We attempt to open one of the defined tunnel interfaces under /dev.
@@ -34,8 +36,9 @@
 int
 sanctum_platform_tundev_create(void)
 {
-	char		path[128];
-	int		fd, idx, len, flags;
+	struct ifreq	ifr;
+	char		path[128], descr[128];
+	int		s, fd, idx, len, flags;
 
 	for (idx = 0; idx < 256; idx++) {
 		len = snprintf(path, sizeof(path), "/dev/tun%d", idx);
@@ -56,6 +59,24 @@ sanctum_platform_tundev_create(void)
 
 	if (fcntl(fd, F_SETFL, flags) == -1)
 		fatal("fcntl: %s", errno_s);
+
+	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	len = snprintf(descr, sizeof(descr), "sanctum instance %s",
+	    sanctum->instance);
+	if (len == -1 || (size_t)len >= sizeof(descr))
+		fatal("the description name is too long");
+
+	memset(&ifr, 0, sizeof(ifr));
+
+	ifr.ifr_data = descr;
+	(void)strlcpy(ifr.ifr_name, &path[PATH_SKIP], sizeof(ifr.ifr_name));
+
+	if (ioctl(s, SIOCSIFDESCR, &ifr, sizeof(ifr)) == -1)
+		fatal("ioctl(SIOCSIFDESCR): %s", errno_s);
+
+	(void)close(s);
 
 	sanctum_log(LOG_INFO, "using tun device '%s'", path);
 
