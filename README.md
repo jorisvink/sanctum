@@ -27,7 +27,7 @@ It's fun, but it doesn't make it less of a serious project.
 
 ## Privilege separation
 
-sanctum consists of 5 processes:
+There are five processes that make up Sanctum:
 
 | Process name | Description  |
 | ------------ | ------------ |
