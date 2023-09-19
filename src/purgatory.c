@@ -20,7 +20,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#include <poll.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -34,7 +33,7 @@
 #define PACKETS_PER_EVENT		64
 
 static void	purgatory_drop_access(void);
-static void	purgatory_recv_packets(void);
+static int	purgatory_recv_packets(void);
 static void	purgatory_bind_address(void);
 static int	purgatory_packet_check(struct sanctum_packet *);
 static void	purgatory_send_packet(struct sanctum_packet *);
@@ -55,9 +54,8 @@ static int			fd = -1;
 void
 sanctum_purgatory(struct sanctum_proc *proc)
 {
-	struct pollfd			pfd;
-	struct sanctum_packet		*pkt;
-	int				sig, running;
+	struct sanctum_packet	*pkt;
+	int			suspend, pending, sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -70,10 +68,8 @@ sanctum_purgatory(struct sanctum_proc *proc)
 
 	purgatory_bind_address();
 
-	pfd.revents = 0;
-	pfd.events = POLLIN;
-
 	running = 1;
+	suspend = 0;
 	sanctum_proc_privsep(proc);
 
 	while (running) {
@@ -86,24 +82,29 @@ sanctum_purgatory(struct sanctum_proc *proc)
 			}
 		}
 
-		pfd.fd = fd;
-		if (poll(&pfd, 1, 0) == -1) {
-			if (errno == EINTR)
-				continue;
-			fatal("poll: %s", errno_s);
-		}
-
-		if (pfd.revents & POLLIN)
-			purgatory_recv_packets();
+#if !defined(SANCTUM_HIGH_PERFORMANCE)
+		if (sanctum_ring_pending(io->purgatory))
+			suspend = 0;
+#endif
+		pending = purgatory_recv_packets() == 1;
+		if (pending)
+			suspend = 0;
 
 		if ((pkt = sanctum_ring_dequeue(io->offer)))
 			purgatory_send_packet(pkt);
 
-		while ((pkt = sanctum_ring_dequeue(io->purgatory)))
-			purgatory_send_packet(pkt);
+		if (sanctum_ring_pending(io->purgatory)) {
+			suspend = 0;
+			while ((pkt = sanctum_ring_dequeue(io->purgatory)))
+				purgatory_send_packet(pkt);
+		} else if (pending == 0) {
+			if (suspend < 500)
+				suspend++;
+		}
 
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
-		usleep(500);
+		if (sanctum_ring_pending(io->purgatory) == 0 && pending == 0)
+			usleep(suspend * 10);
 #endif
 	}
 
@@ -230,7 +231,7 @@ purgatory_send_packet(struct sanctum_packet *pkt)
  * Read up to PACKETS_PER_EVENT number of packets, queueing them up
  * for decryption via the decryption queue.
  */
-static void
+static int
 purgatory_recv_packets(void)
 {
 	int			idx;
@@ -284,6 +285,8 @@ purgatory_recv_packets(void)
 		if (ret == -1)
 			sanctum_packet_release(pkt);
 	}
+
+	return (idx == PACKETS_PER_EVENT);
 }
 
 /*

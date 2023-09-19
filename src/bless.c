@@ -47,7 +47,7 @@ void
 sanctum_bless(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
-	int			sig, running;
+	int			suspend, sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -61,6 +61,7 @@ sanctum_bless(struct sanctum_proc *proc)
 	memset(&state, 0, sizeof(state));
 
 	running = 1;
+	suspend = 0;
 	sanctum_proc_privsep(proc);
 
 	while (running) {
@@ -85,14 +86,21 @@ sanctum_bless(struct sanctum_proc *proc)
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->bless)))
-			bless_packet_process(pkt);
-
 		if (next_heartbeat != 0 && now >= next_heartbeat)
 			bless_packet_heartbeat();
 
+		if (sanctum_ring_pending(io->bless)) {
+			suspend = 0;
+			while ((pkt = sanctum_ring_dequeue(io->bless)))
+				bless_packet_process(pkt);
+		} else if (sanctum_ring_pending(io->bless) == 0) {
+			if (suspend < 500)
+				suspend++;
+		}
+
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
-		usleep(500);
+		if (sanctum_ring_pending(io->bless) == 0)
+			usleep(suspend * 10);
 #endif
 	}
 

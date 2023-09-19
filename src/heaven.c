@@ -17,7 +17,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -29,7 +28,7 @@
 #define PACKETS_PER_EVENT		64
 
 static void	heaven_drop_access(void);
-static void	heaven_recv_packets(int);
+static int	heaven_recv_packets(int);
 static void	heaven_send_packet(int, struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
@@ -45,9 +44,8 @@ static struct sanctum_proc_io	*io = NULL;
 void
 sanctum_heaven(struct sanctum_proc *proc)
 {
-	struct pollfd			pfd;
-	struct sanctum_packet		*pkt;
-	int				fd, sig, running;
+	struct sanctum_packet	*pkt;
+	int			suspend, pending, fd, sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -59,10 +57,9 @@ sanctum_heaven(struct sanctum_proc *proc)
 	sanctum_signal_ignore(SIGINT);
 
 	fd = sanctum_platform_tundev_create();
-	pfd.fd = fd;
-	pfd.events = POLLIN;
 
 	running = 1;
+	suspend = 0;
 	sanctum_proc_privsep(proc);
 
 	while (running) {
@@ -75,20 +72,26 @@ sanctum_heaven(struct sanctum_proc *proc)
 			}
 		}
 
-		if (poll(&pfd, 1, 0) == -1) {
-			if (errno == EINTR)
-				continue;
-			fatal("poll: %s", errno_s);
+#if !defined(SANCTUM_HIGH_PERFORMANCE)
+		if (sanctum_ring_pending(io->heaven))
+			suspend = 0;
+#endif
+		pending = heaven_recv_packets(fd) == 1;
+		if (pending)
+			suspend = 0;
+
+		if (sanctum_ring_pending(io->heaven)) {
+			suspend = 0;
+			while ((pkt = sanctum_ring_dequeue(io->heaven)))
+				heaven_send_packet(fd, pkt);
+		} else if (pending == 0) {
+			if (suspend < 500)
+				suspend++;
 		}
 
-		if (pfd.revents & POLLIN)
-			heaven_recv_packets(fd);
-
-		while ((pkt = sanctum_ring_dequeue(io->heaven)))
-			heaven_send_packet(fd, pkt);
-
 #if !defined(SANCTUM_HIGH_PERFORMANCE)
-		usleep(500);
+		if (sanctum_ring_pending(io->heaven) == 0 && pending == 0)
+			usleep(suspend * 10);
 #endif
 	}
 
@@ -157,7 +160,7 @@ heaven_send_packet(int fd, struct sanctum_packet *pkt)
  * Read up to PACKETS_PER_EVENT number of packets, queueing them up
  * for encryption via the encryption queue.
  */
-static void
+static int
 heaven_recv_packets(int fd)
 {
 	int				idx;
@@ -200,4 +203,6 @@ heaven_recv_packets(int fd)
 		if (sanctum_ring_queue(io->bless, pkt) == -1)
 			sanctum_packet_release(pkt);
 	}
+
+	return (idx == PACKETS_PER_EVENT);
 }
