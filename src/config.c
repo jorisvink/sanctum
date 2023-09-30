@@ -121,6 +121,9 @@ sanctum_config_load(const char *file)
 
 	if (sanctum->peer_ip == 0)
 		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
+
+	if (sanctum->instance[0] == '\0')
+		fatal("no instance name was specified in the configuation");
 }
 
 static char *
@@ -236,8 +239,15 @@ static void
 config_parse_instance(char *opt)
 {
 	int		len;
+	size_t		optlen, idx;
 
 	PRECOND(opt != NULL);
+
+	optlen = strlen(opt);
+	for (idx = 0; idx < optlen; idx++) {
+		if (!isalnum((unsigned char)opt[idx]))
+			fatal("instance name must only be alphanumerical");
+	}
 
 	len = snprintf(sanctum->instance, sizeof(sanctum->instance), "%s", opt);
 	if (len == -1 || (size_t)len >= sizeof(sanctum->instance))

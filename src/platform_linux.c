@@ -44,7 +44,8 @@ sanctum_platform_tundev_create(void)
 	if ((fd = open("/dev/net/tun", O_RDWR)) == -1)
 		fatal("failed to open /dev/net/tun: %s", errno_s);
 
-	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "sanctum.clr");
+	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name),
+	    "%s.clr", sanctum->instance);
 	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("sanctum.clr interface name too large");
 
