@@ -99,7 +99,7 @@ main(int argc, char *argv[])
 	sanctum_proc_title("guardian");
 
 	running = 1;
-	sanctum_log(LOG_INFO, "sanctum started");
+	sanctum_log(LOG_INFO, "sanctum started (pid=%d)", getpid());
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
