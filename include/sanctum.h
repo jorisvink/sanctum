@@ -153,6 +153,7 @@ struct sanctum_offer_hdr {
 } __attribute__((packed));
 
 struct sanctum_offer_data {
+	u_int64_t		id;
 	u_int32_t		salt;
 	u_int64_t		timestamp;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];

@@ -79,6 +79,9 @@ static u_int64_t		offer_next = 0;
 static u_int64_t		offer_ttl = 5;
 static u_int64_t		offer_next_send = 1;
 
+/* Randomly generated local ID. */
+static u_int64_t		local_id = 0;
+
 /*
  * Chapel - The keying process.
  *
@@ -99,6 +102,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 	PRECOND(proc->arg != NULL);
 
 	nyfe_random_init();
+	nyfe_random_bytes(&local_id, sizeof(local_id));
 
 	io = proc->arg;
 	chapel_drop_access();
@@ -347,6 +351,7 @@ chapel_offer_encrypt(u_int64_t now)
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
 	op->data.salt = offer->salt;
+	op->data.id = htobe64(local_id);
 	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
 
 	/* Encrypt the offer packet. */
@@ -427,11 +432,10 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	/* Make sure a someone didn't reflect our current offer back to us. */
-	if (offer != NULL) {
-		if (op->hdr.spi == offer->spi && op->data.salt == offer->salt &&
-		    !memcmp(op->data.key, offer->key, sizeof(offer->key))) {
-			return;
-		}
+	op->data.id = be64toh(op->data.id);
+	if (op->data.id == local_id) {
+		sanctum_log(LOG_NOTICE, "someone replayed our own key offer");
+		return;
 	}
 
 	/* Everything checks out, update the peer address if needed. */
