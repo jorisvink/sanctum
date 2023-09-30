@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <sys/un.h>
 
 #include <arpa/inet.h>
@@ -313,3 +314,65 @@ sanctum_mem_zero(void *ptr, size_t len)
 		*(p)++ = 0x00;
 }
 
+/*
+ * Helper to parse an IPv4 address into a struct sockaddr_in its sin_addr.
+ */
+void
+sanctum_inet_addr(void *saddr, const char *ip)
+{
+	struct sockaddr_in	*sin;
+
+	PRECOND(saddr != NULL);
+	PRECOND(ip != NULL);
+
+	sin = saddr;
+	sin->sin_family = AF_INET;
+
+#if !defined(__linux__)
+	sin->sin_len = sizeof(*sin);
+#endif
+
+	if (inet_pton(AF_INET, ip, &sin->sin_addr) == -1)
+		fatal("'%s' not a valid IPv4 address", ip);
+}
+
+/*
+ * Helper to configure a tunnel device, shared between OpenBSD
+ * and Linux. MacOS has its own thing.
+ */
+void
+sanctum_configure_tundev(struct ifreq *ifr)
+{
+	int		fd;
+
+	PRECOND(ifr != NULL);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	sanctum_inet_addr(&ifr->ifr_addr, sanctum->tun_ip);
+	if (ioctl(fd, SIOCSIFADDR, ifr) == -1)
+		fatal("ioctl(SIOCSIFADDR): %s", errno_s);
+	if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
+		fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
+
+	sanctum_inet_addr(&ifr->ifr_addr, sanctum->tun_mask);
+	if (ioctl(fd, SIOCSIFNETMASK, ifr) == -1)
+		fatal("ioctl(SIOCSIFNETMASK): %s", errno_s);
+
+	ifr->ifr_flags = IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCSIFFLAGS, ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
+
+	ifr->ifr_mtu = sanctum->tun_mtu;
+	if (ioctl(fd, SIOCSIFMTU, ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	free(sanctum->tun_ip);
+	free(sanctum->tun_mask);
+
+	sanctum->tun_ip = NULL;
+	sanctum->tun_mask = NULL;
+
+	(void)close(fd);
+}

@@ -78,6 +78,7 @@ sanctum_platform_tundev_create(void)
 
 	(void)close(s);
 
+	sanctum_configure_tundev(&ifr);
 	sanctum_log(LOG_INFO, "using tun device '%s'", path);
 
 	return (fd);

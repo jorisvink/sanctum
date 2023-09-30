@@ -21,7 +21,11 @@
 #include <sys/sys_domain.h>
 #include <sys/uio.h>
 
+#include <arpa/inet.h>
+
+#include <net/if.h>
 #include <net/if_utun.h>
+#include <net/route.h>
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -31,7 +35,21 @@
 
 #include "sanctum.h"
 
+/*
+ * The way one must construct the layout of the RT message is
+ * very 90s and requires addresses to be aligned on correct
+ * boundaries.
+ */
+#define ROUNDUP(a)	\
+    ((a) > 0 ? (1 + (((a) - 1) | (sizeof(u_int32_t) - 1))) : sizeof(u_int32_t))
+
+#define NEXT_SIN(s)	\
+    ((struct sockaddr_in *)((u_int8_t *)(s) + ROUNDUP(sizeof(*(s)))))
+
 #define APPLE_UTUN_CONTROL	"com.apple.net.utun_control"
+
+static void	darwin_route_add(const char *);
+static void	darwin_configure_tundev(const char *);
 
 /*
  * MacOS tunnel interface creation.
@@ -40,9 +58,10 @@
 int
 sanctum_platform_tundev_create(void)
 {
+	struct ifreq		ifr;
 	struct sockaddr_ctl	sctl;
 	struct ctl_info		info;
-	int			idx, fd, flags;
+	int			len, idx, fd, flags;
 
 	memset(&info, 0, sizeof(info));
 	memset(&sctl, 0, sizeof(sctl));
@@ -82,6 +101,15 @@ sanctum_platform_tundev_create(void)
 
 	if (fcntl(fd, F_SETFL, flags) == -1)
 		fatal("fcntl: %s", errno_s);
+
+	memset(&ifr, 0, sizeof(ifr));
+
+	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "utun%u", idx - 1);
+	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+		fatal("snprintf on utun%u failed", idx - 1);
+
+	darwin_configure_tundev(ifr.ifr_name);
+	darwin_route_add(ifr.ifr_name);
 
 	return (fd);
 }
@@ -144,4 +172,89 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	iov[1].iov_len = pkt->length;
 
 	return (writev(fd, iov, 2));
+}
+
+/* Configure the tunnel device. */
+static void
+darwin_configure_tundev(const char *dev)
+{
+	struct ifaliasreq	ifra;
+	int			fd, len;
+
+	PRECOND(dev != NULL);
+
+	memset(&ifra, 0, sizeof(ifra));
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	len = snprintf(ifra.ifra_name, sizeof(ifra.ifra_name), "%s", dev);
+	if (len == -1 || (size_t)len >= sizeof(ifra.ifra_name))
+		fatal("ifc name '%s' too long", dev);
+
+	sanctum_inet_addr(&ifra.ifra_addr, sanctum->tun_ip);
+	sanctum_inet_addr(&ifra.ifra_mask, sanctum->tun_mask);
+	sanctum_inet_addr(&ifra.ifra_broadaddr, sanctum->tun_ip);
+
+	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
+		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
+
+	(void)close(fd);
+}
+
+/* Helper to add a route for our tunnel net. */
+static void
+darwin_route_add(const char *dev)
+{
+	int			s;
+	ssize_t			ret;
+	struct rt_msghdr	*rtm;
+	u_int8_t		buf[512];
+	struct sockaddr_in	*sin, mask, dst;
+
+	memset(buf, 0, sizeof(buf));
+
+	rtm = (struct rt_msghdr *)buf;
+
+	rtm->rtm_seq = 1;
+	rtm->rtm_type = RTM_ADD;
+	rtm->rtm_pid = getpid();
+	rtm->rtm_version = RTM_VERSION;
+	rtm->rtm_index = if_nametoindex(dev);
+	rtm->rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
+	rtm->rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
+
+	sanctum_inet_addr(&dst, sanctum->tun_ip);
+	sanctum_inet_addr(&mask, sanctum->tun_mask);
+
+	sin = (struct sockaddr_in *)(rtm + 1);
+	sin->sin_family = AF_INET;
+	sin->sin_len = sizeof(*sin);
+	sin->sin_addr.s_addr = dst.sin_addr.s_addr & mask.sin_addr.s_addr;
+
+	sin = NEXT_SIN(sin);
+	memcpy(sin, &dst, sizeof(dst));
+
+	sin = NEXT_SIN(sin);
+	memcpy(sin, &mask, sizeof(mask));
+	sin->sin_len = sizeof(sin->sin_family) + sizeof(sin->sin_addr);
+
+	rtm->rtm_msglen = sizeof(*rtm) + (sizeof(*sin) * 2) + sin->sin_len;
+
+	if ((s = socket(AF_ROUTE, SOCK_RAW, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	if ((ret = write(s, buf, rtm->rtm_msglen)) == -1)
+		fatal("write: %s", errno_s);
+
+	if ((size_t)ret != rtm->rtm_msglen)
+		fatal("failed to write entire message");
+
+	(void)close(s);
+
+	free(sanctum->tun_ip);
+	free(sanctum->tun_mask);
+
+	sanctum->tun_ip = NULL;
+	sanctum->tun_mask = NULL;
 }

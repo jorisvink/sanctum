@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
+#include <net/if.h>
 #include <netinet/in.h>
 
 #if defined(__linux__)
@@ -340,6 +341,11 @@ struct sanctum_state {
 	volatile u_int32_t	peer_ip;
 	volatile u_int16_t	peer_port;
 
+	/* The tunnel configuration. */
+	u_int16_t		tun_mtu;
+	char			*tun_ip;
+	char			*tun_mask;
+
 	/* The path to the secret, for chapel. */
 	char			*secret;
 
@@ -433,6 +439,8 @@ void	sanctum_shm_detach(void *);
 void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_sa_clear(struct sanctum_sa *);
+void	sanctum_inet_addr(void *, const char *);
+void	sanctum_configure_tundev(struct ifreq *);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 void	sanctum_peer_update(struct sanctum_packet *);

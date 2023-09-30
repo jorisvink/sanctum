@@ -17,7 +17,9 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 
-#include <linux/if.h>
+#include <arpa/inet.h>
+
+#include <net/if.h>
 #include <linux/if_tun.h>
 
 #include <fcntl.h>
@@ -36,8 +38,8 @@
 int
 sanctum_platform_tundev_create(void)
 {
-	struct ifreq	ifr;
-	int		len, fd, flags;
+	struct ifreq		ifr;
+	int			len, fd, flags;
 
 	memset(&ifr, 0, sizeof(ifr));
 
@@ -61,6 +63,8 @@ sanctum_platform_tundev_create(void)
 
 	if (fcntl(fd, F_SETFL, flags) == -1)
 		fatal("fcntl: %s", errno_s);
+
+	sanctum_configure_tundev(&ifr);
 
 	return (fd);
 }

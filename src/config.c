@@ -35,6 +35,7 @@ static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_chapel(char *);
+static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
 static void	config_parse_instance(char *);
@@ -53,6 +54,7 @@ static const struct {
 	{ "local",		config_parse_local },
 	{ "run",		config_parse_runas },
 	{ "chapel",		config_parse_chapel },
+	{ "tunnel",		config_parse_tunnel },
 	{ "secret",		config_parse_secret },
 	{ "control",		config_parse_control },
 	{ "instance",		config_parse_instance },
@@ -221,6 +223,29 @@ config_parse_chapel(char *path)
 }
 
 static void
+config_parse_tunnel(char *opt)
+{
+	u_int16_t	mtu;
+	char		ip[INET_ADDRSTRLEN], mask[INET_ADDRSTRLEN];
+
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "%15s %15s %hu", ip, mask, &mtu) != 3)
+		fatal("tunnel <ip> <netmask> <mtu>");
+
+	if (mtu > 1500 || mtu < 576)
+		fatal("mtu (%u) invalid", mtu);
+
+	if ((sanctum->tun_ip = strdup(ip)) == NULL)
+		fatal("strdup: %s", errno_s);
+
+	if ((sanctum->tun_mask = strdup(mask)) == NULL)
+		fatal("strdup: %s", errno_s);
+
+	sanctum->tun_mtu = mtu;
+}
+
+static void
 config_parse_control(char *path)
 {
 	PRECOND(path != NULL);
@@ -304,8 +329,7 @@ config_parse_host(char *host, struct sockaddr_in *sin)
 		fatal("'%s': argument must be in format ip:port", host);
 	*(port)++ = '\0';
 
-	if (inet_pton(AF_INET, host, &sin->sin_addr.s_addr) == -1)
-		fatal("ip '%s' invalid", host);
+	sanctum_inet_addr(sin, host);
 
 	sin->sin_port = strtonum(port, 1, USHRT_MAX, &errstr);
 	if (errstr)
