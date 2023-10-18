@@ -326,6 +326,8 @@ sanctum_inet_addr(void *saddr, const char *ip)
 	PRECOND(ip != NULL);
 
 	sin = saddr;
+	memset(sin, 0, sizeof(*sin));
+
 	sin->sin_family = AF_INET;
 
 #if !defined(__linux__)
@@ -335,4 +337,3 @@ sanctum_inet_addr(void *saddr, const char *ip)
 	if (inet_pton(AF_INET, ip, &sin->sin_addr) == -1)
 		fatal("'%s' not a valid IPv4 address", ip);
 }
-

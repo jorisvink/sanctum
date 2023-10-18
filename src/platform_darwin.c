@@ -34,22 +34,17 @@
 #include <unistd.h>
 
 #include "sanctum.h"
+#include "libnyfe.h"
 
-/*
- * The way one must construct the layout of the RT message is
- * very 90s and requires addresses to be aligned on correct
- * boundaries.
- */
-#define ROUNDUP(a)	\
-    ((a) > 0 ? (1 + (((a) - 1) | (sizeof(u_int32_t) - 1))) : sizeof(u_int32_t))
-
-#define NEXT_SIN(s)	\
-    ((struct sockaddr_in *)((u_int8_t *)(s) + ROUNDUP(sizeof(*(s)))))
+struct rtmsg {
+	struct rt_msghdr	rtm;
+	u_int8_t		buf[512];
+};
 
 #define APPLE_UTUN_CONTROL	"com.apple.net.utun_control"
 
-static void	darwin_route_add(const char *);
-static void	darwin_configure_tundev(const char *);
+void	darwin_route_add(const char *);
+void	darwin_configure_tundev(const char *);
 
 /*
  * MacOS tunnel interface creation.
@@ -179,23 +174,28 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 }
 
 /* Configure the tunnel device. */
-static void
+void
 darwin_configure_tundev(const char *dev)
 {
+	int			fd;
 	struct ifreq		ifr;
 	struct ifaliasreq	ifra;
-	int			fd, len;
 
 	PRECOND(dev != NULL);
 
+	memset(&ifr, 0, sizeof(ifr));
 	memset(&ifra, 0, sizeof(ifra));
+
+	if (strlcpy(ifr.ifr_name, dev, sizeof(ifr.ifr_name)) >=
+	    sizeof(ifr.ifr_name))
+		fatal("ifc '%s' too long", dev);
+
+	if (strlcpy(ifra.ifra_name, dev, sizeof(ifra.ifra_name)) >=
+	    sizeof(ifra.ifra_name))
+		fatal("ifc '%s' too long", dev);
 
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
-
-	len = snprintf(ifra.ifra_name, sizeof(ifra.ifra_name), "%s", dev);
-	if (len == -1 || (size_t)len >= sizeof(ifra.ifra_name))
-		fatal("ifc name '%s' too long", dev);
 
 	sanctum_inet_addr(&ifra.ifra_addr, sanctum->tun_ip);
 	sanctum_inet_addr(&ifra.ifra_mask, sanctum->tun_mask);
@@ -204,10 +204,8 @@ darwin_configure_tundev(const char *dev)
 	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
 		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
 
-	memcpy(ifr.ifr_name, ifra.ifra_name, sizeof(ifr.ifr_name));
-
 	ifr.ifr_flags = IFF_UP | IFF_RUNNING;
-	if (ioctl(fd, SIOCSIFFLAGS, ifr) == -1)
+	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
 		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
 
 	ifr.ifr_mtu = sanctum->tun_mtu;
@@ -218,53 +216,51 @@ darwin_configure_tundev(const char *dev)
 }
 
 /* Helper to add a route for our tunnel net. */
-static void
+void
 darwin_route_add(const char *dev)
 {
 	int			s;
+	u_int8_t		*cp;
+	struct rtmsg		msg;
 	ssize_t			ret;
-	struct rt_msghdr	*rtm;
-	u_int8_t		buf[512];
-	struct sockaddr_in	*sin, mask, dst;
+	struct sockaddr_in	mask, dst, gw;
 
 	PRECOND(dev != NULL);
 
-	memset(buf, 0, sizeof(buf));
+	memset(&msg, 0, sizeof(msg));
 
-	rtm = (struct rt_msghdr *)buf;
+	msg.rtm.rtm_seq = 1;
+	msg.rtm.rtm_type = RTM_ADD;
+	msg.rtm.rtm_version = RTM_VERSION;
+	msg.rtm.rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
+	msg.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
 
-	rtm->rtm_seq = 1;
-	rtm->rtm_type = RTM_ADD;
-	rtm->rtm_pid = getpid();
-	rtm->rtm_version = RTM_VERSION;
-	rtm->rtm_index = if_nametoindex(dev);
-	rtm->rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
-	rtm->rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
-
+	sanctum_inet_addr(&gw, sanctum->tun_ip);
 	sanctum_inet_addr(&dst, sanctum->tun_ip);
 	sanctum_inet_addr(&mask, sanctum->tun_mask);
 
-	sin = (struct sockaddr_in *)(rtm + 1);
-	sin->sin_family = AF_INET;
-	sin->sin_len = sizeof(*sin);
-	sin->sin_addr.s_addr = dst.sin_addr.s_addr & mask.sin_addr.s_addr;
+	dst.sin_addr.s_addr &= mask.sin_addr.s_addr;
 
-	sin = NEXT_SIN(sin);
-	memcpy(sin, &dst, sizeof(dst));
+	cp = msg.buf;
 
-	sin = NEXT_SIN(sin);
-	memcpy(sin, &mask, sizeof(mask));
-	sin->sin_len = sizeof(sin->sin_family) + sizeof(sin->sin_addr);
+	memcpy(cp, &dst, sizeof(dst));
+	cp += sizeof(dst);
 
-	rtm->rtm_msglen = sizeof(*rtm) + (sizeof(*sin) * 2) + sin->sin_len;
+	memcpy(cp, &gw, sizeof(gw));
+	cp += sizeof(gw);
 
-	if ((s = socket(AF_ROUTE, SOCK_RAW, 0)) == -1)
+	memcpy(cp, &mask, sizeof(mask));
+	cp += sizeof(mask);
+
+	msg.rtm.rtm_msglen = cp - (u_int8_t *)&msg;
+
+	if ((s = socket(AF_ROUTE, SOCK_RAW, AF_INET)) == -1)
 		fatal("socket: %s", errno_s);
 
-	if ((ret = write(s, buf, rtm->rtm_msglen)) == -1)
+	if ((ret = write(s, &msg, msg.rtm.rtm_msglen)) == -1)
 		fatal("write: %s", errno_s);
 
-	if ((size_t)ret != rtm->rtm_msglen)
+	if ((size_t)ret != msg.rtm.rtm_msglen)
 		fatal("failed to write entire message");
 
 	(void)close(s);

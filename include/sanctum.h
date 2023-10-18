@@ -24,7 +24,6 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
-#include <net/if.h>
 #include <netinet/in.h>
 
 #if defined(__linux__)

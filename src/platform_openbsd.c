@@ -35,17 +35,6 @@ struct rtmsg {
 	u_int8_t		buf[512];
 };
 
-/* The 90s called and wanted their weird constructions back. */
-#define ROUNDUP(a)	\
-    ((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
-
-#define SETADDR(cp, sa)					\
-	do {							\
-		l = ROUNDUP(sa.sin_len);			\
-		memcpy(cp, &sa, l);				\
-		cp += l;					\
-	} while (0)
-
 #define PATH_SKIP	(sizeof("/dev/") - 1)
 
 static void	openbsd_route_add(const char *);
@@ -186,15 +175,15 @@ openbsd_configure_tundev(const char *dev)
 		fatal("the description name is too long");
 
 	ifr.ifr_data = descr;
-	if (ioctl(fd, SIOCSIFDESCR, &ifr, sizeof(ifr)) == -1)
+	if (ioctl(fd, SIOCSIFDESCR, &ifr) == -1)
 		fatal("ioctl(SIOCSIFDESCR): %s", errno_s);
 
 	ifr.ifr_flags = IFF_UP | IFF_RUNNING;
-	if (ioctl(fd, SIOCSIFFLAGS, &ifr, sizeof(ifr)) == -1)
+	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
 		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
 
 	ifr.ifr_mtu = sanctum->tun_mtu;
-	if (ioctl(fd, SIOCSIFMTU, &ifr, sizeof(ifr)) == -1)
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
 		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
 
 	(void)close(fd);
@@ -204,10 +193,10 @@ openbsd_configure_tundev(const char *dev)
 static void
 openbsd_route_add(const char *dev)
 {
+	int			s;
 	u_int8_t		*cp;
 	struct rtmsg		msg;
 	ssize_t			ret;
-	int			s, l;
 	struct sockaddr_in	mask, dst, gw;
 
 	PRECOND(dev != NULL);
@@ -229,9 +218,14 @@ openbsd_route_add(const char *dev)
 
 	cp = msg.buf;
 
-	SETADDR(cp, dst);
-	SETADDR(cp, gw);
-	SETADDR(cp, mask);
+	memcpy(cp, &dst, sizeof(dst));
+	cp += sizeof(dst);
+
+	memcpy(cp, &gw, sizeof(gw));
+	cp += sizeof(gw);
+
+	memcpy(cp, &mask, sizeof(mask));
+	cp += sizeof(mask);
 
 	msg.rtm.rtm_msglen = cp - (u_int8_t *)&msg;
 
