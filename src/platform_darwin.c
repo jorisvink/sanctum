@@ -58,9 +58,9 @@ static void	darwin_configure_tundev(const char *);
 int
 sanctum_platform_tundev_create(void)
 {
-	struct ifreq		ifr;
 	struct sockaddr_ctl	sctl;
 	struct ctl_info		info;
+	char			ifname[IFNAMSIZ];
 	int			len, idx, fd, flags;
 
 	memset(&info, 0, sizeof(info));
@@ -102,14 +102,18 @@ sanctum_platform_tundev_create(void)
 	if (fcntl(fd, F_SETFL, flags) == -1)
 		fatal("fcntl: %s", errno_s);
 
-	memset(&ifr, 0, sizeof(ifr));
-
-	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "utun%u", idx - 1);
-	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+	len = snprintf(ifname, sizeof(ifname), "utun%u", idx - 1);
+	if (len == -1 || (size_t)len >= sizeof(ifname))
 		fatal("snprintf on utun%u failed", idx - 1);
 
-	darwin_configure_tundev(ifr.ifr_name);
-	darwin_route_add(ifr.ifr_name);
+	darwin_configure_tundev(ifname);
+	darwin_route_add(ifname);
+
+	free(sanctum->tun_ip);
+	free(sanctum->tun_mask);
+
+	sanctum->tun_ip = NULL;
+	sanctum->tun_mask = NULL;
 
 	return (fd);
 }
@@ -178,6 +182,7 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 static void
 darwin_configure_tundev(const char *dev)
 {
+	struct ifreq		ifr;
 	struct ifaliasreq	ifra;
 	int			fd, len;
 
@@ -199,6 +204,16 @@ darwin_configure_tundev(const char *dev)
 	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
 		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
 
+	memcpy(ifr.ifr_name, ifra.ifra_name, sizeof(ifr.ifr_name));
+
+	ifr.ifr_flags = IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCSIFFLAGS, ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
+
+	ifr.ifr_mtu = sanctum->tun_mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
 	(void)close(fd);
 }
 
@@ -211,6 +226,8 @@ darwin_route_add(const char *dev)
 	struct rt_msghdr	*rtm;
 	u_int8_t		buf[512];
 	struct sockaddr_in	*sin, mask, dst;
+
+	PRECOND(dev != NULL);
 
 	memset(buf, 0, sizeof(buf));
 
@@ -251,10 +268,4 @@ darwin_route_add(const char *dev)
 		fatal("failed to write entire message");
 
 	(void)close(s);
-
-	free(sanctum->tun_ip);
-	free(sanctum->tun_mask);
-
-	sanctum->tun_ip = NULL;
-	sanctum->tun_mask = NULL;
 }

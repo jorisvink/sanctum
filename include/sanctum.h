@@ -440,7 +440,6 @@ void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
-void	sanctum_configure_tundev(struct ifreq *);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 void	sanctum_peer_update(struct sanctum_packet *);

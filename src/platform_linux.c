@@ -29,6 +29,8 @@
 
 #include "sanctum.h"
 
+static void	linux_configure_tundev(struct ifreq *);
+
 /*
  * Linux tunnel device creation. The sanctum.clr device is created and a
  * file descriptor for it is returned to the caller.
@@ -64,7 +66,13 @@ sanctum_platform_tundev_create(void)
 	if (fcntl(fd, F_SETFL, flags) == -1)
 		fatal("fcntl: %s", errno_s);
 
-	sanctum_configure_tundev(&ifr);
+	linux_configure_tundev(&ifr);
+
+	free(sanctum->tun_ip);
+	free(sanctum->tun_mask);
+
+	sanctum->tun_ip = NULL;
+	sanctum->tun_mask = NULL;
 
 	return (fd);
 }
@@ -95,4 +103,36 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	data = sanctum_packet_data(pkt);
 
 	return (write(fd, data, pkt->length));
+}
+
+/* Configure the tunnel device. */
+void
+linux_configure_tundev(struct ifreq *ifr)
+{
+	int		fd;
+
+	PRECOND(ifr != NULL);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	sanctum_inet_addr(&ifr->ifr_addr, sanctum->tun_ip);
+	if (ioctl(fd, SIOCSIFADDR, ifr) == -1)
+		fatal("ioctl(SIOCSIFADDR): %s", errno_s);
+	if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
+		fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
+
+	sanctum_inet_addr(&ifr->ifr_addr, sanctum->tun_mask);
+	if (ioctl(fd, SIOCSIFNETMASK, ifr) == -1)
+		fatal("ioctl(SIOCSIFNETMASK): %s", errno_s);
+
+	ifr->ifr_flags = IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCSIFFLAGS, ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
+
+	ifr->ifr_mtu = sanctum->tun_mtu;
+	if (ioctl(fd, SIOCSIFMTU, ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	(void)close(fd);
 }
