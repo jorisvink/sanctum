@@ -37,7 +37,6 @@ struct rtmsg {
 
 #define PATH_SKIP	(sizeof("/dev/") - 1)
 
-static void	openbsd_route_add(const char *);
 static void	openbsd_configure_tundev(const char *);
 
 /*
@@ -71,7 +70,7 @@ sanctum_platform_tundev_create(void)
 		fatal("fcntl: %s", errno_s);
 
 	openbsd_configure_tundev(&path[PATH_SKIP]);
-	openbsd_route_add(&path[PATH_SKIP]);
+	sanctum_platform_tundev_route(&sanctum->tun_ip, &sanctum->tun_mask);
 
 	sanctum_log(LOG_INFO, "using tun device '%s'", path);
 
@@ -138,6 +137,56 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	return (writev(fd, iov, 2));
 }
 
+/* Adds a new route via our tunnel device. */
+void
+sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
+{
+	int			s;
+	u_int8_t		*cp;
+	struct sockaddr_in	dst;
+	struct rtmsg		msg;
+	ssize_t			ret;
+
+	PRECOND(net != NULL);
+	PRECOND(mask != NULL);
+
+	memset(&msg, 0, sizeof(msg));
+
+	msg.rtm.rtm_seq = 1;
+	msg.rtm.rtm_type = RTM_ADD;
+	msg.rtm.rtm_version = RTM_VERSION;
+	msg.rtm.rtm_hdrlen = sizeof(msg.rtm);
+	msg.rtm.rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
+	msg.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
+
+	memcpy(&dst, net, sizeof(*net));
+	dst.sin_addr.s_addr &= mask->sin_addr.s_addr;
+
+	cp = msg.buf;
+
+	memcpy(cp, &dst, sizeof(dst));
+	cp += sizeof(dst);
+
+	memcpy(cp, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+	cp += sizeof(sanctum->tun_ip);
+
+	memcpy(cp, mask, sizeof(*mask));
+	cp += sizeof(*mask);
+
+	msg.rtm.rtm_msglen = cp - (u_int8_t *)&msg;
+
+	if ((s = socket(AF_ROUTE, SOCK_RAW, AF_INET)) == -1)
+		fatal("socket: %s", errno_s);
+
+	if ((ret = write(s, &msg, msg.rtm.rtm_msglen)) == -1)
+		fatal("write: %s", errno_s);
+
+	if ((size_t)ret != msg.rtm.rtm_msglen)
+		fatal("failed to write entire message");
+
+	(void)close(s);
+}
+
 /* Configure the tunnel device. */
 static void
 openbsd_configure_tundev(const char *dev)
@@ -188,53 +237,4 @@ openbsd_configure_tundev(const char *dev)
 		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
 
 	(void)close(fd);
-}
-
-/* Helper to add a route for our tunnel net. */
-static void
-openbsd_route_add(const char *dev)
-{
-	int			s;
-	u_int8_t		*cp;
-	struct sockaddr_in	dst;
-	struct rtmsg		msg;
-	ssize_t			ret;
-
-	PRECOND(dev != NULL);
-
-	memset(&msg, 0, sizeof(msg));
-
-	msg.rtm.rtm_seq = 1;
-	msg.rtm.rtm_type = RTM_ADD;
-	msg.rtm.rtm_version = RTM_VERSION;
-	msg.rtm.rtm_hdrlen = sizeof(msg.rtm);
-	msg.rtm.rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
-	msg.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
-
-	memcpy(&dst, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-	dst.sin_addr.s_addr &= sanctum->tun_mask.sin_addr.s_addr;
-
-	cp = msg.buf;
-
-	memcpy(cp, &dst, sizeof(dst));
-	cp += sizeof(dst);
-
-	memcpy(cp, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-	cp += sizeof(sanctum->tun_ip);
-
-	memcpy(cp, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
-	cp += sizeof(sanctum->tun_mask);
-
-	msg.rtm.rtm_msglen = cp - (u_int8_t *)&msg;
-
-	if ((s = socket(AF_ROUTE, SOCK_RAW, AF_INET)) == -1)
-		fatal("socket: %s", errno_s);
-
-	if ((ret = write(s, &msg, msg.rtm.rtm_msglen)) == -1)
-		fatal("write: %s", errno_s);
-
-	if ((size_t)ret != msg.rtm.rtm_msglen)
-		fatal("failed to write entire message");
-
-	(void)close(s);
 }

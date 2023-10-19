@@ -57,6 +57,7 @@ sanctum_heaven(struct sanctum_proc *proc)
 	sanctum_signal_ignore(SIGINT);
 
 	fd = sanctum_platform_tundev_create();
+	sanctum_config_routes();
 
 	running = 1;
 	suspend = 0;

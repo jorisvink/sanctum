@@ -381,6 +381,7 @@ extern struct sanctum_state	*sanctum;
 
 /* src/config.c */
 void	sanctum_config_init(void);
+void	sanctum_config_routes(void);
 void	sanctum_config_load(const char *);
 
 /* src/sanctum.c */
@@ -451,6 +452,8 @@ int	sanctum_key_erase(const char *, struct sanctum_key *,
 int	sanctum_platform_tundev_create(void);
 ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);
 ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
+void	sanctum_platform_tundev_route(struct sockaddr_in *,
+	    struct sockaddr_in *);
 
 /* Worker entry points. */
 void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));

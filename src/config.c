@@ -31,6 +31,12 @@
 
 #include "sanctum.h"
 
+struct route {
+	struct sockaddr_in	net;
+	struct sockaddr_in	mask;
+	LIST_ENTRY(route)	list;
+};
+
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_route(char *);
@@ -79,10 +85,14 @@ static const struct {
 	{ NULL,			0 },
 };
 
+static LIST_HEAD(, route)	routes;
+
 void
 sanctum_config_init(void)
 {
 	PRECOND(sanctum != NULL);
+
+	LIST_INIT(&routes);
 
 	config_unix_set(&sanctum->chapel, "/tmp/sanctum-chapel", "root");
 	config_unix_set(&sanctum->control, "/tmp/sanctum-control", "root");
@@ -131,6 +141,18 @@ sanctum_config_load(const char *file)
 
 	if (sanctum->instance[0] == '\0')
 		fatal("no instance name was specified in the configuation");
+}
+
+void
+sanctum_config_routes(void)
+{
+	struct route	*rt;
+
+	while ((rt = LIST_FIRST(&routes)) != NULL) {
+		LIST_REMOVE(rt, list);
+		sanctum_platform_tundev_route(&rt->net, &rt->mask);
+		free(rt);
+	}
 }
 
 static char *
@@ -249,11 +271,16 @@ config_parse_tunnel(char *opt)
 static void
 config_parse_route(char *opt)
 {
-	struct sockaddr_in	addr, mask;
+	struct route		*rt;
 
 	PRECOND(opt != NULL);
 
-	config_parse_ip_mask(opt, &addr, &mask);
+	if ((rt = calloc(1, sizeof(*rt))) == NULL)
+		fatal("calloc");
+
+	config_parse_ip_mask(opt, &rt->net, &rt->mask);
+
+	LIST_INSERT_HEAD(&routes, rt, list);
 }
 
 static void

@@ -21,6 +21,8 @@
 
 #include <net/if.h>
 #include <linux/if_tun.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -30,6 +32,8 @@
 #include "sanctum.h"
 
 static void	linux_configure_tundev(struct ifreq *);
+static void	linux_rt_sin(struct nlmsghdr *, void *, u_int16_t,
+		    struct sockaddr_in *);
 
 /*
  * Linux tunnel device creation. The sanctum.clr device is created and a
@@ -97,6 +101,98 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	data = sanctum_packet_data(pkt);
 
 	return (write(fd, data, pkt->length));
+}
+
+/* Adds a new route via our tunnel device. */
+void
+sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
+{
+	int			s;
+	u_int32_t		m;
+	ssize_t			ret;
+	struct rtmsg		*rt;
+	struct nlmsghdr		*hdr;
+	struct nlmsgerr		*error;
+	u_int8_t		buf[512];
+
+	PRECOND(net != NULL);
+	PRECOND(mask != NULL);
+
+	memset(buf, 0, sizeof(buf));
+
+	hdr = (struct nlmsghdr *)&buf;
+	hdr->nlmsg_seq = 0;
+	hdr->nlmsg_pid = getpid();
+	hdr->nlmsg_type = RTM_NEWROUTE;
+	hdr->nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE |
+	    NLM_F_EXCL | NLM_F_ACK;
+	hdr->nlmsg_len = NLMSG_LENGTH(sizeof(*rt));
+
+	rt = (struct rtmsg *)&buf[NLMSG_HDRLEN];
+	rt->rtm_family = AF_INET;
+	rt->rtm_type = RTN_UNICAST;
+	rt->rtm_table = RT_TABLE_MAIN;
+	rt->rtm_protocol = RTPROT_STATIC;
+	rt->rtm_scope = RT_SCOPE_UNIVERSE;
+
+	rt->rtm_dst_len = 0;
+	m = ntohl(mask->sin_addr.s_addr);
+
+	while (m) {
+		if (m & 1)
+			rt->rtm_dst_len++;
+		m = m >> 1;
+	}
+
+	linux_rt_sin(hdr, &buf[hdr->nlmsg_len], RTA_DST, net);
+	linux_rt_sin(hdr, &buf[hdr->nlmsg_len], RTA_GATEWAY, &sanctum->tun_ip);
+
+	if ((s = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE)) == -1)
+		fatal("socket(AF_NETLINK): %s", errno_s);
+
+	if ((ret = write(s, buf, hdr->nlmsg_len)) == -1)
+		fatal("write: %s", errno_s);
+
+	if ((size_t)ret != hdr->nlmsg_len)
+		fatal("short write %zd/%u", ret, hdr->nlmsg_len);
+
+	if ((ret = read(s, buf, sizeof(buf))) == -1)
+		fatal("read: %s", errno_s);
+
+	if (ret == 0)
+		fatal("eof on netlink socket");
+
+	if ((size_t)ret < (sizeof(*hdr) + sizeof(*error)))
+		fatal("too short message from netlink (%zd)", ret);
+
+	if (hdr->nlmsg_type != NLMSG_ERROR)
+		fatal("unexpected type %u", hdr->nlmsg_type);
+
+	error = (struct nlmsgerr *)&buf[NLMSG_HDRLEN];
+	if (error->error != 0)
+		fatal("failed to add route: %d", error->error);
+
+	(void)close(s);
+}
+
+/* Helper to stuff a sockaddr_in into an rtattr for netlink. */
+static void
+linux_rt_sin(struct nlmsghdr *hdr, void *attr, u_int16_t type,
+    struct sockaddr_in *sin)
+{
+	struct rtattr		*rta;
+
+	PRECOND(hdr != NULL);
+	PRECOND(attr != NULL);
+	PRECOND(sin != NULL);
+
+	rta = attr;
+
+	rta->rta_type = type;
+	rta->rta_len = RTA_LENGTH(sizeof(sin->sin_addr));
+
+	memcpy(RTA_DATA(rta), &sin->sin_addr, sizeof(sin->sin_addr));
+	hdr->nlmsg_len = NLMSG_ALIGN(hdr->nlmsg_len) + RTA_ALIGN(rta->rta_len);
 }
 
 /* Configure the tunnel device. */

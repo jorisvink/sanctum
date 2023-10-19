@@ -43,7 +43,6 @@ struct rtmsg {
 
 #define APPLE_UTUN_CONTROL	"com.apple.net.utun_control"
 
-void	darwin_route_add(const char *);
 void	darwin_configure_tundev(const char *);
 
 /*
@@ -102,7 +101,7 @@ sanctum_platform_tundev_create(void)
 		fatal("snprintf on utun%u failed", idx - 1);
 
 	darwin_configure_tundev(ifname);
-	darwin_route_add(ifname);
+	sanctum_platform_tundev_route(&sanctum->tun_ip, &sanctum->tun_mask);
 
 	return (fd);
 }
@@ -209,9 +208,9 @@ darwin_configure_tundev(const char *dev)
 	(void)close(fd);
 }
 
-/* Helper to add a route for our tunnel net. */
+/* Adds a new route via our tunnel device. */
 void
-darwin_route_add(const char *dev)
+sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 {
 	int			s;
 	u_int8_t		*cp;
@@ -219,7 +218,8 @@ darwin_route_add(const char *dev)
 	struct rtmsg		msg;
 	ssize_t			ret;
 
-	PRECOND(dev != NULL);
+	PRECOND(net != NULL);
+	PRECOND(mask != NULL);
 
 	memset(&msg, 0, sizeof(msg));
 
@@ -229,8 +229,8 @@ darwin_route_add(const char *dev)
 	msg.rtm.rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
 	msg.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
 
-	memcpy(&dst, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-	dst.sin_addr.s_addr &= sanctum->tun_mask.sin_addr.s_addr;
+	memcpy(&dst, net, sizeof(*net));
+	dst.sin_addr.s_addr &= mask->sin_addr.s_addr;
 
 	cp = msg.buf;
 
@@ -240,8 +240,8 @@ darwin_route_add(const char *dev)
 	memcpy(cp, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
 	cp += sizeof(sanctum->tun_ip);
 
-	memcpy(cp, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
-	cp += sizeof(sanctum->tun_mask);
+	memcpy(cp, mask, sizeof(*mask));
+	cp += sizeof(*mask);
 
 	msg.rtm.rtm_msglen = cp - (u_int8_t *)&msg;
 
