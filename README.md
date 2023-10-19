@@ -132,6 +132,13 @@ secret /etc/sanctum/laptop_secret.key
 run control as joris
 control /tmp/sanctum-control joris
 
+# The tunnel configuration
+tunnel 1.0.0.1/30 1422
+
+# Add additional routes over the tunnel
+route 2.0.0.0/24
+
+# The local address to which sanctum binds.
 local x.x.x.x:2333
 
 # Optional peer address, ignore if you have a peer that
@@ -142,10 +149,8 @@ peer y.y.y.y:2333
 run bless as _sanctum
 run heaven as _sanctum
 run confess as _sanctum
-run chapel as _sanctum
 run purgatory as _sanctum
-```
 
-You configure the network yourself afterwards, sanctum
-provides the encrypted transport via the tunnel interface
-but how you want your traffic to flow is up to you.
+# Run chapel as different user.
+run chapel as _chapel
+```
