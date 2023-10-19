@@ -84,7 +84,11 @@ sanctum_platform_tundev_create(void)
 	return (fd);
 }
 
-/* Read a single packet from the tunnel device. */
+/*
+ * Read a packet from the tunnel device. On OpenBSD this is prefixed
+ * with the protocol (4 bytes), so split up the read into two
+ * parts: the protocol and the actual packet data.
+ */
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 {
@@ -115,7 +119,10 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	return (ret);
 }
 
-/* Write a single packet to the tunnel device. */
+/*
+ * Write a packet to the tunnel device. We must prefix it with the
+ * correct protocol in network byte order.
+ */
 ssize_t
 sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 {
