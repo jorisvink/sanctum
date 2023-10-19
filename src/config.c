@@ -33,14 +33,18 @@
 
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
+static void	config_parse_route(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_chapel(char *);
 static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
 static void	config_parse_instance(char *);
-static void	config_parse_host(char *, struct sockaddr_in *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
+
+static void	config_parse_ip_port(char *, struct sockaddr_in *);
+static void	config_parse_ip_mask(char *, struct sockaddr_in *,
+		    struct sockaddr_in *);
 
 static void	config_unix_set(struct sanctum_sun *,
 		    const char *, const char *);
@@ -52,6 +56,7 @@ static const struct {
 } keywords[] = {
 	{ "peer",		config_parse_peer },
 	{ "local",		config_parse_local },
+	{ "route",		config_parse_route },
 	{ "run",		config_parse_runas },
 	{ "chapel",		config_parse_chapel },
 	{ "tunnel",		config_parse_tunnel },
@@ -168,7 +173,7 @@ config_parse_peer(char *peer)
 		return;
 	}
 
-	config_parse_host(peer, &sanctum->peer);
+	config_parse_ip_port(peer, &sanctum->peer);
 
 	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
 	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
@@ -179,7 +184,7 @@ config_parse_local(char *local)
 {
 	PRECOND(local != NULL);
 
-	config_parse_host(local, &sanctum->local);
+	config_parse_ip_port(local, &sanctum->local);
 }
 
 static void
@@ -226,37 +231,29 @@ static void
 config_parse_tunnel(char *opt)
 {
 	u_int16_t	mtu;
-	u_int8_t	mask;
-	char		*ep, *p, ip[INET_ADDRSTRLEN + 3];
+	char		ip[INET_ADDRSTRLEN + 3];
 
 	PRECOND(opt != NULL);
 
 	if (sscanf(opt, "%18s %hu", ip, &mtu) != 2)
 		fatal("tunnel <ip/mask> <mtu>");
 
-	if ((p = strchr(ip, '/')) == NULL)
-		fatal("tunnel ip is missing a netmask");
-
-	*(p)++ = '\0';
-	if (*p == '\0')
-		fatal("tunnel ip is missing a netmask");
-
-	errno = 0;
-	mask = strtol(p, &ep, 10);
-	if (errno != 0 || p == ep || *ep != '\0')
-		fatal("tunnel netmask '%s' is invalid", p);
-
-	if (mask > 32)
-		fatal("netmask (%u) invalid", mask);
-
 	if (mtu > 1500 || mtu < 576)
 		fatal("mtu (%u) invalid", mtu);
 
-	if ((sanctum->tun_ip = strdup(ip)) == NULL)
-		fatal("strdup: %s", errno_s);
-
 	sanctum->tun_mtu = mtu;
-	sanctum->tun_mask = mask;
+
+	config_parse_ip_mask(ip, &sanctum->tun_ip, &sanctum->tun_mask);
+}
+
+static void
+config_parse_route(char *opt)
+{
+	struct sockaddr_in	addr, mask;
+
+	PRECOND(opt != NULL);
+
+	config_parse_ip_mask(opt, &addr, &mask);
 }
 
 static void
@@ -331,7 +328,7 @@ config_unix_set(struct sanctum_sun *sun, const char *path, const char *owner)
 }
 
 static void
-config_parse_host(char *host, struct sockaddr_in *sin)
+config_parse_ip_port(char *host, struct sockaddr_in *sin)
 {
 	char		*port;
 	const char	*errstr;
@@ -350,4 +347,33 @@ config_parse_host(char *host, struct sockaddr_in *sin)
 		fatal("port '%s' invalid: %s", port, errstr);
 
 	sin->sin_port = htons(sin->sin_port);
+}
+
+static void
+config_parse_ip_mask(char *in, struct sockaddr_in *ip, struct sockaddr_in *mask)
+{
+	u_int8_t	val;
+	char		*ep, *p;
+
+	PRECOND(in != NULL);
+	PRECOND(ip != NULL);
+	PRECOND(mask != NULL);
+
+	if ((p = strchr(in, '/')) == NULL)
+		fatal("ip '%s' is missing a netmask", in);
+
+	*(p)++ = '\0';
+	if (*p == '\0')
+		fatal("ip '%s' is missing a netmask", in);
+
+	errno = 0;
+	val = strtol(p, &ep, 10);
+	if (errno != 0 || p == ep || *ep != '\0')
+		fatal("netmask '%s' is invalid", p);
+
+	if (val > 32)
+		fatal("netmask '%s' is invalid", p);
+
+	sanctum_inet_addr(ip, in);
+	sanctum_inet_mask(mask, val);
 }

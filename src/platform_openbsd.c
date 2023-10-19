@@ -75,9 +75,6 @@ sanctum_platform_tundev_create(void)
 
 	sanctum_log(LOG_INFO, "using tun device '%s'", path);
 
-	free(sanctum->tun_ip);
-	sanctum->tun_ip = NULL;
-
 	return (fd);
 }
 
@@ -166,9 +163,9 @@ openbsd_configure_tundev(const char *dev)
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
 
-	sanctum_inet_addr(&ifra.ifra_addr, sanctum->tun_ip);
-	sanctum_inet_mask(&ifra.ifra_mask, sanctum->tun_mask);
-	sanctum_inet_addr(&ifra.ifra_broadaddr, sanctum->tun_ip);
+	memcpy(&ifra.ifra_addr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+	memcpy(&ifra.ifra_mask, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
+	memcpy(&ifra.ifra_broadaddr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
 
 	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
 		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
@@ -199,9 +196,9 @@ openbsd_route_add(const char *dev)
 {
 	int			s;
 	u_int8_t		*cp;
+	struct sockaddr_in	dst;
 	struct rtmsg		msg;
 	ssize_t			ret;
-	struct sockaddr_in	mask, dst, gw;
 
 	PRECOND(dev != NULL);
 
@@ -214,22 +211,19 @@ openbsd_route_add(const char *dev)
 	msg.rtm.rtm_flags = RTF_STATIC | RTF_UP | RTF_GATEWAY;
 	msg.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
 
-	sanctum_inet_addr(&gw, sanctum->tun_ip);
-	sanctum_inet_addr(&dst, sanctum->tun_ip);
-	sanctum_inet_mask(&mask, sanctum->tun_mask);
-
-	dst.sin_addr.s_addr &= mask.sin_addr.s_addr;
+	memcpy(&dst, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+	dst.sin_addr.s_addr &= sanctum->tun_mask.sin_addr.s_addr;
 
 	cp = msg.buf;
 
 	memcpy(cp, &dst, sizeof(dst));
 	cp += sizeof(dst);
 
-	memcpy(cp, &gw, sizeof(gw));
-	cp += sizeof(gw);
+	memcpy(cp, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+	cp += sizeof(sanctum->tun_ip);
 
-	memcpy(cp, &mask, sizeof(mask));
-	cp += sizeof(mask);
+	memcpy(cp, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
+	cp += sizeof(sanctum->tun_mask);
 
 	msg.rtm.rtm_msglen = cp - (u_int8_t *)&msg;
 

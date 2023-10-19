@@ -68,9 +68,6 @@ sanctum_platform_tundev_create(void)
 
 	linux_configure_tundev(&ifr);
 
-	free(sanctum->tun_ip);
-	sanctum->tun_ip = NULL;
-
 	return (fd);
 }
 
@@ -113,14 +110,13 @@ linux_configure_tundev(struct ifreq *ifr)
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
 
-	sanctum_inet_addr(&ifr->ifr_addr, sanctum->tun_ip);
+	memcpy(&ifr->ifr_addr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
 	if (ioctl(fd, SIOCSIFADDR, ifr) == -1)
 		fatal("ioctl(SIOCSIFADDR): %s", errno_s);
 	if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
 		fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
 
-	sanctum_inet_mask(&ifr->ifr_addr, sanctum->tun_mask);
-
+	memcpy(&ifr->ifr_addr, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
 	if (ioctl(fd, SIOCSIFNETMASK, ifr) == -1)
 		fatal("ioctl(SIOCSIFNETMASK): %s", errno_s);
 
