@@ -105,10 +105,7 @@ sanctum_platform_tundev_create(void)
 	darwin_route_add(ifname);
 
 	free(sanctum->tun_ip);
-	free(sanctum->tun_mask);
-
 	sanctum->tun_ip = NULL;
-	sanctum->tun_mask = NULL;
 
 	return (fd);
 }
@@ -198,7 +195,7 @@ darwin_configure_tundev(const char *dev)
 		fatal("socket: %s", errno_s);
 
 	sanctum_inet_addr(&ifra.ifra_addr, sanctum->tun_ip);
-	sanctum_inet_addr(&ifra.ifra_mask, sanctum->tun_mask);
+	sanctum_inet_mask(&ifra.ifra_mask, sanctum->tun_mask);
 	sanctum_inet_addr(&ifra.ifra_broadaddr, sanctum->tun_ip);
 
 	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
@@ -237,7 +234,7 @@ darwin_route_add(const char *dev)
 
 	sanctum_inet_addr(&gw, sanctum->tun_ip);
 	sanctum_inet_addr(&dst, sanctum->tun_ip);
-	sanctum_inet_addr(&mask, sanctum->tun_mask);
+	sanctum_inet_mask(&mask, sanctum->tun_mask);
 
 	dst.sin_addr.s_addr &= mask.sin_addr.s_addr;
 

@@ -226,12 +226,28 @@ static void
 config_parse_tunnel(char *opt)
 {
 	u_int16_t	mtu;
-	char		ip[INET_ADDRSTRLEN], mask[INET_ADDRSTRLEN];
+	u_int8_t	mask;
+	char		*ep, *p, ip[INET_ADDRSTRLEN + 3];
 
 	PRECOND(opt != NULL);
 
-	if (sscanf(opt, "%15s %15s %hu", ip, mask, &mtu) != 3)
-		fatal("tunnel <ip> <netmask> <mtu>");
+	if (sscanf(opt, "%18s %hu", ip, &mtu) != 2)
+		fatal("tunnel <ip/mask> <mtu>");
+
+	if ((p = strchr(ip, '/')) == NULL)
+		fatal("tunnel ip is missing a netmask");
+
+	*(p)++ = '\0';
+	if (*p == '\0')
+		fatal("tunnel ip is missing a netmask");
+
+	errno = 0;
+	mask = strtol(p, &ep, 10);
+	if (errno != 0 || p == ep || *ep != '\0')
+		fatal("tunnel netmask '%s' is invalid", p);
+
+	if (mask > 32)
+		fatal("netmask (%u) invalid", mask);
 
 	if (mtu > 1500 || mtu < 576)
 		fatal("mtu (%u) invalid", mtu);
@@ -239,10 +255,8 @@ config_parse_tunnel(char *opt)
 	if ((sanctum->tun_ip = strdup(ip)) == NULL)
 		fatal("strdup: %s", errno_s);
 
-	if ((sanctum->tun_mask = strdup(mask)) == NULL)
-		fatal("strdup: %s", errno_s);
-
 	sanctum->tun_mtu = mtu;
+	sanctum->tun_mask = mask;
 }
 
 static void

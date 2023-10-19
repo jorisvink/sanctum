@@ -337,3 +337,25 @@ sanctum_inet_addr(void *saddr, const char *ip)
 	if (inet_pton(AF_INET, ip, &sin->sin_addr) == -1)
 		fatal("'%s' not a valid IPv4 address", ip);
 }
+
+/*
+ * Helper that takes a netmask in cidr form and stuff it into a sockaddr_in.
+ */
+void
+sanctum_inet_mask(void *saddr, u_int32_t mask)
+{
+	struct sockaddr_in	*sin;
+
+	PRECOND(saddr != NULL);
+	PRECOND(mask <= 32);
+
+	sin = saddr;
+	memset(sin, 0, sizeof(*sin));
+
+#if !defined(__linux__)
+	sin->sin_len = sizeof(*sin);
+#endif
+
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = htonl(0xffffffff << (32 - mask));
+}

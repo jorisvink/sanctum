@@ -341,9 +341,9 @@ struct sanctum_state {
 	volatile u_int16_t	peer_port;
 
 	/* The tunnel configuration. */
-	u_int16_t		tun_mtu;
 	char			*tun_ip;
-	char			*tun_mask;
+	u_int16_t		tun_mtu;
+	u_int8_t		tun_mask;
 
 	/* The path to the secret, for chapel. */
 	char			*secret;
@@ -437,6 +437,7 @@ void	sanctum_logv(int, const char *, va_list);
 void	sanctum_shm_detach(void *);
 void	sanctum_mem_zero(void *, size_t);
 void	*sanctum_alloc_shared(size_t, int *);
+void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
 int	sanctum_unix_socket(struct sanctum_sun *);
