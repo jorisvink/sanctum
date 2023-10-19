@@ -100,7 +100,7 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 }
 
 /* Configure the tunnel device. */
-void
+static void
 linux_configure_tundev(struct ifreq *ifr)
 {
 	int		fd;
