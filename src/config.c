@@ -41,6 +41,7 @@ static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_route(char *);
 static void	config_parse_runas(char *);
+static void	config_parse_accept(char *);
 static void	config_parse_chapel(char *);
 static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
@@ -64,6 +65,7 @@ static const struct {
 	{ "local",		config_parse_local },
 	{ "route",		config_parse_route },
 	{ "run",		config_parse_runas },
+	{ "accept",		config_parse_accept },
 	{ "chapel",		config_parse_chapel },
 	{ "tunnel",		config_parse_tunnel },
 	{ "secret",		config_parse_secret },
@@ -86,6 +88,7 @@ static const struct {
 };
 
 static LIST_HEAD(, route)	routes;
+static LIST_HEAD(, route)	routable;
 
 void
 sanctum_config_init(void)
@@ -93,6 +96,7 @@ sanctum_config_init(void)
 	PRECOND(sanctum != NULL);
 
 	LIST_INIT(&routes);
+	LIST_INIT(&routable);
 
 	config_unix_set(&sanctum->chapel, "/tmp/sanctum-chapel", "root");
 	config_unix_set(&sanctum->control, "/tmp/sanctum-control", "root");
@@ -153,6 +157,19 @@ sanctum_config_routes(void)
 		sanctum_platform_tundev_route(&rt->net, &rt->mask);
 		free(rt);
 	}
+}
+
+int
+sanctum_config_routable(in_addr_t ip)
+{
+	struct route	*rt;
+
+	LIST_FOREACH(rt, &routable, list) {
+		if ((ip & rt->mask.sin_addr.s_addr) == rt->net.sin_addr.s_addr)
+			return (0);
+	}
+
+	return (-1);
 }
 
 static char *
@@ -281,6 +298,23 @@ config_parse_route(char *opt)
 	config_parse_ip_mask(opt, &rt->net, &rt->mask);
 
 	LIST_INSERT_HEAD(&routes, rt, list);
+}
+
+static void
+config_parse_accept(char *opt)
+{
+	struct route		*rt;
+
+	PRECOND(opt != NULL);
+
+	if ((rt = calloc(1, sizeof(*rt))) == NULL)
+		fatal("calloc");
+
+	config_parse_ip_mask(opt, &rt->net, &rt->mask);
+
+	rt->net.sin_addr.s_addr &= rt->mask.sin_addr.s_addr;
+
+	LIST_INSERT_HEAD(&routable, rt, list);
 }
 
 static void

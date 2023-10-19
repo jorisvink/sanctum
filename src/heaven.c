@@ -17,6 +17,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include <netinet/ip.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -29,6 +31,7 @@
 
 static void	heaven_drop_access(void);
 static int	heaven_recv_packets(int);
+static int	heaven_is_sinner(struct sanctum_packet *);
 static void	heaven_send_packet(int, struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
@@ -137,6 +140,11 @@ heaven_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN);
 
+	if (heaven_is_sinner(pkt) == -1) {
+		sanctum_packet_release(pkt);
+		return;
+	}
+
 	for (;;) {
 		if ((ret = sanctum_platform_tundev_write(fd, pkt)) == -1) {
 			if (errno == EINTR)
@@ -206,4 +214,48 @@ heaven_recv_packets(int fd)
 	}
 
 	return (idx == PACKETS_PER_EVENT);
+}
+
+/*
+ * Check if the packet we are about to send on the heaven interface
+ * actually is traffic we expect.
+ */
+static int
+heaven_is_sinner(struct sanctum_packet *pkt)
+{
+	struct ip	*ip;
+	in_addr_t	net, mask;
+
+	PRECOND(pkt != NULL);
+	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN);
+
+	if (pkt->length < sizeof(*ip))
+		return (-1);
+
+	ip = sanctum_packet_data(pkt);
+
+	if (ip->ip_v != IPVERSION)
+		return (-1);
+
+	switch (ip->ip_p) {
+	case IPPROTO_TCP:
+	case IPPROTO_UDP:
+	case IPPROTO_ICMP:
+		break;
+	default:
+		return (-1);
+	}
+
+	mask = sanctum->tun_mask.sin_addr.s_addr;
+	net = sanctum->tun_ip.sin_addr.s_addr & mask;
+
+	if ((ip->ip_src.s_addr & mask) != net)
+		return (-1);
+
+	if ((ip->ip_dst.s_addr & mask) != net) {
+		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1)
+			return (-1);
+	}
+
+	return (0);
 }

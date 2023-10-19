@@ -383,6 +383,7 @@ extern struct sanctum_state	*sanctum;
 void	sanctum_config_init(void);
 void	sanctum_config_routes(void);
 void	sanctum_config_load(const char *);
+int	sanctum_config_routable(in_addr_t);
 
 /* src/sanctum.c */
 void	sanctum_signal_trap(int);
