@@ -250,8 +250,10 @@ heaven_is_sinner(struct sanctum_packet *pkt)
 	mask = sanctum->tun_mask.sin_addr.s_addr;
 	net = sanctum->tun_ip.sin_addr.s_addr & mask;
 
-	if ((ip->ip_src.s_addr & mask) != net)
-		return (-1);
+	if ((ip->ip_src.s_addr & mask) != net) {
+		if (sanctum_config_routable(ip->ip_src.s_addr) == -1)
+			return (-1);
+	}
 
 	if ((ip->ip_dst.s_addr & mask) != net) {
 		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1)
