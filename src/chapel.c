@@ -62,7 +62,6 @@ static void	chapel_erase(struct sanctum_key *, u_int32_t);
 static void	chapel_install(struct sanctum_key *,
 		    u_int32_t, u_int32_t, void *, size_t);
 
-
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 

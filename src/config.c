@@ -37,6 +37,7 @@ struct route {
 	LIST_ENTRY(route)	list;
 };
 
+static void	config_parse_mode(char *);
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_route(char *);
@@ -61,6 +62,7 @@ static const struct {
 	const char		*option;
 	void			(*cb)(char *);
 } keywords[] = {
+	{ "mode",		config_parse_mode },
 	{ "peer",		config_parse_peer },
 	{ "local",		config_parse_local },
 	{ "route",		config_parse_route },
@@ -84,6 +86,8 @@ static const struct {
 	{ "bless",		SANCTUM_PROC_BLESS },
 	{ "confess",		SANCTUM_PROC_CONFESS },
 	{ "control",		SANCTUM_PROC_CONTROL },
+	{ "pilgrim",		SANCTUM_PROC_PILGRIM },
+	{ "shrine",		SANCTUM_PROC_SHRINE },
 	{ NULL,			0 },
 };
 
@@ -200,6 +204,22 @@ config_read_line(FILE *fp, char *in, size_t len)
 	}
 
 	return (p);
+}
+
+static void
+config_parse_mode(char *mode)
+{
+	PRECOND(mode != NULL);
+
+	if (!strcmp(mode, "tunnel") || !strcmp(mode, "default")) {
+		sanctum->mode = SANCTUM_MODE_TUNNEL;
+	} else if (!strcmp(mode, "pilgrim")) {
+		sanctum->mode = SANCTUM_MODE_PILGRIM;
+	} else if (!strcmp(mode, "shrine")) {
+		sanctum->mode = SANCTUM_MODE_SHRINE;
+	} else {
+		fatal("unknown mode '%s'", mode);
+	}
 }
 
 static void

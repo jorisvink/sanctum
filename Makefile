@@ -26,8 +26,10 @@ SRC=	src/sanctum.c \
 	src/proc.c \
 	src/packet.c \
 	src/pool.c \
+	src/pilgrim.c \
 	src/purgatory.c \
 	src/ring.c \
+	src/shrine.c \
 	src/utils.c
 
 ifeq ("$(SANITIZE)", "1")

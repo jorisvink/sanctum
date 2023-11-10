@@ -38,7 +38,9 @@ static const char *proctab[] = {
 	"bless",
 	"confess",
 	"chapel",
-	"status"
+	"status",
+	"pilgrim",
+	"shrine",
 };
 
 /* Points to the process its own sanctum_proc, or NULL or parent. */
@@ -101,9 +103,22 @@ sanctum_proc_start(void)
 
 	sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
 	sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_heaven, &io);
-	sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_chapel, &io);
 	sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
 	sanctum_proc_create(SANCTUM_PROC_PURGATORY, sanctum_purgatory, &io);
+
+	switch (sanctum->mode) {
+	case SANCTUM_MODE_TUNNEL:
+		sanctum_proc_create(SANCTUM_PROC_CHAPEL, sanctum_chapel, &io);
+		break;
+	case SANCTUM_MODE_PILGRIM:
+		sanctum_proc_create(SANCTUM_PROC_PILGRIM, sanctum_pilgrim, &io);
+		break;
+	case SANCTUM_MODE_SHRINE:
+		sanctum_proc_create(SANCTUM_PROC_SHRINE, sanctum_shrine, &io);
+		break;
+	default:
+		fatal("unknown mode %u", sanctum->mode);
+	}
 
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
@@ -131,7 +146,10 @@ sanctum_proc_create(u_int16_t type,
 	    type == SANCTUM_PROC_BLESS ||
 	    type == SANCTUM_PROC_CONFESS ||
 	    type == SANCTUM_PROC_CHAPEL ||
-	    type == SANCTUM_PROC_CONTROL);
+	    type == SANCTUM_PROC_CONTROL ||
+	    type == SANCTUM_PROC_PILGRIM ||
+	    type == SANCTUM_PROC_SHRINE);
+
 	PRECOND(entry != NULL);
 	/* arg is optional. */
 
@@ -185,6 +203,8 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 	case SANCTUM_PROC_CONFESS:
 	case SANCTUM_PROC_CONTROL:
 	case SANCTUM_PROC_PURGATORY:
+	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_PILGRIM:
 		break;
 	default:
 		fatal("%s: unknown process type %d", __func__, proc->type);

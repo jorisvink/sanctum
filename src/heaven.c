@@ -81,11 +81,17 @@ sanctum_heaven(struct sanctum_proc *proc)
 		if (sanctum_ring_pending(io->heaven))
 			suspend = 0;
 #endif
-		pending = heaven_recv_packets(fd) == 1;
-		if (pending)
-			suspend = 0;
 
-		if (sanctum_ring_pending(io->heaven)) {
+		if (sanctum->mode != SANCTUM_MODE_SHRINE) {
+			pending = heaven_recv_packets(fd) == 1;
+			if (pending)
+				suspend = 0;
+		} else {
+			pending = 0;
+		}
+
+		if (sanctum->mode != SANCTUM_MODE_PILGRIM &&
+		    sanctum_ring_pending(io->heaven)) {
 			suspend = 0;
 			while ((pkt = sanctum_ring_dequeue(io->heaven)))
 				heaven_send_packet(fd, pkt);
@@ -140,6 +146,7 @@ heaven_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN);
+	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
 	if (heaven_is_sinner(pkt) == -1) {
 		sanctum_packet_release(pkt);
@@ -178,6 +185,7 @@ heaven_recv_packets(int fd)
 	struct sanctum_packet		*pkt;
 
 	PRECOND(fd >= 0);
+	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
 
 	for (idx = 0; idx < PACKETS_PER_EVENT; idx++) {
 		if ((pkt = sanctum_packet_get()) == NULL)

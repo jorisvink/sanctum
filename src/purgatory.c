@@ -86,14 +86,21 @@ sanctum_purgatory(struct sanctum_proc *proc)
 		if (sanctum_ring_pending(io->purgatory))
 			suspend = 0;
 #endif
-		pending = purgatory_recv_packets() == 1;
-		if (pending)
-			suspend = 0;
+		if (sanctum->mode != SANCTUM_MODE_PILGRIM) {
+			pending = purgatory_recv_packets() == 1;
+			if (pending)
+				suspend = 0;
+		} else {
+			pending = 0;
+		}
 
-		if ((pkt = sanctum_ring_dequeue(io->offer)))
-			purgatory_send_packet(pkt);
+		if (sanctum->mode != SANCTUM_MODE_SHRINE) {
+			if ((pkt = sanctum_ring_dequeue(io->offer)))
+				purgatory_send_packet(pkt);
+		}
 
-		if (sanctum_ring_pending(io->purgatory)) {
+		if (sanctum->mode != SANCTUM_MODE_SHRINE &&
+		    sanctum_ring_pending(io->purgatory)) {
 			suspend = 0;
 			while ((pkt = sanctum_ring_dequeue(io->purgatory)))
 				purgatory_send_packet(pkt);
@@ -181,6 +188,7 @@ purgatory_send_packet(struct sanctum_packet *pkt)
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_PURGATORY);
+	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
 
 	peer.sin_family = AF_INET;
 	peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
@@ -239,6 +247,8 @@ purgatory_recv_packets(void)
 	struct sanctum_packet	*pkt;
 	u_int8_t		*data;
 	socklen_t		socklen;
+
+	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
 	for (idx = 0; idx < PACKETS_PER_EVENT; idx++) {
 		if ((pkt = sanctum_packet_get()) == NULL)

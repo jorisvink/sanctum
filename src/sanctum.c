@@ -70,6 +70,8 @@ main(int argc, char *argv[])
 		usage();
 
 	sanctum = sanctum_alloc_shared(sizeof(*sanctum), NULL);
+	sanctum->mode = SANCTUM_MODE_TUNNEL;
+
 	if (foreground == 0)
 		sanctum->flags |= SANCTUM_FLAG_DAEMONIZED;
 

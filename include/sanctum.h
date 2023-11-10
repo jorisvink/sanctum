@@ -135,7 +135,9 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_CONFESS		4
 #define SANCTUM_PROC_CHAPEL		5
 #define SANCTUM_PROC_CONTROL		6
-#define SANCTUM_PROC_MAX		7
+#define SANCTUM_PROC_PILGRIM		7
+#define SANCTUM_PROC_SHRINE		8
+#define SANCTUM_PROC_MAX		9
 
 /* The magic for a key offer packet (SACRISTY). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x5341435249535459
@@ -323,9 +325,23 @@ struct sanctum_sun {
 #define SANCTUM_FLAG_PEER_AUTO		(1 << 1)
 
 /*
+ * The modes in which sanctum can run.
+ *
+ * tunnel - Sanctum will be able to send and receive encrypted data (default).
+ * pilgrim - Sanctum will only be able to send encrypted data, not receive.
+ * shrine - Sanctum will only be able to receive encrypted data, not send.
+ */
+#define SANCTUM_MODE_TUNNEL		1
+#define SANCTUM_MODE_PILGRIM		2
+#define SANCTUM_MODE_SHRINE		3
+
+/*
  * The shared state between processes.
  */
 struct sanctum_state {
+	/* Startup mode. */
+	u_int16_t		mode;
+
 	/* Sanctum flags. */
 	u_int32_t		flags;
 
@@ -459,8 +475,10 @@ void	sanctum_platform_tundev_route(struct sockaddr_in *,
 /* Worker entry points. */
 void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_heaven(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_control(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_chapel(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_shrine(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_pilgrim(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_control(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_confess(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory(struct sanctum_proc *) __attribute__((noreturn));
 
