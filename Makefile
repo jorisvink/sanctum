@@ -3,6 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=sanctum
+VERSION=$(OBJDIR)/version.c
 
 DESTDIR?=
 PREFIX?=/usr/local
@@ -75,17 +76,37 @@ else ifeq ("$(OSNAME)", "openbsd")
 endif
 
 OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
+OBJS+=	$(OBJDIR)/version.o
 
 all: $(BIN)
 	$(MAKE) -C pontifex
 
-$(BIN): $(OBJDIR) $(OBJS)
+$(BIN): $(OBJDIR) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
+
+$(VERSION): $(OBJDIR) force
+	@if [ -d .git ]; then \
+		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
+		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
+		rm -f $(VERSION); \
+		printf "const char *sanctum_build_rev = \"%s-%s\";\n" \
+		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION); \
+	elif [ -f RELEASE ]; then \
+		printf "const char *sanctum_build_rev = \"%s\";\n" \
+		    `cat RELEASE` > $(VERSION); \
+	else \
+		echo "No version information found (no .git or RELEASE)"; \
+		exit 1; \
+	fi
+	@printf "const char *sanctum_build_date = \"%s\";\n" \
+	    `date +"%Y-%m-%d"` >> $(VERSION);
 
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 	$(MAKE) -C pontifex install
+
+src/sanctum.c: $(VERSION)
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
@@ -94,5 +115,8 @@ $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
+	rm -f $(VERSION)
 	$(MAKE) -C pontifex clean
 	rm -rf $(OBJDIR) $(BIN)
+
+.PHONY: all clean force

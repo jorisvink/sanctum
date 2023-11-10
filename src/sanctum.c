@@ -26,11 +26,22 @@
 #include "sanctum.h"
 
 static void	signal_hdlr(int);
+
 static void	usage(void) __attribute__((noreturn));
+static void	version(void) __attribute__((noreturn));
 
 static int			early = 1;
 volatile sig_atomic_t		sig_recv = -1;
 struct sanctum_state		*sanctum = NULL;
+
+static void
+version(void)
+{
+	fprintf(stderr, "sanctum %s (%s)\n",
+	    sanctum_build_rev, sanctum_build_date);
+
+	exit(1);
+}
 
 static void
 usage(void)
@@ -40,6 +51,9 @@ usage(void)
 	fprintf(stderr, "options:\n");
 	fprintf(stderr, "  -c  The configuration file.\n");
 	fprintf(stderr, "  -d  Daemonize the parent process.\n");
+	fprintf(stderr, "  -h  This amazing help text.\n");
+	fprintf(stderr, "  -v  Display version information.\n");
+
 	exit(1);
 }
 
@@ -53,13 +67,16 @@ main(int argc, char *argv[])
 	config = NULL;
 	foreground = 1;
 
-	while ((ch = getopt(argc, argv, "c:d")) != -1) {
+	while ((ch = getopt(argc, argv, "c:dhv")) != -1) {
 		switch (ch) {
 		case 'c':
 			config = optarg;
 			break;
 		case 'd':
 			foreground = 0;
+			break;
+		case 'v':
+			version();
 			break;
 		default:
 			usage();

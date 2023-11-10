@@ -17,6 +17,10 @@
 #ifndef __H_SANCTUM_H
 #define __H_SANCTUM_H
 
+/* Sanctum version info from obj/version.c. */
+extern const char	*sanctum_build_rev;
+extern const char	*sanctum_build_date;
+
 #if defined(__APPLE__)
 #define daemon portability_is_king
 #endif
