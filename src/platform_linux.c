@@ -531,6 +531,6 @@ linux_seccomp_violation(struct sanctum_proc *proc)
 #error "platform not supported"
 #endif
 
-	sanctum_log(LOG_INFO, "heresy from by %s pid=%d, syscall=%ld",
+	sanctum_log(LOG_INFO, "heresy from %s pid=%d, syscall=%ld",
 	    proc->name, proc->pid, sysnr);
 }
