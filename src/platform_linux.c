@@ -114,7 +114,7 @@ static struct sock_filter keying_seccomp_filter[] = {
 };
 
 static struct sock_filter control_seccomp_filter[] = {
-#if defined(SYS_POLL)
+#if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
 #endif
 	KORE_SYSCALL_ALLOW(ppoll),
