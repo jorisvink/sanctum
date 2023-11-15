@@ -46,6 +46,14 @@ struct rtmsg {
 void	darwin_configure_tundev(const char *);
 
 /*
+ * Setup the required platform bits and bobs.
+ */
+void
+sanctum_platform_init(void)
+{
+}
+
+/*
  * MacOS tunnel interface creation.
  * Attempts to create a tunnel device, anywhere from utun99 until utun104.
  */

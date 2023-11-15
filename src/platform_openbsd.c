@@ -40,6 +40,14 @@ struct rtmsg {
 static void	openbsd_configure_tundev(const char *);
 
 /*
+ * Setup the required platform bits and bobs.
+ */
+void
+sanctum_platform_init(void)
+{
+}
+
+/*
  * OpenBSD tunnel device creation.
  * We attempt to open one of the defined tunnel interfaces under /dev.
  */
