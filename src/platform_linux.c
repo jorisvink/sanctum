@@ -86,6 +86,7 @@ static struct sock_filter filter_epilogue[] = {
 };
 
 static struct sock_filter common_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(getpid),
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
@@ -117,9 +118,14 @@ static struct sock_filter control_seccomp_filter[] = {
 #if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
 #endif
+	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(ppoll),
+	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
+	KORE_SYSCALL_ALLOW(newfstatat),
 };
 
 /* If we are doing seccomp tracing (set via SANCTUM_SECCOMP_TRACE). */
@@ -525,6 +531,6 @@ linux_seccomp_violation(struct sanctum_proc *proc)
 #error "platform not supported"
 #endif
 
-	sanctum_log(LOG_INFO, "seccomp violation, %s pid=%d, syscall=%ld",
+	sanctum_log(LOG_INFO, "heresy from by %s pid=%d, syscall=%ld",
 	    proc->name, proc->pid, sysnr);
 }
