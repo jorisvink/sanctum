@@ -16,6 +16,10 @@
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
+#include <sys/ptrace.h>
+#include <sys/user.h>
+#include <sys/wait.h>
 
 #include <arpa/inet.h>
 
@@ -24,16 +28,103 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
+#include <linux/audit.h>
+#include <linux/filter.h>
+#include <linux/ptrace.h>
+#include <linux/seccomp.h>
+
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include "sanctum.h"
+#include "seccomp.h"
 
 static void	linux_configure_tundev(struct ifreq *);
+static void	linux_seccomp_violation(struct sanctum_proc *);
 static void	linux_rt_sin(struct nlmsghdr *, void *, u_int16_t,
 		    struct sockaddr_in *);
+
+/* XXX */
+#define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_X86_64
+#define SECCOMP_KILL_POLICY		SECCOMP_RET_LOG
+
+/*
+ * The seccomp bpf program its prologue.
+ *
+ * Verifies that the running architecture matches the one we're built for
+ * and preps the system call number to be verified.
+ */
+static struct sock_filter filter_prologue[] = {
+	KORE_BPF_LOAD(arch, 0),
+	KORE_BPF_CMP(SECCOMP_AUDIT_ARCH, 1, 0),
+	KORE_BPF_RET(SECCOMP_RET_KILL),
+	KORE_BPF_LOAD(nr, 0),
+};
+
+/*
+ * The seccomp bpf program its epilogue.
+ *
+ * This applies the selected seccomp policy if none of the system
+ * calls matched the filters.
+ */
+static struct sock_filter filter_epilogue[] = {
+	BPF_STMT(BPF_RET+BPF_K, SECCOMP_KILL_POLICY)
+};
+
+KORE_SECCOMP_FILTER(common_seccomp_filter,
+	KORE_SYSCALL_ALLOW(exit_group),
+	KORE_SYSCALL_ALLOW(rt_sigreturn),
+	KORE_SYSCALL_ALLOW(clock_nanosleep),
+	KORE_SYSCALL_ALLOW(restart_syscall),
+	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
+);
+
+KORE_SECCOMP_FILTER(heaven_seccomp_filter,
+	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(write),
+);
+
+KORE_SECCOMP_FILTER(purgatory_seccomp_filter,
+	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(sendto),
+	KORE_SYSCALL_ALLOW(recvfrom),
+);
+
+KORE_SECCOMP_FILTER(keying_seccomp_filter,
+	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(openat),
+	KORE_SYSCALL_ALLOW(getrandom),
+	KORE_SYSCALL_ALLOW(newfstatat),
+);
+
+KORE_SECCOMP_FILTER(control_seccomp_filter,
+	KORE_SYSCALL_ALLOW(poll),
+	KORE_SYSCALL_ALLOW(sendto),
+	KORE_SYSCALL_ALLOW(recvfrom),
+);
+
+/* If we are doing seccomp tracing (set via SANCTUM_SECCOMP_TRACE). */
+static int		seccomp_tracing = 0;
+
+/*
+ * Setup the required platform bits and bobs.
+ */
+void
+sanctum_platform_init(void)
+{
+	const char	*ptr;
+
+	if ((ptr = getenv("SANCTUM_SECCOMP_TRACE")) != NULL) {
+		if (!strcmp(ptr, "1"))
+			seccomp_tracing = 1;
+	}
+}
 
 /*
  * Linux tunnel device creation. The sanctum.clr device is created and a
@@ -75,7 +166,9 @@ sanctum_platform_tundev_create(void)
 	return (fd);
 }
 
-/* Read a single packet from the tunnel device. */
+/*
+ * Read a single packet from the tunnel device and return it to the caller.
+ */
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 {
@@ -89,7 +182,9 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	return (read(fd, data, SANCTUM_PACKET_DATA_LEN));
 }
 
-/* Write a single packet to the tunnel device. */
+/*
+ * Write the given packet into the tunnel device.
+ */
 ssize_t
 sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 {
@@ -103,7 +198,162 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	return (write(fd, data, pkt->length));
 }
 
-/* Adds a new route via our tunnel device. */
+/*
+ * Apply sandboxing rules according to the current process.
+ *
+ * We create a seccomp filter from our prologue, our base filter,
+ * the proc filter and epilogue that is then loaded.
+ */
+void
+sanctum_platform_sandbox(struct sanctum_proc *proc)
+{
+	struct sock_filter		*sf;
+	struct sock_fprog		prog, pf;
+	size_t				len, idx, off;
+
+	PRECOND(proc != NULL);
+
+	/*
+	 * If we are going to be doing seccomp tracing, do the ptrace()
+	 * dance now so our parent can get cracking.
+	 */
+	if (seccomp_tracing) {
+		filter_epilogue[0].k = SECCOMP_RET_TRACE;
+		if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1)
+			fatal("ptrace: %s", errno_s);
+		if (kill(proc->pid, SIGSTOP) == -1)
+			fatal("kill: %s", errno_s);
+	}
+
+	len = KORE_FILTER_LEN(filter_prologue);
+
+	switch (proc->type) {
+	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_CONFESS:
+		/* Only uses the common filter with the bare minimum. */
+		pf.len = 0;
+		pf.filter = NULL;
+		break;
+	case SANCTUM_PROC_CHAPEL:
+	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_PILGRIM:
+		pf.filter = keying_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(keying_seccomp_filter);
+		break;
+	case SANCTUM_PROC_HEAVEN:
+		pf.filter = heaven_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(heaven_seccomp_filter);
+		break;
+	case SANCTUM_PROC_CONTROL:
+		pf.filter = control_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(control_seccomp_filter);
+		break;
+	case SANCTUM_PROC_PURGATORY:
+		pf.filter = purgatory_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(purgatory_seccomp_filter);
+		break;
+	default:
+		fatal("%s: unknown process type %d", __func__, proc->type);
+	}
+
+	len += KORE_FILTER_LEN(common_seccomp_filter);
+	len += pf.len;
+	len += KORE_FILTER_LEN(filter_epilogue);
+
+	if ((sf = calloc(len, sizeof(*sf))) == NULL)
+		fatal("calloc(%zu): %s", len, errno_s);
+
+	off = 0;
+
+	for (idx = 0; idx < KORE_FILTER_LEN(filter_prologue); idx++)
+		sf[off++] = filter_prologue[idx];
+
+	for (idx = 0; idx < KORE_FILTER_LEN(common_seccomp_filter); idx++)
+		sf[off++] = common_seccomp_filter[idx];
+
+	if (pf.len > 0) {
+		for (idx = 0; idx < pf.len; idx++)
+			sf[off++] = pf.filter[idx];
+	}
+
+	for (idx = 0; idx < KORE_FILTER_LEN(filter_epilogue); idx++)
+		sf[off++] = filter_epilogue[idx];
+
+	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+		fatal("prctl(privs): %s", errno_s);
+
+	prog.len = len;
+	prog.filter = sf;
+
+	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+		fatal("prctl(seccomp): %s", errno_s);
+}
+
+/*
+ * Wait for the process to signal us and let us send a SIGCONT to it.
+ */
+void
+sanctum_linux_trace_start(struct sanctum_proc *proc)
+{
+	int		status;
+
+	PRECOND(proc != NULL);
+
+	if (seccomp_tracing == 0)
+		return;
+
+	if (waitpid(proc->pid, &status, 0) > 0)
+		sanctum_linux_seccomp(proc, status);
+}
+
+/*
+ * Check the status for a process after we got a SIGCHLD for it
+ * and attempt to figure out if it triggered a seccomp violation.
+ *
+ * If it did, we will log it.
+ */
+int
+sanctum_linux_seccomp(struct sanctum_proc *proc, int status)
+{
+	int	evt;
+
+	PRECOND(proc != NULL);
+
+	if (seccomp_tracing == 0)
+		return (-1);
+
+	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP) {
+		if (ptrace(PTRACE_SETOPTIONS, proc->pid, NULL,
+		    PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE |
+		    PTRACE_O_TRACEFORK) == -1)
+			fatal("ptrace: %s", errno_s);
+		if (ptrace(PTRACE_CONT, proc->pid, NULL, NULL) == -1)
+			fatal("ptrace: %s", errno_s);
+		return (0);
+	}
+
+	if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP) {
+		evt = status >> 8;
+		if (evt == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8)))
+			linux_seccomp_violation(proc);
+		if (ptrace(PTRACE_CONT, proc->pid, NULL, NULL) == -1)
+			fatal("ptrace: %s", errno_s);
+		return (0);
+	}
+
+	if (WIFSTOPPED(status) && WSTOPSIG(status) != SIGINT) {
+		if (ptrace(PTRACE_CONT, proc->pid, NULL,
+		    WSTOPSIG(status)) == -1)
+			fatal("ptrace: %s", errno_s);
+		return (0);
+	}
+
+	return (-1);
+}
+
+/*
+ * Adds a new route via our tunnel device.
+ */
 void
 sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 {
@@ -225,4 +475,41 @@ linux_configure_tundev(struct ifreq *ifr)
 		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
 
 	(void)close(fd);
+}
+
+/*
+ * Log a seccomp violation, used when SANCTUM_SECCOMP_TRACE is enabled
+ * and a worker triggers a seccomp violation.
+ */
+static void
+linux_seccomp_violation(struct sanctum_proc *proc)
+{
+	struct iovec			iov;
+#if defined(__arm__)
+	struct pt_regs			regs;
+#else
+	struct user_regs_struct		regs;
+#endif
+	long				sysnr;
+
+	PRECOND(proc != NULL);
+
+	iov.iov_base = &regs;
+	iov.iov_len = sizeof(regs);
+
+	if (ptrace(PTRACE_GETREGSET, proc->pid, 1, &iov) == -1)
+		fatal("ptrace: %s", errno_s);
+
+#if SECCOMP_AUDIT_ARCH == AUDIT_ARCH_X86_64
+	sysnr = regs.orig_rax;
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_AARCH64
+	sysnr = regs.regs[8];
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_ARM
+	sysnr = regs.uregs[7];
+#else
+#error "platform not supported"
+#endif
+
+	sanctum_log(LOG_INFO, "seccomp violation, %s pid=%d, syscall=%ld",
+	    proc->name, proc->pid, sysnr);
 }

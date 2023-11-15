@@ -187,6 +187,15 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 	(void)close(s);
 }
 
+/* Sandboxing code (NYI). */
+void
+sanctum_platform_sandbox(struct sanctum_proc *proc)
+{
+	PRECOND(proc != NULL);
+
+	/* TODO */
+}
+
 /* Configure the tunnel device. */
 static void
 openbsd_configure_tundev(const char *dev)

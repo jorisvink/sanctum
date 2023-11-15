@@ -47,7 +47,9 @@ sanctum_control(struct sanctum_proc *proc)
 	pfd.fd = sanctum_unix_socket(&sanctum->control);
 
 	running = 1;
+
 	sanctum_proc_privsep(proc);
+	sanctum_platform_sandbox(proc);
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {

@@ -413,7 +413,7 @@ void	fatal(const char *, ...) __attribute__((format (printf, 1, 2)))
 	    __attribute__((noreturn));
 
 /* src/proc. */
-void	sanctum_proc_reap(void);
+int	sanctum_proc_reap(void);
 void	sanctum_proc_start(void);
 void	sanctum_proc_killall(int);
 void	sanctum_proc_init(char **);
@@ -470,11 +470,18 @@ int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
 
 /* platform bits. */
+void	sanctum_platform_init(void);
 int	sanctum_platform_tundev_create(void);
+void	sanctum_platform_sandbox(struct sanctum_proc *);
 ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);
 ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
 void	sanctum_platform_tundev_route(struct sockaddr_in *,
 	    struct sockaddr_in *);
+
+#if defined(__linux__)
+void	sanctum_linux_trace_start(struct sanctum_proc *);
+int	sanctum_linux_seccomp(struct sanctum_proc *, int);
+#endif
 
 /* Worker entry points. */
 void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));

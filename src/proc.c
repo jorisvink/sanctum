@@ -38,7 +38,7 @@ static const char *proctab[] = {
 	"bless",
 	"confess",
 	"chapel",
-	"status",
+	"control",
 	"pilgrim",
 	"shrine",
 };
@@ -176,12 +176,17 @@ sanctum_proc_create(u_int16_t type,
 	if (proc->pid == 0) {
 		openlog(proc->name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
 		sanctum_proc_title(proc->name);
+		(void)sanctum_last_signal();
 
 		process = proc;
 		proc->pid = getpid(),
 		proc->entry(proc);
 		/* NOTREACHED */
 	}
+
+#if defined(__linux__)
+	sanctum_linux_trace_start(proc);
+#endif
 
 	sanctum_log(LOG_INFO, "started %s (pid=%d)", proc->name, proc->pid);
 
@@ -217,9 +222,9 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 }
 
 /*
- * Reap a single process.
+ * Reap a single process. Returns 1 if a process has exited, otherwise 0.
  */
-void
+int
 sanctum_proc_reap(void)
 {
 	pid_t			pid;
@@ -240,14 +245,20 @@ sanctum_proc_reap(void)
 
 		LIST_FOREACH(proc, &proclist, list) {
 			if (proc->pid == pid) {
+#if defined(__linux__)
+				if (sanctum_linux_seccomp(proc, status) != -1)
+					break;
+#endif
 				sanctum_log(LOG_NOTICE, "%s exited (%d)",
 				    proc->name, status);
 				LIST_REMOVE(proc, list);
 				free(proc);
-				break;
+				return (1);
 			}
 		}
 	}
+
+	return (0);
 }
 
 /*
@@ -276,7 +287,7 @@ sanctum_proc_shutdown(void)
 	sanctum_proc_killall(SIGQUIT);
 
 	while (!LIST_EMPTY(&proclist))
-		sanctum_proc_reap();
+		(void)sanctum_proc_reap();
 }
 
 /*

@@ -70,7 +70,9 @@ sanctum_purgatory(struct sanctum_proc *proc)
 
 	running = 1;
 	suspend = 0;
+
 	sanctum_proc_privsep(proc);
+	sanctum_platform_sandbox(proc);
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {

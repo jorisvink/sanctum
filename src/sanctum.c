@@ -103,6 +103,7 @@ main(int argc, char *argv[])
 	sanctum_signal_trap(SIGCHLD);
 	sanctum_signal_trap(SIGQUIT);
 
+	sanctum_platform_init();
 	sanctum_proc_init(argv);
 	sanctum_packet_init();
 	sanctum_proc_start();
@@ -118,6 +119,8 @@ main(int argc, char *argv[])
 	sanctum_proc_title("guardian");
 
 	running = 1;
+	sig_recv = -1;
+
 	sanctum_log(LOG_INFO, "sanctum started (pid=%d)", getpid());
 
 	while (running) {
@@ -130,9 +133,11 @@ main(int argc, char *argv[])
 				running = 0;
 				continue;
 			case SIGCHLD:
-				running = 0;
-				sanctum_proc_reap();
-				continue;
+				if (sanctum_proc_reap()) {
+					running = 0;
+					continue;
+				}
+				break;
 			default:
 				break;
 			}
