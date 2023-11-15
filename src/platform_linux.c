@@ -48,9 +48,19 @@ static void	linux_seccomp_violation(struct sanctum_proc *);
 static void	linux_rt_sin(struct nlmsghdr *, void *, u_int16_t,
 		    struct sockaddr_in *);
 
-/* XXX */
+#if defined(__x86_64__)
 #define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_X86_64
-#define SECCOMP_KILL_POLICY		SECCOMP_RET_LOG
+#elif defined(__aarch64__)
+#define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_AARCH64
+#elif defined(__arm)
+#define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_ARM
+#elif defined(__riscv)
+#define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_RISCV64
+#else
+#error "unsupported architecture"
+#endif
+
+#define SECCOMP_KILL_POLICY		SECCOMP_RET_KILL
 
 /*
  * The seccomp bpf program its prologue.
