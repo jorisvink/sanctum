@@ -85,39 +85,42 @@ static struct sock_filter filter_epilogue[] = {
 	BPF_STMT(BPF_RET+BPF_K, SECCOMP_KILL_POLICY)
 };
 
-KORE_SECCOMP_FILTER(common_seccomp_filter,
+static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
 	KORE_SYSCALL_ALLOW(restart_syscall),
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
-);
+};
 
-KORE_SECCOMP_FILTER(heaven_seccomp_filter,
+static struct sock_filter heaven_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(write),
-);
+};
 
-KORE_SECCOMP_FILTER(purgatory_seccomp_filter,
+static struct sock_filter purgatory_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
-);
+};
 
-KORE_SECCOMP_FILTER(keying_seccomp_filter,
+static struct sock_filter keying_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(getrandom),
 	KORE_SYSCALL_ALLOW(newfstatat),
-);
+};
 
-KORE_SECCOMP_FILTER(control_seccomp_filter,
+static struct sock_filter control_seccomp_filter[] = {
+#if defined(SYS_POLL)
 	KORE_SYSCALL_ALLOW(poll),
+#endif
+	KORE_SYSCALL_ALLOW(ppoll),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
-);
+};
 
 /* If we are doing seccomp tracing (set via SANCTUM_SECCOMP_TRACE). */
 static int		seccomp_tracing = 0;
@@ -516,6 +519,8 @@ linux_seccomp_violation(struct sanctum_proc *proc)
 	sysnr = regs.regs[8];
 #elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_ARM
 	sysnr = regs.uregs[7];
+#elif SECCOMP_AUDIT_ARCH == AUDIT_ARCH_RISCV64
+	sysnr = regs.a7;
 #else
 #error "platform not supported"
 #endif

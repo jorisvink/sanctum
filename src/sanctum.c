@@ -119,8 +119,15 @@ main(int argc, char *argv[])
 	sanctum_proc_title("guardian");
 
 	running = 1;
-	sig_recv = -1;
 
+	if (sanctum_last_signal() == SIGCHLD) {
+		if (sanctum_proc_reap()) {
+			sanctum_proc_shutdown();
+			return (0);
+		}
+	}
+
+	sig_recv = -1;
 	sanctum_log(LOG_INFO, "sanctum started (pid=%d)", getpid());
 
 	while (running) {
