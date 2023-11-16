@@ -86,6 +86,7 @@ static struct sock_filter filter_epilogue[] = {
 };
 
 static struct sock_filter common_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
@@ -102,7 +103,6 @@ static struct sock_filter heaven_seccomp_filter[] = {
 
 static struct sock_filter purgatory_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(close),
-	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
 };
 
