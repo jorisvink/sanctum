@@ -44,7 +44,7 @@
 /*
  * The local cipher state.
  */
-struct cipher_aes_gcm {
+struct cipher_agelas {
 	struct nyfe_agelas	ctx;
 	u_int8_t		key[NYFE_KEY_LEN];
 };
@@ -56,7 +56,7 @@ void *
 sanctum_cipher_setup(struct sanctum_key *key)
 {
 	struct nyfe_kmac256	kdf;
-	struct cipher_aes_gcm	*cipher;
+	struct cipher_agelas	*cipher;
 
 	PRECOND(key != NULL);
 
@@ -89,7 +89,7 @@ void
 sanctum_cipher_encrypt(void *arg, const void *nonce, size_t nonce_len,
     const void *aad, size_t aad_len, struct sanctum_packet *pkt)
 {
-	struct cipher_aes_gcm	*cipher;
+	struct cipher_agelas	*cipher;
 	u_int8_t		block[136];
 	u_int8_t		*data, *tag;
 
@@ -130,7 +130,7 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
     const void *aad, size_t aad_len, struct sanctum_packet *pkt)
 {
 	size_t			ctlen;
-	struct cipher_aes_gcm	*cipher;
+	struct cipher_agelas	*cipher;
 	u_int8_t		block[136];
 	u_int8_t		*data, *tag, calc[NYFE_TAG_LEN];
 
@@ -173,7 +173,7 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
 void
 sanctum_cipher_cleanup(void *arg)
 {
-	struct cipher_aes_gcm	*cipher;
+	struct cipher_agelas	*cipher;
 
 	PRECOND(arg != NULL);
 
