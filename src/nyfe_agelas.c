@@ -63,6 +63,7 @@ sanctum_cipher_setup(struct sanctum_key *key)
 	if ((cipher = calloc(1, sizeof(*cipher))) == NULL)
 		fatal("failed to allocate cipher context");
 
+	/* XXX - not optimal. */
 	nyfe_kmac256_init(&kdf, key->key, sizeof(key->key),
 	    SANCTUM_DERIVE_LABEL, sizeof(SANCTUM_DERIVE_LABEL) - 1);
 	nyfe_kmac256_final(&kdf, cipher->key, sizeof(cipher->key));
