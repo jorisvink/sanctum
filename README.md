@@ -36,11 +36,13 @@ There are five processes that make up Sanctum:
 | chapel | The process responsible for deriving new TX/RX keys from a key.
 | heaven | The process receiving and sending packets on the inner interface.
 | purgatory | The process receiving and sending packets on the outer interface.
+| pilgrim | The process handling TX keys when running in pilgrim mode.
+| shrine | The process handling RX keys when running in shrine mode.
 
 Each process can run as its own user.
 
 Each process is sandboxed and only has access to the system calls
-required to perform its task (**syscall limitations not yet implemented**).
+required to perform its task.
 
 ## Packets
 
