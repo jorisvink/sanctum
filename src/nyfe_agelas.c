@@ -72,8 +72,8 @@ sanctum_cipher_setup(struct sanctum_key *key)
 }
 
 /*
- * Returns the overhead for AES-GCM. In this case it's the
- * 16 byte tag.
+ * Returns the overhead for This cipher. In this case it's the
+ * 32 byte tag.
  */
 size_t
 sanctum_cipher_overhead(void)
