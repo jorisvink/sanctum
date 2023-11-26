@@ -87,15 +87,15 @@ $(BIN): $(OBJDIR) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
 $(VERSION): $(OBJDIR) force
-	@if [ -d .git ]; then \
+	@if [ -f RELEASE ]; then \
+		printf "const char *sanctum_build_rev = \"%s\";\n" \
+		    `cat RELEASE` > $(VERSION); \
+	elif [ -d .git ]; then \
 		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
 		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
 		rm -f $(VERSION); \
 		printf "const char *sanctum_build_rev = \"%s-%s\";\n" \
 		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION); \
-	elif [ -f RELEASE ]; then \
-		printf "const char *sanctum_build_rev = \"%s\";\n" \
-		    `cat RELEASE` > $(VERSION); \
 	else \
 		echo "No version information found (no .git or RELEASE)"; \
 		exit 1; \
