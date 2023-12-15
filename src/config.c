@@ -37,6 +37,7 @@ struct route {
 	LIST_ENTRY(route)	list;
 };
 
+static void	config_parse_spi(char *);
 static void	config_parse_mode(char *);
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
@@ -62,6 +63,7 @@ static const struct {
 	const char		*option;
 	void			(*cb)(char *);
 } keywords[] = {
+	{ "spi",		config_parse_spi },
 	{ "mode",		config_parse_mode },
 	{ "peer",		config_parse_peer },
 	{ "local",		config_parse_local },
@@ -204,6 +206,19 @@ config_read_line(FILE *fp, char *in, size_t len)
 	}
 
 	return (p);
+}
+
+static void
+config_parse_spi(char *opt)
+{
+	u_int16_t	spi;
+
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "0x%hx", &spi) != 1)
+		fatal("spi <0xffff>");
+
+	sanctum->tun_spi = spi;
 }
 
 static void

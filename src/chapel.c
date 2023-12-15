@@ -313,6 +313,11 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
 	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
+	if (sanctum->tun_spi != 0) {
+		offer->spi = (offer->spi & 0x0000ffff) |
+		    ((u_int32_t)sanctum->tun_spi << 16);
+	}
+
 	chapel_install(io->rx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));
 

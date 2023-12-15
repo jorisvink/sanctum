@@ -364,6 +364,7 @@ struct sanctum_state {
 	struct sockaddr_in	tun_ip;
 	struct sockaddr_in	tun_mask;
 	u_int16_t		tun_mtu;
+	u_int16_t		tun_spi;
 
 	/* The path to the secret, for chapel. */
 	char			*secret;
