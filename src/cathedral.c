@@ -204,8 +204,8 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	spi = be32toh(op->hdr.spi);
 
 	/* Get path to the key for the sender. */
-	len = snprintf(secret, sizeof(secret), "%s/0x%02x.key",
-	    sanctum->secretdir, spi >> 8);
+	len = snprintf(secret, sizeof(secret), "%s/0x%x.key",
+	    sanctum->secretdir, spi);
 	if (len == -1 || (size_t)len >= sizeof(secret))
 		fatal("failed to construct path to secret");
 
@@ -231,17 +231,15 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	    op->data.timestamp > ((u_int64_t)ts.tv_sec + CATHEDRAL_REG_VALID))
 		return;
 
-	/* The spi is specified in both the header and payload. */
+	/* The tunnel is is carried in the encrypted payload. */
 	op->data.id = be64toh(op->data.id);
-	if (spi != op->data.id)
-		return;
 
 	/*
 	 * We do not accept registrations for anything that is
 	 * supposed to be federated.
 	 */
 	LIST_FOREACH(tunnel, &federations, list) {
-		if (tunnel->id == (spi >> 8))
+		if (tunnel->id == (op->data.id >> 8))
 			return;
 	}
 
@@ -249,7 +247,7 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	 * Check if the tunnel exists, if it does we update the endpoint.
 	 */
 	LIST_FOREACH(tunnel, &tunnels, list) {
-		if (tunnel->id == spi) {
+		if (tunnel->id == op->data.id) {
 			tunnel->age = now;
 			tunnel->port = pkt->addr.sin_port;
 			tunnel->ip = pkt->addr.sin_addr.s_addr;
@@ -261,8 +259,8 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
 		fatal("calloc failed");
 
-	tunnel->id = spi;
 	tunnel->age = now;
+	tunnel->id = op->data.id;
 	tunnel->port = pkt->addr.sin_port;
 	tunnel->ip = pkt->addr.sin_addr.s_addr;
 

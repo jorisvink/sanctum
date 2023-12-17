@@ -52,6 +52,8 @@ static void	config_parse_instance(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_secretdir(char *);
 static void	config_parse_federation(char *);
+static void	config_parse_cathedral_id(char *);
+static void	config_parse_cathedral_secret(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
@@ -78,6 +80,8 @@ static const struct {
 	{ "cathedral",		config_parse_cathedral },
 	{ "secretdir",		config_parse_secretdir },
 	{ "federation",		config_parse_federation },
+	{ "cathedral_id",	config_parse_cathedral_id },
+	{ "cathedral_secret",	config_parse_cathedral_secret },
 	{ NULL,			NULL },
 };
 
@@ -453,31 +457,50 @@ config_parse_instance(char *opt)
 static void
 config_parse_cathedral(char *cathedral)
 {
-	char		*secret;
-
 	PRECOND(cathedral != NULL);
 
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
-	if ((secret = strchr(cathedral, ' ')) == NULL)
-		fatal("cathedral <ip:port> </path/to/secret>");
+	peer_set++;
+	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
 
-	*(secret)++ = '\0';
+	config_parse_ip_port(cathedral, &sanctum->peer);
+	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
+	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
+}
+
+/*
+ * Parse the cathedral_id configuration option.
+ */
+static void
+config_parse_cathedral_id(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->tun_spi == 0)
+		fatal("no spi prefix has been configured");
+
+	if (sscanf(opt, "0x%08x", &sanctum->cathedral_id) != 1)
+		fatal("cathedral_id <0xff>");
+}
+
+/*
+ * Parse the cathedral_secret configuration option.
+ */
+static void
+config_parse_cathedral_secret(char *secret)
+{
+	PRECOND(secret != NULL);
+
+	if (sanctum->tun_spi == 0)
+		fatal("no spi prefix has been configured");
 
 	if (access(secret, R_OK) == -1)
 		fatal("cathedral secret at path '%s' not readable", secret);
 
 	if ((sanctum->cathedral_secret = strdup(secret)) == NULL)
 		fatal("strdup failed");
-
-	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
-
-	peer_set++;
-
-	config_parse_ip_port(cathedral, &sanctum->peer);
-	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
 }
 
 /*
