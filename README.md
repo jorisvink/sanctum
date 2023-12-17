@@ -27,7 +27,7 @@ It's fun, but it doesn't make it less of a serious project.
 
 ## Privilege separation
 
-There are five processes that make up Sanctum:
+There are several processes that make up a sanctum instance:
 
 | Process name | Description  |
 | ------------ | ------------ |
