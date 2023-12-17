@@ -41,6 +41,7 @@ static const char *proctab[] = {
 	"control",
 	"pilgrim",
 	"shrine",
+	"cathedral",
 };
 
 /* Points to the process its own sanctum_proc, or NULL or parent. */
@@ -79,7 +80,7 @@ sanctum_proc_init(char **argv)
 }
 
 /*
- * Start the clear and crypto sides.
+ * Start all processes that are required.
  *
  * We create all the shared memory queues and pass them to each process.
  * The processes themselves will remove the queues they do not need.
@@ -91,20 +92,33 @@ sanctum_proc_start(void)
 
 	sanctum_proc_create(SANCTUM_PROC_CONTROL, sanctum_control, NULL);
 
-	io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
-	io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
-
-	io.offer = sanctum_ring_alloc(16);
-	io.chapel = sanctum_ring_alloc(16);
-	io.bless = sanctum_ring_alloc(1024);
-	io.heaven = sanctum_ring_alloc(1024);
-	io.confess = sanctum_ring_alloc(1024);
 	io.purgatory = sanctum_ring_alloc(1024);
 
-	sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
-	sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_heaven, &io);
-	sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+		io.offer = sanctum_ring_alloc(16);
+		io.chapel = sanctum_ring_alloc(16);
+		io.bless = sanctum_ring_alloc(1024);
+		io.heaven = sanctum_ring_alloc(1024);
+		io.confess = sanctum_ring_alloc(1024);
+		io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
+		io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
+	} else {
+		io.tx = NULL;
+		io.rx = NULL;
+		io.offer = NULL;
+		io.bless = NULL;
+		io.heaven = NULL;
+		io.confess = NULL;
+		io.chapel = sanctum_ring_alloc(1024);
+	}
+
 	sanctum_proc_create(SANCTUM_PROC_PURGATORY, sanctum_purgatory, &io);
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+		sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
+		sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_heaven, &io);
+		sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
+	}
 
 	switch (sanctum->mode) {
 	case SANCTUM_MODE_TUNNEL:
@@ -115,6 +129,10 @@ sanctum_proc_start(void)
 		break;
 	case SANCTUM_MODE_SHRINE:
 		sanctum_proc_create(SANCTUM_PROC_SHRINE, sanctum_shrine, &io);
+		break;
+	case SANCTUM_MODE_CATHEDRAL:
+		sanctum_proc_create(SANCTUM_PROC_CATHEDRAL,
+		    sanctum_cathedral, &io);
 		break;
 	default:
 		fatal("unknown mode %u", sanctum->mode);
@@ -148,7 +166,8 @@ sanctum_proc_create(u_int16_t type,
 	    type == SANCTUM_PROC_CHAPEL ||
 	    type == SANCTUM_PROC_CONTROL ||
 	    type == SANCTUM_PROC_PILGRIM ||
-	    type == SANCTUM_PROC_SHRINE);
+	    type == SANCTUM_PROC_SHRINE ||
+	    type == SANCTUM_PROC_CATHEDRAL);
 
 	PRECOND(entry != NULL);
 	/* arg is optional. */
@@ -210,6 +229,7 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 	case SANCTUM_PROC_PURGATORY:
 	case SANCTUM_PROC_SHRINE:
 	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_CATHEDRAL:
 		break;
 	default:
 		fatal("%s: unknown process type %d", __func__, proc->type);

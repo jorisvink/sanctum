@@ -24,6 +24,7 @@
 #include <arpa/inet.h>
 
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
@@ -287,10 +288,11 @@ sanctum_alloc_shared(size_t len, int *key)
 void
 sanctum_shm_detach(void *ptr)
 {
-	PRECOND(ptr != NULL);
+	if (ptr == NULL)
+		return;
 
 	if (shmdt(ptr) == -1)
-		fatal("failed to detach from 0x%p (%s)", ptr, errno_s);
+		fatal("failed to detach from %p (%s)", ptr, errno_s);
 }
 
 /*
@@ -358,4 +360,64 @@ sanctum_inet_mask(void *saddr, u_int32_t mask)
 
 	sin->sin_family = AF_INET;
 	sin->sin_addr.s_addr = htonl(0xffffffff << (32 - mask));
+}
+
+/*
+ * Open the given path as read-only and return the fd for it, or -1.
+ */
+int
+sanctum_file_open(const char *path)
+{
+	int		fd;
+
+	if ((fd = open(path, O_RDONLY)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to open '%s': %s", path, errno_s);
+		return (-1);
+	}
+
+	return (fd);
+}
+
+/*
+ * Derive a symmetrical key from the given secret, the given seed and
+ * setup the given agelas cipher context.
+ */
+int
+sanctum_cipher_kdf(const char *path, const char *label,
+    struct nyfe_agelas *cipher, void *seed, size_t seed_len)
+{
+	int				fd;
+	struct nyfe_kmac256		kdf;
+	u_int8_t			len;
+	u_int8_t			okm[64], secret[SANCTUM_KEY_LENGTH];
+
+	PRECOND(path != NULL);
+	PRECOND(label != NULL);
+	PRECOND(cipher != NULL);
+	PRECOND(seed != NULL);
+	PRECOND(seed_len == 64);
+
+	if ((fd = sanctum_file_open(path)) == -1)
+		return (-1);
+
+	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
+		fatal("failed to read secret");
+
+	(void)close(fd);
+
+	len = 64;
+
+	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
+	sanctum_mem_zero(secret, sizeof(secret));
+
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, seed, seed_len);
+	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
+	sanctum_mem_zero(&kdf, sizeof(kdf));
+
+	nyfe_agelas_init(cipher, okm, sizeof(okm));
+	sanctum_mem_zero(&okm, sizeof(okm));
+
+	return (0);
 }

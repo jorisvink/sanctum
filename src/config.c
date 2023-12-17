@@ -24,6 +24,7 @@
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #if defined(__linux__)
 #include <bsd/stdlib.h>
@@ -44,20 +45,20 @@ static void	config_parse_local(char *);
 static void	config_parse_route(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_accept(char *);
-static void	config_parse_chapel(char *);
 static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
 static void	config_parse_instance(char *);
+static void	config_parse_cathedral(char *);
+static void	config_parse_secretdir(char *);
+static void	config_parse_federation(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
 static void	config_parse_ip_mask(char *, struct sockaddr_in *,
 		    struct sockaddr_in *);
-
 static void	config_unix_set(struct sanctum_sun *,
 		    const char *, const char *);
-static char	*config_read_line(FILE *, char *, size_t);
 
 static const struct {
 	const char		*option;
@@ -70,11 +71,13 @@ static const struct {
 	{ "route",		config_parse_route },
 	{ "run",		config_parse_runas },
 	{ "accept",		config_parse_accept },
-	{ "chapel",		config_parse_chapel },
 	{ "tunnel",		config_parse_tunnel },
 	{ "secret",		config_parse_secret },
 	{ "control",		config_parse_control },
 	{ "instance",		config_parse_instance },
+	{ "cathedral",		config_parse_cathedral },
+	{ "secretdir",		config_parse_secretdir },
+	{ "federation",		config_parse_federation },
 	{ NULL,			NULL },
 };
 
@@ -90,12 +93,20 @@ static const struct {
 	{ "control",		SANCTUM_PROC_CONTROL },
 	{ "pilgrim",		SANCTUM_PROC_PILGRIM },
 	{ "shrine",		SANCTUM_PROC_SHRINE },
+	{ "cathedral",		SANCTUM_PROC_CATHEDRAL },
 	{ NULL,			0 },
 };
 
+/* List of routes and routable networks. */
 static LIST_HEAD(, route)	routes;
 static LIST_HEAD(, route)	routable;
 
+/* The peer can only be set once, either via peer or cathedral. */
+static int	peer_set = 0;
+
+/*
+ * Setup the default configuration options.
+ */
 void
 sanctum_config_init(void)
 {
@@ -104,10 +115,12 @@ sanctum_config_init(void)
 	LIST_INIT(&routes);
 	LIST_INIT(&routable);
 
-	config_unix_set(&sanctum->chapel, "/tmp/sanctum-chapel", "root");
 	config_unix_set(&sanctum->control, "/tmp/sanctum-control", "root");
 }
 
+/*
+ * Load a configuration parsing it line by line.
+ */
 void
 sanctum_config_load(const char *file)
 {
@@ -121,7 +134,7 @@ sanctum_config_load(const char *file)
 	if ((fp = fopen(file, "r")) == NULL)
 		fatal("failed to open '%s': %s", file, errno_s);
 
-	while ((option = config_read_line(fp, buf, sizeof(buf))) != NULL) {
+	while ((option = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
 		if (strlen(option) == 0)
 			continue;
 
@@ -146,6 +159,9 @@ sanctum_config_load(const char *file)
 
 	fclose(fp);
 
+	if (peer_set > 1)
+		fatal("peer and cathedral are mutually exclusive options");
+
 	if (sanctum->peer_ip == 0)
 		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
 
@@ -153,6 +169,9 @@ sanctum_config_load(const char *file)
 		fatal("no instance name was specified in the configuation");
 }
 
+/*
+ * Route all routes from the configuration into the tunnel device.
+ */
 void
 sanctum_config_routes(void)
 {
@@ -165,6 +184,9 @@ sanctum_config_routes(void)
 	}
 }
 
+/*
+ * Check if an ip was routable based on our configuration.
+ */
 int
 sanctum_config_routable(in_addr_t ip)
 {
@@ -178,8 +200,12 @@ sanctum_config_routable(in_addr_t ip)
 	return (-1);
 }
 
-static char *
-config_read_line(FILE *fp, char *in, size_t len)
+/*
+ * Read a single line from the given FILE, stripping away comments
+ * and trimming whitespace.
+ */
+char *
+sanctum_config_read(FILE *fp, char *in, size_t len)
 {
 	char		*p, *t;
 
@@ -208,6 +234,9 @@ config_read_line(FILE *fp, char *in, size_t len)
 	return (p);
 }
 
+/*
+ * Parse the spi configuration option.
+ */
 static void
 config_parse_spi(char *opt)
 {
@@ -221,6 +250,9 @@ config_parse_spi(char *opt)
 	sanctum->tun_spi = spi;
 }
 
+/*
+ * Parse the mode configuration option.
+ */
 static void
 config_parse_mode(char *mode)
 {
@@ -232,11 +264,17 @@ config_parse_mode(char *mode)
 		sanctum->mode = SANCTUM_MODE_PILGRIM;
 	} else if (!strcmp(mode, "shrine")) {
 		sanctum->mode = SANCTUM_MODE_SHRINE;
+	} else if (!strcmp(mode, "cathedral")) {
+		sanctum->mode = SANCTUM_MODE_CATHEDRAL;
 	} else {
 		fatal("unknown mode '%s'", mode);
 	}
 }
 
+/*
+ * Parse the peer configuration option.
+ * Note that peer is mutually exclusive with the cathedral option.
+ */
 static void
 config_parse_peer(char *peer)
 {
@@ -247,12 +285,16 @@ config_parse_peer(char *peer)
 		return;
 	}
 
-	config_parse_ip_port(peer, &sanctum->peer);
+	peer_set++;
 
+	config_parse_ip_port(peer, &sanctum->peer);
 	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
 	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
 }
 
+/*
+ * Parse the local configuration option.
+ */
 static void
 config_parse_local(char *local)
 {
@@ -261,6 +303,9 @@ config_parse_local(char *local)
 	config_parse_ip_port(local, &sanctum->local);
 }
 
+/*
+ * Parse a runas configuration option.
+ */
 static void
 config_parse_runas(char *runas)
 {
@@ -293,14 +338,9 @@ config_parse_runas(char *runas)
 		fatal("strdup");
 }
 
-static void
-config_parse_chapel(char *path)
-{
-	PRECOND(path != NULL);
-
-	config_parse_unix(path, &sanctum->chapel);
-}
-
+/*
+ * Parse the tunnel configuration option.
+ */
 static void
 config_parse_tunnel(char *opt)
 {
@@ -320,6 +360,9 @@ config_parse_tunnel(char *opt)
 	config_parse_ip_mask(ip, &sanctum->tun_ip, &sanctum->tun_mask);
 }
 
+/*
+ * Parse a route configuration option.
+ */
 static void
 config_parse_route(char *opt)
 {
@@ -335,6 +378,9 @@ config_parse_route(char *opt)
 	LIST_INSERT_HEAD(&routes, rt, list);
 }
 
+/*
+ * Parse an accept configuration option.
+ */
 static void
 config_parse_accept(char *opt)
 {
@@ -352,6 +398,9 @@ config_parse_accept(char *opt)
 	LIST_INSERT_HEAD(&routable, rt, list);
 }
 
+/*
+ * Parse the control configuration option.
+ */
 static void
 config_parse_control(char *path)
 {
@@ -360,13 +409,25 @@ config_parse_control(char *path)
 	config_parse_unix(path, &sanctum->control);
 }
 
+/*
+ * Parse the secret configuration option.
+ */
 static void
 config_parse_secret(char *path)
 {
+	if (sanctum->secret != NULL)
+		fatal("secret already specified");
+
+	if (access(path, R_OK) == -1)
+		fatal("secret at path '%s' not readable", path);
+
 	if ((sanctum->secret = strdup(path)) == NULL)
 		fatal("strdup failed");
 }
 
+/*
+ * Parse the instance configuration option.
+ */
 static void
 config_parse_instance(char *opt)
 {
@@ -386,6 +447,84 @@ config_parse_instance(char *opt)
 		fatal("instance name '%s' too long", opt);
 }
 
+/*
+ * Parse the cathedral configuration option.
+ */
+static void
+config_parse_cathedral(char *cathedral)
+{
+	char		*secret;
+
+	PRECOND(cathedral != NULL);
+
+	if (sanctum->tun_spi == 0)
+		fatal("no spi prefix has been configured");
+
+	if ((secret = strchr(cathedral, ' ')) == NULL)
+		fatal("cathedral <ip:port> </path/to/secret>");
+
+	*(secret)++ = '\0';
+
+	if (access(secret, R_OK) == -1)
+		fatal("cathedral secret at path '%s' not readable", secret);
+
+	if ((sanctum->cathedral_secret = strdup(secret)) == NULL)
+		fatal("strdup failed");
+
+	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
+
+	peer_set++;
+
+	config_parse_ip_port(cathedral, &sanctum->peer);
+	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
+	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
+}
+
+/*
+ * Parse the secretdir configuration option.
+ */
+static void
+config_parse_secretdir(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+		fatal("secretdir is only for cathedral mode");
+
+	if (sanctum->secretdir != NULL)
+		fatal("secretdir already specified");
+
+	if (access(opt, R_OK | X_OK) == -1)
+		fatal("secretdir '%s' not readable", opt);
+
+	if ((sanctum->secretdir = strdup(opt)) == NULL)
+		fatal("strdup failed");
+}
+
+/*
+ * Parse the federation configuration option.
+ */
+static void
+config_parse_federation(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+		fatal("federation is only for cathedral mode");
+
+	if (sanctum->federation != NULL)
+		fatal("federation already specified");
+
+	if (access(opt, R_OK) == -1)
+		fatal("federation '%s' not readable", opt);
+
+	if ((sanctum->federation = strdup(opt)) == NULL)
+		fatal("strdup failed");
+}
+
+/*
+ * Helper function to convert a path into a sockaddr_un.
+ */
 static void
 config_parse_unix(char *path, struct sanctum_sun *sun)
 {
@@ -402,6 +541,9 @@ config_parse_unix(char *path, struct sanctum_sun *sun)
 	config_unix_set(sun, path, owner);
 }
 
+/*
+ * Helper initialize a sockaddr_un with the given path and owner.
+ */
 static void
 config_unix_set(struct sanctum_sun *sun, const char *path, const char *owner)
 {
@@ -423,6 +565,10 @@ config_unix_set(struct sanctum_sun *sun, const char *path, const char *owner)
 	sun->gid = pw->pw_gid;
 }
 
+/*
+ * Helper function to convert the given ipv4 host in the format of ip:port
+ * into a sockaddr_in.
+ */
 static void
 config_parse_ip_port(char *host, struct sockaddr_in *sin)
 {
@@ -434,6 +580,7 @@ config_parse_ip_port(char *host, struct sockaddr_in *sin)
 
 	if ((port = strchr(host, ':')) == NULL)
 		fatal("'%s': argument must be in format ip:port", host);
+
 	*(port)++ = '\0';
 
 	sanctum_inet_addr(sin, host);
@@ -445,6 +592,9 @@ config_parse_ip_port(char *host, struct sockaddr_in *sin)
 	sin->sin_port = htons(sin->sin_port);
 }
 
+/*
+ * Helper function to convert the given ipv4 host and mask into a sockaddr_in.
+ */
 static void
 config_parse_ip_mask(char *in, struct sockaddr_in *ip, struct sockaddr_in *mask)
 {

@@ -38,6 +38,7 @@ There are five processes that make up Sanctum:
 | purgatory | The process receiving and sending packets on the outer interface.
 | pilgrim | The process handling TX keys when running in pilgrim mode.
 | shrine | The process handling RX keys when running in shrine mode.
+| cathedral | The process forwarding traffic when running in cathedral mode.
 
 Each process can run as its own user.
 

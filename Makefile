@@ -19,6 +19,7 @@ CFLAGS+=-g
 
 SRC=	src/sanctum.c \
 	src/bless.c \
+	src/cathedral.c \
 	src/chapel.c \
 	src/confess.c \
 	src/config.c \

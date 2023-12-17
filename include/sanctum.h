@@ -37,6 +37,7 @@ extern const char	*sanctum_build_date;
 #include <errno.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
@@ -53,6 +54,7 @@ extern int daemon(int, int);
 #endif
 
 #include "sanctum_ctl.h"
+#include "libnyfe.h"
 
 /* A few handy macros. */
 #define errno_s		strerror(errno)
@@ -141,7 +143,8 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_CONTROL		6
 #define SANCTUM_PROC_PILGRIM		7
 #define SANCTUM_PROC_SHRINE		8
-#define SANCTUM_PROC_MAX		9
+#define SANCTUM_PROC_CATHEDRAL		9
+#define SANCTUM_PROC_MAX		10
 
 /* The magic for a key offer packet (SACRISTY). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x5341435249535459
@@ -149,8 +152,14 @@ extern int daemon(int, int);
 /* The length of the seed in a key offer packet. */
 #define SANCTUM_KEY_OFFER_SALT_LEN	64
 
+/* The magic for a registration request (KATEDRAL). */
+#define SANCTUM_CATHEDRAL_MAGIC		0x4b4154454452414c
+
+/* The KDF label. */
+#define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
+
 /*
- * Packets used when doing key offering.
+ * Packets used when doing key offering or cathedral forward registration.
  */
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -245,7 +254,7 @@ struct sanctum_ring_span {
 };
 
 struct sanctum_ring {
-	size_t				elm;
+	u_int32_t			elm;
 	u_int32_t			mask;
 	struct sanctum_ring_span	producer;
 	struct sanctum_ring_span	consumer;
@@ -328,16 +337,21 @@ struct sanctum_sun {
 /* The peer address is automatically discovered. */
 #define SANCTUM_FLAG_PEER_AUTO		(1 << 1)
 
+/* A cathedral was configured. */
+#define SANCTUM_FLAG_CATHEDRAL_ACTIVE	(1 << 2)
+
 /*
  * The modes in which sanctum can run.
  *
  * tunnel - Sanctum will be able to send and receive encrypted data (default).
  * pilgrim - Sanctum will only be able to send encrypted data, not receive.
  * shrine - Sanctum will only be able to receive encrypted data, not send.
+ * cathedral - Sanctum acts as a cathedral.
  */
 #define SANCTUM_MODE_TUNNEL		1
 #define SANCTUM_MODE_PILGRIM		2
 #define SANCTUM_MODE_SHRINE		3
+#define SANCTUM_MODE_CATHEDRAL		4
 
 /*
  * The shared state between processes.
@@ -366,14 +380,20 @@ struct sanctum_state {
 	u_int16_t		tun_mtu;
 	u_int16_t		tun_spi;
 
-	/* The path to the secret, for chapel. */
+	/* The path to the traffic secret. */
 	char			*secret;
+
+	/* The path to the cathedral secret (!cathedral mode). */
+	char			*cathedral_secret;
+
+	/* The path to the secredir directory (cathedral mode only). */
+	char			*secretdir;
+
+	/* The path to the federation config (cathedral mode only). */
+	char			*federation;
 
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
-
-	/* The chapel socket. */
-	struct sanctum_sun	chapel;
 
 	/* Should a communion take place in the Chapel? */
 	u_int8_t		communion;
@@ -427,6 +447,7 @@ void	sanctum_proc_create(u_int16_t,
 struct sanctum_proc	*sanctum_process(void);
 
 /* src/packet.c */
+
 void	sanctum_packet_init(void);
 void	sanctum_packet_release(struct sanctum_packet *);
 int	sanctum_packet_crypto_checklen(struct sanctum_packet *);
@@ -454,6 +475,7 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
+int	sanctum_file_open(const char *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
 void	sanctum_logv(int, const char *, va_list);
@@ -466,9 +488,12 @@ void	sanctum_inet_addr(void *, const char *);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 void	sanctum_peer_update(struct sanctum_packet *);
+char	*sanctum_config_read(FILE *, char *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
+int	sanctum_cipher_kdf(const char *, const char *,
+	    struct nyfe_agelas *cipher, void *, size_t);
 
 /* platform bits. */
 void	sanctum_platform_init(void);
@@ -492,6 +517,7 @@ void	sanctum_shrine(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_pilgrim(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_control(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_confess(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_cathedral(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory(struct sanctum_proc *) __attribute__((noreturn));
 
 /* The cipher goo. */
