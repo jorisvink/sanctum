@@ -1,20 +1,27 @@
-# pontifex Makefile
+# hymn Makefile
 
 CC?=cc
 OBJDIR?=obj
-BIN=pontifex
+BIN=hymn
 
 DESTDIR?=
 PREFIX?=/usr/local
 INSTALL_DIR=$(PREFIX)/bin
 
-SRC=	src/pontifex.c
+SRC=	src/hymn.c
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
 CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I../include
 CFLAGS+=-g
+
+ifeq ("$(NYFE)", "")
+$(error "No NYFE path set")
+endif
+
+CFLAGS+=-I$(NYFE)/include
+LDFLAGS+=$(NYFE)/libnyfe.a
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "linux")

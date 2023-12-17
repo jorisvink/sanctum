@@ -82,6 +82,7 @@ OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
 all: $(BIN)
+	$(MAKE) -C hymn
 	$(MAKE) -C pontifex
 
 $(BIN): $(OBJDIR) $(OBJS) $(VERSION)
@@ -107,6 +108,7 @@ $(VERSION): $(OBJDIR) force
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
+	$(MAKE) -C hymn install
 	$(MAKE) -C pontifex install
 
 src/sanctum.c: $(VERSION)
@@ -119,6 +121,7 @@ $(OBJDIR)/%.o: src/%.c
 
 clean:
 	rm -f $(VERSION)
+	$(MAKE) -C hymn clean
 	$(MAKE) -C pontifex clean
 	rm -rf $(OBJDIR) $(BIN)
 
