@@ -438,8 +438,8 @@ config_parse_instance(char *opt)
 
 	optlen = strlen(opt);
 	for (idx = 0; idx < optlen; idx++) {
-		if (!isalnum((unsigned char)opt[idx]))
-			fatal("instance name must only be alphanumerical");
+		if (!isalnum((unsigned char)opt[idx]) && opt[idx] != '-')
+			fatal("instance name is alnum and '-'");
 	}
 
 	len = snprintf(sanctum->instance, sizeof(sanctum->instance), "%s", opt);
