@@ -84,23 +84,9 @@ exchanged via the chapel sacristy key exchange.
 
 ## Building
 
-To be able to build sanctum you need libnyfe.
-
-For now this means you need to clone Nyfe and build the cryptographic
-bits and bobs from there.
-
-```
-$ git clone https://github.com/jorisvink/nyfe
-$ cd nyfe
-$ make lib
-```
-
-After you have built libnyfe, you can build sanctum.
-
 ```
 $ git clone https://github.com/jorisvink/sanctum
 $ cd sanctum
-$ export NYFE=/path/to/nyfe
 $ make
 # make install
 ```
