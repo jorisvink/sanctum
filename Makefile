@@ -3,6 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=sanctum
+LIBNYFE=nyfe/libnyfe.a
 VERSION=$(OBJDIR)/version.c
 
 DESTDIR?=
@@ -15,6 +16,7 @@ CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
 CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -Iinclude
+CFLAGS+=-Inyfe/include
 CFLAGS+=-g
 
 SRC=	src/sanctum.c \
@@ -39,12 +41,7 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
-ifeq ("$(NYFE)", "")
-$(error "No NYFE path set")
-endif
-
-CFLAGS+=-I$(NYFE)/include
-LDFLAGS+=$(NYFE)/libnyfe.a
+LDFLAGS+=$(LIBNYFE)
 
 ifeq ("$(HPERF)", "1")
 	CFLAGS+=-DSANCTUM_HIGH_PERFORMANCE=1
@@ -81,11 +78,11 @@ endif
 OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
-all: $(BIN)
+all: $(BIN) 
 	$(MAKE) -C hymn
 	$(MAKE) -C pontifex
 
-$(BIN): $(OBJDIR) $(OBJS) $(VERSION)
+$(BIN): $(OBJDIR) $(LIBNYFE) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
 $(VERSION): $(OBJDIR) force
@@ -111,6 +108,9 @@ install: $(BIN)
 	$(MAKE) -C hymn install
 	$(MAKE) -C pontifex install
 
+$(LIBNYFE):
+	$(MAKE) -C nyfe
+
 src/sanctum.c: $(VERSION)
 
 $(OBJDIR):
@@ -121,6 +121,7 @@ $(OBJDIR)/%.o: src/%.c
 
 clean:
 	rm -f $(VERSION)
+	$(MAKE) -C nyfe clean
 	$(MAKE) -C hymn clean
 	$(MAKE) -C pontifex clean
 	rm -rf $(OBJDIR) $(BIN)
