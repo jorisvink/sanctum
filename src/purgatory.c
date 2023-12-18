@@ -291,12 +291,17 @@ purgatory_recv_packets(void)
 			continue;
 		}
 
-		if (pkt->target == SANCTUM_PROC_CONFESS) {
+		switch (pkt->target) {
+		case SANCTUM_PROC_CONFESS:
 			ret = sanctum_ring_queue(io->confess, pkt);
-		} else if (pkt->target == SANCTUM_PROC_CHAPEL) {
+			break;
+		case SANCTUM_PROC_CHAPEL:
+		case SANCTUM_PROC_CATHEDRAL:
 			ret = sanctum_ring_queue(io->chapel, pkt);
-		} else {
+			break;
+		default:
 			ret = -1;
+			break;
 		}
 
 		if (ret == -1)
@@ -337,7 +342,7 @@ purgatory_packet_check(struct sanctum_packet *pkt)
 
 	/* In cathedral mode, we always kick it to the cathedral. */
 	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
-		pkt->target = SANCTUM_PROC_CHAPEL;
+		pkt->target = SANCTUM_PROC_CATHEDRAL;
 		return (0);
 	}
 
