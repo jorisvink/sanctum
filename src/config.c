@@ -26,10 +26,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#if defined(__linux__)
-#include <bsd/stdlib.h>
-#endif
-
 #include "sanctum.h"
 
 struct route {
@@ -595,8 +591,8 @@ config_unix_set(struct sanctum_sun *sun, const char *path, const char *owner)
 static void
 config_parse_ip_port(char *host, struct sockaddr_in *sin)
 {
-	char		*port;
-	const char	*errstr;
+	unsigned long long	value;
+	char			*port, *ep;
 
 	PRECOND(host != NULL);
 	PRECOND(sin != NULL);
@@ -608,11 +604,12 @@ config_parse_ip_port(char *host, struct sockaddr_in *sin)
 
 	sanctum_inet_addr(sin, host);
 
-	sin->sin_port = strtonum(port, 1, USHRT_MAX, &errstr);
-	if (errstr)
-		fatal("port '%s' invalid: %s", port, errstr);
+	errno = 0;
+	value = strtoull(port, &ep, 10);
+	if (errno != 0 || *ep != '\0')
+		fatal("port '%s' invalid", port);
 
-	sin->sin_port = htons(sin->sin_port);
+	sin->sin_port = htons(value);
 }
 
 /*
