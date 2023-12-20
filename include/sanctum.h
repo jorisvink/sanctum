@@ -380,6 +380,9 @@ struct sanctum_state {
 	u_int16_t		tun_mtu;
 	u_int16_t		tun_spi;
 
+	/* The ID to use when talking to a cathedral. */
+	u_int32_t		cathedral_id;
+
 	/* The path to the traffic secret. */
 	char			*secret;
 
@@ -391,9 +394,6 @@ struct sanctum_state {
 
 	/* The path to the federation config (cathedral mode only). */
 	char			*federation;
-
-	/* The ID to use when talking to a cathedral (cathedral mode only). */
-	u_int32_t		cathedral_id;
 
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];

@@ -162,6 +162,24 @@ sanctum_config_load(const char *file)
 	if (peer_set > 1)
 		fatal("peer and cathedral are mutually exclusive options");
 
+	if (sanctum->secret == NULL)
+		fatal("no traffic secret has been set");
+
+	switch (sanctum->mode) {
+	case SANCTUM_MODE_CATHEDRAL:
+		if (sanctum->secretdir == NULL)
+			fatal("cathedral: no secretdir configured");
+		break;
+	default:
+		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+			if (sanctum->cathedral_secret == NULL)
+				fatal("cathedral given but no secret set");
+			if (sanctum->cathedral_id == 0)
+				fatal("cathedral given but no id set");
+		}
+		break;
+	}
+
 	if (sanctum->peer_ip == 0)
 		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
 

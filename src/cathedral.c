@@ -21,6 +21,7 @@
 #include <netinet/in.h>
 
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -36,14 +37,21 @@
 /* The maximum age in seconds for a cached tunnel entry. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	30
 
+/* The CATACOMB message magic. */
+#define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
+
+/* The KDF label for the tunnel sync. */
+#define CATHEDRAL_CATACOMB_LABEL	"SANCTUM.CATHEDRAL.CATACOMB"
+
 /*
- * A known tunnel and its endpoint.
+ * A known tunnel and its endpoint, or a federated cathedral.
  */
 struct tunnel {
 	u_int32_t		id;
 	u_int32_t		ip;
 	u_int64_t		age;
 	u_int16_t		port;
+	u_int64_t		pkts;
 	LIST_ENTRY(tunnel)	list;
 };
 
@@ -51,8 +59,10 @@ static void	cathedral_federation_reload(void);
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
+static void	cathedral_tunnel_federate(struct sanctum_packet *);
 static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
-static void	cathedral_tunnel_register(struct sanctum_packet *, u_int64_t);
+static void	cathedral_tunnel_update(struct sanctum_packet *,
+		    u_int64_t, int);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -138,12 +148,16 @@ sanctum_cathedral(struct sanctum_proc *proc)
 }
 
 /*
- * Handle an incoming packet, it may be either a tunnel registration
- * or a packet we have to forward somewhere.
+ * Handle an incoming packet. It is one of the following:
+ *
+ * 1) A tunnel update from a sanctum instance.
+ * 2) A CATACOMB message from another cathedral.
+ * 3) A normal packet that must be forwarded.
  */
 static void
 cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 {
+	struct tunnel			*srv;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_offer_hdr	*offer;
 	u_int32_t			seq, spi;
@@ -154,11 +168,33 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	seq = be32toh(hdr->esp.seq);
 	spi = be32toh(hdr->esp.spi);
 
+	/* It's a tunnel update message. */
 	if ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
-		cathedral_tunnel_register(pkt, now);
+		cathedral_tunnel_update(pkt, now, 0);
+		sanctum_packet_release(pkt);
+	} else if ((spi == (CATHEDRAL_CATACOMB_MAGIC >> 32)) &&
+	    (seq == (CATHEDRAL_CATACOMB_MAGIC & 0xffffffff))) {
+		/* It is a catacomb message. */
+		LIST_FOREACH(srv, &federations, list) {
+			if (srv->ip == pkt->addr.sin_addr.s_addr &&
+			    srv->port == pkt->addr.sin_port)
+				break;
+		}
+
+		if (srv == NULL) {
+			sanctum_log(LOG_INFO,
+			    "CATACOMB update from unknown cathedral %s:%u",
+			    inet_ntoa(pkt->addr.sin_addr),
+			    be16toh(pkt->addr.sin_port));
+			sanctum_packet_release(pkt);
+			return;
+		}
+
+		cathedral_tunnel_update(pkt, now, 1);
 		sanctum_packet_release(pkt);
 	} else {
+		/* It is a normal traffic packet. */
 		if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
 		    (seq == (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
 			if (pkt->length < sizeof(struct sanctum_offer_hdr)) {
@@ -184,16 +220,17 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
  * create a new tunnel entry or update an existing one.
  */
 static void
-cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
+cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 {
 	struct timespec			ts;
 	int				len;
 	u_int32_t			spi;
 	struct sanctum_offer		*op;
 	struct nyfe_agelas		cipher;
+	const char			*label;
 	struct tunnel			*tunnel;
 	u_int8_t			tag[32];
-	char				secret[1024];
+	char				*secret, path[1024];
 
 	PRECOND(pkt != NULL);
 
@@ -203,15 +240,26 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 	spi = be32toh(op->hdr.spi);
 
-	/* Get path to the key for the sender. */
-	len = snprintf(secret, sizeof(secret), "%s/0x%x.key",
-	    sanctum->secretdir, spi);
-	if (len == -1 || (size_t)len >= sizeof(secret))
-		fatal("failed to construct path to secret");
+	/*
+	 * If this is a CATACOMB message, use our own secret, otherwise
+	 * we load the secret for the indicated client.
+	 */
+	if (catacomb) {
+		secret = sanctum->secret;
+		label = CATHEDRAL_CATACOMB_LABEL;
+	} else {
+		/* Get path to the key for the sender. */
+		len = snprintf(path, sizeof(path), "%s/0x%x.key",
+		    sanctum->secretdir, spi);
+		if (len == -1 || (size_t)len >= sizeof(path))
+			fatal("failed to construct path to secret");
+		secret = path;
+		label = SANCTUM_CATHEDRAL_KDF_LABEL;
+	}
 
 	/* Derive the key we should use. */
-	if (sanctum_cipher_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1)
+	if (sanctum_cipher_kdf(secret, label, &cipher,
+	    op->hdr.seed, sizeof(op->hdr.seed)) == -1)
 		return;
 
 	/* Decrypt and verify the integrity of the offer first. */
@@ -235,15 +283,6 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	op->data.id = be64toh(op->data.id);
 
 	/*
-	 * We do not accept registrations for anything that is
-	 * supposed to be federated.
-	 */
-	LIST_FOREACH(tunnel, &federations, list) {
-		if (tunnel->id == (op->data.id >> 8))
-			return;
-	}
-
-	/*
 	 * Check if the tunnel exists, if it does we update the endpoint.
 	 */
 	LIST_FOREACH(tunnel, &tunnels, list) {
@@ -251,6 +290,8 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 			tunnel->age = now;
 			tunnel->port = pkt->addr.sin_port;
 			tunnel->ip = pkt->addr.sin_addr.s_addr;
+			if (catacomb == 0)
+				cathedral_tunnel_federate(pkt);
 			return;
 		}
 	}
@@ -265,6 +306,9 @@ cathedral_tunnel_register(struct sanctum_packet *pkt, u_int64_t now)
 	tunnel->ip = pkt->addr.sin_addr.s_addr;
 
 	LIST_INSERT_HEAD(&tunnels, tunnel, list);
+
+	if (catacomb == 0)
+		cathedral_tunnel_federate(pkt);
 }
 
 /*
@@ -281,39 +325,90 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, u_int32_t spi)
 	id = spi >> 16;
 
 	/*
-	 * Check the federations first, we unconditionally forward
-	 * packets matching the recipient to these.
-	 *
-	 * We only match on the recipient.
-	 */
-	LIST_FOREACH(tunnel, &federations, list) {
-		if (tunnel->id == (id >> 8)) {
-			pkt->target = SANCTUM_PROC_PURGATORY;
-
-			pkt->addr.sin_family = AF_INET;
-			pkt->addr.sin_port = tunnel->port;
-			pkt->addr.sin_addr.s_addr = tunnel->ip;
-
-			return (sanctum_ring_queue(io->purgatory, pkt));
-		}
-	}
-
-	/*
 	 * Now check the registered tunnels, we match on the entire id.
 	 */
 	LIST_FOREACH(tunnel, &tunnels, list) {
 		if (tunnel->id == id) {
-			pkt->target = SANCTUM_PROC_PURGATORY;
+			tunnel->pkts++;
 
 			pkt->addr.sin_family = AF_INET;
 			pkt->addr.sin_port = tunnel->port;
 			pkt->addr.sin_addr.s_addr = tunnel->ip;
 
+			pkt->target = SANCTUM_PROC_PURGATORY;
 			return (sanctum_ring_queue(io->purgatory, pkt));
 		}
 	}
 
 	return (-1);
+}
+
+/*
+ * Send out the given tunnel update and to all federated cathedrals.
+ */
+static void
+cathedral_tunnel_federate(struct sanctum_packet *update)
+{
+	struct timespec			ts;
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	u_int8_t			*ptr;
+	struct nyfe_agelas		cipher;
+	struct tunnel			*tunnel;
+
+	PRECOND(update != NULL);
+
+	if (update->length != sizeof(*op))
+		fatal("%s: pkt length invalid (%zu)", __func__, update->length);
+
+	op = sanctum_packet_head(update);
+
+	/* Set header to our own. */
+	op->hdr.magic = htobe64(CATHEDRAL_CATACOMB_MAGIC);
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+
+	/* Derive the key we should use. */
+	if (sanctum_cipher_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1)
+		return;
+
+	/* Update in the current timestamp. */
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	/* Make sure we revert the data.id back. */
+	op->data.id = be64toh(op->data.id);
+
+	/* Encrypt and authenticate entire message. */
+	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	sanctum_mem_zero(&cipher, sizeof(cipher));
+
+	/* Submit it to each federated cathedral. */
+	LIST_FOREACH(tunnel, &federations, list) {
+		if ((pkt = sanctum_packet_get()) == NULL) {
+			sanctum_log(LOG_NOTICE,
+			    "no CATACOMB update possible, out of packets");
+			return;
+		}
+
+		ptr = sanctum_packet_head(pkt);
+		memcpy(ptr, op, sizeof(*op));
+
+		pkt->length = sizeof(*op);
+		pkt->target = SANCTUM_PROC_PURGATORY;
+
+		pkt->addr.sin_family = AF_INET;
+		pkt->addr.sin_port = tunnel->port;
+		pkt->addr.sin_addr.s_addr = tunnel->ip;
+
+		if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
+			sanctum_log(LOG_NOTICE,
+			    "no CATACOMB update possible, failed to queue");
+			sanctum_packet_release(pkt);
+		}
+	}
 }
 
 /*
@@ -340,7 +435,6 @@ cathedral_tunnel_expire(u_int64_t now)
 static void
 cathedral_federation_reload(void)
 {
-	u_int8_t		id;
 	struct sockaddr_in	sin;
 	FILE			*fp;
 	u_int16_t		port;
@@ -368,7 +462,7 @@ cathedral_federation_reload(void)
 		if (strlen(option) == 0)
 			continue;
 
-		if (sscanf(option, "0x%02hhx %15s %hu", &id, ip, &port) != 3) {
+		if (sscanf(option, "%15s %hu", ip, &port) != 2) {
 			sanctum_log(LOG_NOTICE,
 			    "format error '%s' in federation config", option);
 			continue;
@@ -383,14 +477,12 @@ cathedral_federation_reload(void)
 		if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
 			fatal("calloc: failed to allocate federation");
 
-		tunnel->id = id;
 		tunnel->port = htobe16(port);
 		tunnel->ip = sin.sin_addr.s_addr;
 
 		LIST_INSERT_HEAD(&federations, tunnel, list);
 
-		sanctum_log(LOG_INFO,
-		    "federation: 0x%02x -> %s:%u", id, ip, port);
+		sanctum_log(LOG_INFO, "federation: %s:%u", ip, port);
 	}
 
 	sanctum_log(LOG_INFO, "federation reload");
