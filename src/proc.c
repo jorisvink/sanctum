@@ -306,8 +306,11 @@ sanctum_proc_shutdown(void)
 {
 	sanctum_proc_killall(SIGQUIT);
 
-	while (!LIST_EMPTY(&proclist))
+	while (!LIST_EMPTY(&proclist)) {
 		(void)sanctum_proc_reap();
+		if (errno == ECHILD)
+			break;
+	}
 }
 
 /*
