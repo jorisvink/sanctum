@@ -258,6 +258,8 @@ signal_hdlr(int sig)
 static void
 sanctum_pidfile_check(void)
 {
+	PRECOND(sanctum != NULL);
+
 	if (sanctum->pidfile == NULL)
 		return;
 
@@ -277,6 +279,8 @@ sanctum_pidfile_write(void)
 {
 	int		fd;
 	FILE		*fp;
+
+	PRECOND(sanctum != NULL);
 
 	if (sanctum->pidfile == NULL)
 		return;
@@ -300,6 +304,8 @@ sanctum_pidfile_write(void)
 static void
 sanctum_pidfile_unlink(void)
 {
+	PRECOND(sanctum != NULL);
+
 	if (sanctum->pidfile == NULL)
 		return;
 
