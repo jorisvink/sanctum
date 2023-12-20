@@ -140,7 +140,9 @@ usage(void)
 	fprintf(stderr, "commands:\n");
 	fprintf(stderr, "  add      - add a new tunnel\n");
 	fprintf(stderr, "  del      - delete an existing tunnel\n");
+	fprintf(stderr, "  down     - kills the given tunnel\n");
 	fprintf(stderr, "  route    - modify tunnel routing rules\n");
+	fprintf(stderr, "  up       - starts the given tunnel\n");
 
 	exit(1);
 }
