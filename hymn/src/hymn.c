@@ -299,7 +299,6 @@ usage_route(void)
 static int
 hymn_route(int argc, char *argv[])
 {
-	int			len;
 	struct config		config;
 	struct addr		*rt, *old;
 	char			path[PATH_MAX];
@@ -315,11 +314,7 @@ hymn_route(int argc, char *argv[])
 	if (sscanf(argv[3], "%02hhx-%02hhx", &config.src, &config.dst) != 2)
 		usage_route();
 
-	len = snprintf(path, sizeof(path), "%s/hymn-%02x-%02x.conf",
-	    HYMN_BASE_PATH, config.src, config.dst);
-	if (len == -1 || (size_t)len >= sizeof(path))
-		fatal("snprintf: failed to create path to config");
-
+	hymn_conf_path(path, sizeof(path), config.src, config.dst);
 	rt = hymn_route_parse(argv[1]);
 	hymn_config_load(path, &config);
 
@@ -358,8 +353,8 @@ static int
 hymn_up(int argc, char *argv[])
 {
 	pid_t		pid;
+	int		status;
 	u_int8_t	src, dst;
-	int		len, status;
 	char		path[PATH_MAX], *ap[32];
 
 	if (argc != 1)
@@ -377,10 +372,7 @@ hymn_up(int argc, char *argv[])
 		fatal("fork: %s", errno_s);
 
 	if (pid == 0) {
-		len = snprintf(path, sizeof(path),
-		    "%s/hymn-%02x-%02x.conf", HYMN_BASE_PATH, src, dst);
-		if (len == -1 || (size_t)len >= sizeof(path))
-			fatal("snprintf: failed to create config path");
+		hymn_conf_path(path, sizeof(path), src, dst);
 
 		ap[0] = "sanctum";
 		ap[1] = "-c";
