@@ -377,7 +377,7 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
 	/* Make sure we revert the data.id back. */
-	op->data.id = be64toh(op->data.id);
+	op->data.id = htobe64(op->data.id);
 
 	/* Encrypt and authenticate entire message. */
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
