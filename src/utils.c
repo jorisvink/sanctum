@@ -336,7 +336,7 @@ sanctum_inet_addr(void *saddr, const char *ip)
 	sin->sin_len = sizeof(*sin);
 #endif
 
-	if (inet_pton(AF_INET, ip, &sin->sin_addr) == -1)
+	if (inet_pton(AF_INET, ip, &sin->sin_addr) != 1)
 		fatal("'%s' not a valid IPv4 address", ip);
 }
 

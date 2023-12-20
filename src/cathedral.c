@@ -468,7 +468,7 @@ cathedral_federation_reload(void)
 			continue;
 		}
 
-		if (inet_pton(AF_INET, ip, &sin.sin_addr) == -1) {
+		if (inet_pton(AF_INET, ip, &sin.sin_addr) != 1) {
 			sanctum_log(LOG_NOTICE,
 			    "invalid ip address '%s' in federation config", ip);
 			continue;
