@@ -64,11 +64,12 @@ struct config {
 void		fatal(const char *, ...) __attribute__((noreturn));
 
 static void	usage(void) __attribute__((noreturn));
+static void	usage_simple(const char *) __attribute__((noreturn));
+
 static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
-static void	usage_up_down(void) __attribute__((noreturn));
 
 static void	hymn_mkdir(const char *, int);
 static void	hymn_unlink(const char *, ...)
@@ -81,6 +82,7 @@ static void	hymn_conf_path(char *, size_t, u_int8_t, u_int8_t);
 static int	hymn_up(int, char **);
 static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
+static int	hymn_show(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_route(int, char **);
 static int	hymn_keygen(int, char **);
@@ -115,6 +117,7 @@ static const struct {
 	{ "up",			hymn_up },
 	{ "add",		hymn_add },
 	{ "del",		hymn_del },
+	{ "show",		hymn_show },
 	{ "down",		hymn_down },
 	{ "route",		hymn_route },
 	{ "keygen",		hymn_keygen },
@@ -144,6 +147,13 @@ usage(void)
 	fprintf(stderr, "  route    - modify tunnel routing rules\n");
 	fprintf(stderr, "  up       - starts the given tunnel\n");
 
+	exit(1);
+}
+
+static void
+usage_simple(const char *cmd)
+{
+	fprintf(stderr, "usage: hymn %s <src>-<dst>\n", cmd);
 	exit(1);
 }
 
@@ -344,13 +354,6 @@ hymn_route(int argc, char *argv[])
 	return (0);
 }
 
-static void
-usage_up_down(void)
-{
-	fprintf(stderr, "usage: hymn [up|down] <src>-<dst>\n");
-	exit(1);
-}
-
 static int
 hymn_up(int argc, char *argv[])
 {
@@ -360,10 +363,10 @@ hymn_up(int argc, char *argv[])
 	char		path[PATH_MAX], *ap[32];
 
 	if (argc != 1)
-		usage_up_down();
+		usage_simple("[up | down]");
 
 	if (sscanf(argv[0], "%02hhx-%02hhx", &src, &dst) != 2)
-		usage_add();
+		usage_simple("[up | down]");
 
 	hymn_pid_path(path ,sizeof(path), src, dst);
 
@@ -414,6 +417,62 @@ hymn_up(int argc, char *argv[])
 }
 
 static int
+hymn_show(int argc, char *argv[])
+{
+	struct addr		*rt;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 1)
+		usage_simple("show");
+
+	if (sscanf(argv[0], "%02hhx-%02hhx", &src, &dst) != 2)
+		usage_simple("show");
+
+	hymn_conf_path(path, sizeof(path), src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	printf("hymn-%02x-%02x:\n", src, dst);
+	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
+	    config.tun_mtu);
+
+	if (config.peer_cathedral) {
+		printf("  cathedral\t");
+	} else {
+		printf("  peer\t\t");
+	}
+
+	printf("%u.%u.%u.%u port %u\n",
+	    config.peer_ip & 0xff, (config.peer_ip >> 8) & 0xff,
+	    (config.peer_ip >> 16) & 0xff, (config.peer_ip >> 24) & 0xff,
+	    config.peer_port);
+
+	printf("  routes\n");
+	if (LIST_EMPTY(&config.routes)) {
+		printf("    none\n");
+	} else {
+		LIST_FOREACH(rt, &config.routes, list)
+			printf("    %s\n", hymn_ip_mask_str(rt));
+	}
+
+	hymn_pid_path(path, sizeof(path), src, dst);
+
+	if (access(path, R_OK) == -1) {
+		if (errno == ENOENT)
+			printf("  not active\n");
+		else
+			fatal("failed to access %s: %s\n", path, errno_s);
+	} else {
+		printf("  active\n");
+	}
+
+	return (0);
+}
+
+static int
 hymn_down(int argc, char *argv[])
 {
 	FILE		*fp;
@@ -422,10 +481,10 @@ hymn_down(int argc, char *argv[])
 	char		path[PATH_MAX], buf[32], *ptr;
 
 	if (argc != 1)
-		usage_up_down();
+		usage_simple("[up | down]");
 
 	if (sscanf(argv[0], "%02hhx-%02hhx", &src, &dst) != 2)
-		usage_add();
+		usage_simple("[up | down]");
 
 	hymn_pid_path(path, sizeof(path), src, dst);
 
