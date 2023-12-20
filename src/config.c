@@ -44,6 +44,7 @@ static void	config_parse_accept(char *);
 static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
+static void	config_parse_pidfile(char *);
 static void	config_parse_instance(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_secretdir(char *);
@@ -72,6 +73,7 @@ static const struct {
 	{ "tunnel",		config_parse_tunnel },
 	{ "secret",		config_parse_secret },
 	{ "control",		config_parse_control },
+	{ "pidfile",		config_parse_pidfile },
 	{ "instance",		config_parse_instance },
 	{ "cathedral",		config_parse_cathedral },
 	{ "secretdir",		config_parse_secretdir },
@@ -425,6 +427,21 @@ config_parse_control(char *path)
 	PRECOND(path != NULL);
 
 	config_parse_unix(path, &sanctum->control);
+}
+
+/*
+ * Parse the pidfile configuration option.
+ */
+static void
+config_parse_pidfile(char *path)
+{
+	PRECOND(path != NULL);
+
+	if (sanctum->pidfile != NULL)
+		fatal("pidfile already specified");
+
+	if ((sanctum->pidfile = strdup(path)) == NULL)
+		fatal("strdup failed");
 }
 
 /*

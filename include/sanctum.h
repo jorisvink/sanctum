@@ -383,6 +383,9 @@ struct sanctum_state {
 	/* The ID to use when talking to a cathedral. */
 	u_int32_t		cathedral_id;
 
+	/* The path to the pidfile. */
+	char			*pidfile;
+
 	/* The path to the traffic secret. */
 	char			*secret;
 
