@@ -26,6 +26,7 @@
 #include "sanctum.h"
 
 static void	signal_hdlr(int);
+static void	signal_memfault(int);
 
 static void	usage(void) __attribute__((noreturn));
 static void	version(void) __attribute__((noreturn));
@@ -108,6 +109,7 @@ main(int argc, char *argv[])
 	sanctum_signal_trap(SIGHUP);
 	sanctum_signal_trap(SIGCHLD);
 	sanctum_signal_trap(SIGQUIT);
+	sanctum_signal_trap(SIGSEGV);
 
 	sanctum_platform_init();
 	sanctum_proc_init(argv);
@@ -188,7 +190,11 @@ sanctum_signal_trap(int sig)
 	struct sigaction	sa;
 
 	memset(&sa, 0, sizeof(sa));
-	sa.sa_handler = signal_hdlr;
+
+	if (sig == SIGSEGV)
+		sa.sa_handler = signal_memfault;
+	else
+		sa.sa_handler = signal_hdlr;
 
 	if (sigfillset(&sa.sa_mask) == -1)
 		fatal("sigfillset: %s", errno_s);
@@ -261,6 +267,17 @@ static void
 signal_hdlr(int sig)
 {
 	sig_recv = sig;
+}
+
+/*
+ * The signal handler for when a segmentation fault occurred, we are
+ * catching this so we can just cleanup before dying.
+ */
+static void
+signal_memfault(int sig)
+{
+	nyfe_zeroize_all();
+	abort();
 }
 
 /*
