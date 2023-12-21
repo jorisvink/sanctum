@@ -80,7 +80,7 @@ cryptographic AE cipher, while the keys are derived using KMAC256.
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
 64-bit sequence numbers and encrypted under AES256-GCM using keys
-exchanged via the chapel sacristy key exchange.
+exchanged via the chapel sacrament key exchange.
 
 ## Building
 
