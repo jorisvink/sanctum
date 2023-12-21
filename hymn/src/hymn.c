@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/un.h>
 #include <sys/queue.h>
 
 #include <arpa/inet.h>
@@ -27,19 +28,23 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "libnyfe.h"
+#include "sanctum_ctl.h"
 
 #define errno_s			strerror(errno)
 
 #define HYMN_BASE_PATH		"/etc/hymn"
 #define HYMN_RUN_PATH		"/var/run/hymn"
+#define HYMN_CLIENT_SOCKET	"/tmp/hymn.client"
 
 #define HYMN_TUNNEL		(1 << 1)
 #define HYMN_PEER		(1 << 2)
@@ -88,6 +93,7 @@ static void	hymn_unlink(const char *, ...)
 static void	hymn_pid_path(char *, size_t, u_int8_t, u_int8_t);
 static void	hymn_key_path(char *, size_t, u_int8_t, u_int8_t);
 static void	hymn_conf_path(char *, size_t, u_int8_t, u_int8_t);
+static void	hymn_control_path(char *, size_t, u_int8_t, u_int8_t);
 
 static int	hymn_up(int, char **);
 static int	hymn_add(int, char **);
@@ -113,6 +119,13 @@ static void	hymn_config_parse_tunnel(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
+
+static void	hymn_ctl_status(const char *);
+static void	hymn_ctl_response(int, void *, size_t);
+static void	hymn_ctl_request(int, const char *, const void *, size_t);
+
+static void	hymn_unix_socket(struct sockaddr_un *, const char *);
+static void	hymn_dump_ifstat(const char *, struct sanctum_ifstat *);
 
 static struct addr	*hymn_route_parse(const char *);
 static const char	*hymn_ip_mask_str(struct addr *);
@@ -488,6 +501,7 @@ hymn_show(int argc, char *argv[])
 
 	printf("%s\n", hymn_ip_port_str(&config.peer));
 
+	printf("\n");
 	printf("  routes\n");
 	if (LIST_EMPTY(&config.routes)) {
 		printf("    none\n");
@@ -496,6 +510,7 @@ hymn_show(int argc, char *argv[])
 			printf("    %s\n", hymn_ip_mask_str(rt));
 	}
 
+	printf("\n");
 	hymn_pid_path(path, sizeof(path), src, dst);
 
 	if (access(path, R_OK) == -1) {
@@ -504,7 +519,8 @@ hymn_show(int argc, char *argv[])
 		else
 			fatal("failed to access %s: %s\n", path, errno_s);
 	} else {
-		printf("  active\n");
+		hymn_control_path(path, sizeof(path), src, dst);
+		hymn_ctl_status(path);
 	}
 
 	return (0);
@@ -736,6 +752,16 @@ hymn_key_path(char *buf, size_t buflen, u_int8_t src, u_int8_t dst)
 }
 
 static void
+hymn_control_path(char *buf, size_t buflen, u_int8_t src, u_int8_t dst)
+{
+	int		len;
+
+	len = snprintf(buf, buflen, "/tmp/hymn-%02x-%02x.control", src, dst);
+	if (len == -1 || (size_t)len >= buflen)
+		fatal("snprintf on tunnel control path");
+}
+
+static void
 hymn_conf_path(char *buf, size_t buflen, u_int8_t src, u_int8_t dst)
 {
 	int		len;
@@ -857,13 +883,13 @@ hymn_config_save(const char *path, struct config *cfg)
 	}
 
 	hymn_config_write(fd, "\n");
-	hymn_config_write(fd, "run control as %s\n", getlogin());
-	hymn_config_write(fd, "control /tmp/hymn-%02x-%02x.control %s\n",
-	    cfg->src, cfg->dst, getlogin());
-
-	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "run heaven as %s\n", getlogin());
 	hymn_config_write(fd, "run purgatory as %s\n", getlogin());
+
+	hymn_config_write(fd, "\n");
+	hymn_config_write(fd, "run control as root\n");
+	hymn_config_write(fd, "control /tmp/hymn-%02x-%02x.control root\n",
+	    cfg->src, cfg->dst);
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "run bless as root\n");
@@ -990,4 +1016,118 @@ hymn_config_set_mtu(struct config *cfg, const char *mtu)
 
 	if (cfg->tun_mtu > 9200 || cfg->tun_mtu < 576)
 		fatal("invalid mtu '%s'", mtu);
+}
+
+static void
+hymn_unix_socket(struct sockaddr_un *sun, const char *path)
+{
+	int		len;
+
+	memset(sun, 0, sizeof(*sun));
+	sun->sun_family = AF_UNIX;
+
+	len = snprintf(sun->sun_path, sizeof(sun->sun_path), "%s", path);
+	if (len == -1 || (size_t)len >= sizeof(sun->sun_path))
+		fatal("failed to create path to '%s'", path);
+}
+
+static void
+hymn_ctl_status(const char *path)
+{
+	int					fd;
+	struct sockaddr_un			sun;
+	struct sanctum_ctl			ctl;
+	struct sanctum_ctl_status_response	resp;
+
+	if ((fd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	if (unlink(HYMN_CLIENT_SOCKET) && errno != ENOENT)
+		fatal("unlink(%s): %s", HYMN_CLIENT_SOCKET, errno_s);
+
+	hymn_unix_socket(&sun, HYMN_CLIENT_SOCKET);
+
+	if (bind(fd, (struct sockaddr *)&sun, sizeof(sun)) == -1)
+		fatal("bind: %s", errno_s);
+
+	memset(&ctl, 0, sizeof(ctl));
+
+	ctl.cmd = SANCTUM_CTL_STATUS;
+
+	hymn_ctl_request(fd, path, &ctl, sizeof(ctl));
+	hymn_ctl_response(fd, &resp, sizeof(resp));
+
+	hymn_dump_ifstat("tx", &resp.tx);
+	hymn_dump_ifstat("rx", &resp.rx);
+}
+
+static void
+hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
+{
+	ssize_t			ret;
+	struct sockaddr_un	sun;
+
+	hymn_unix_socket(&sun, path);
+
+	for (;;) {
+		if ((ret = sendto(fd, req, len, 0,
+		    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("send: %s", errno_s);
+		}
+
+		if ((size_t)ret != len)
+			fatal("short send, %zd/%zu", ret, len);
+
+		break;
+	}
+}
+
+static void
+hymn_ctl_response(int fd, void *resp, size_t len)
+{
+	ssize_t		ret;
+
+	for (;;) {
+		if ((ret = recv(fd, resp, len, 0)) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("recv: %s", errno_s);
+		}
+
+		if ((size_t)ret != len)
+			fatal("short recv, %zd/%zu", ret, len);
+
+		break;
+	}
+}
+
+static void
+hymn_dump_ifstat(const char *name, struct sanctum_ifstat *st)
+{
+	struct timespec				ts;
+
+	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	printf("  %s\n", name);
+
+	if (st->spi == 0) {
+		printf("    spi            none\n");
+	} else {
+		printf("    spi            0x%08x (age: %" PRIu64 " seconds)\n",
+		    st->spi, ts.tv_sec - st->age);
+	}
+
+	printf("    pkt            %" PRIu64 " \n", st->pkt);
+	printf("    bytes          %" PRIu64 " \n", st->bytes);
+
+	if (st->last == 0) {
+		printf("    last packet    never\n");
+	} else {
+		printf("    last packet    %" PRIu64 " seconds ago\n",
+		    ts.tv_sec - st->last);
+	}
+
+	printf("\n");
 }
