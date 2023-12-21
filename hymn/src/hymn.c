@@ -492,6 +492,7 @@ hymn_show(int argc, char *argv[])
 	hymn_config_load(path, &config);
 
 	printf("hymn-%02x-%02x:\n", src, dst);
+	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
 	    config.tun_mtu);
 
