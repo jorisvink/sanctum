@@ -146,8 +146,8 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_CATHEDRAL		9
 #define SANCTUM_PROC_MAX		10
 
-/* The magic for a key offer packet (SACRISTY). */
-#define SANCTUM_KEY_OFFER_MAGIC		0x5341435249535459
+/* The magic for a key offer packet (SACRAMNT). */
+#define SANCTUM_KEY_OFFER_MAGIC		0x53414352414D4E54
 
 /* The length of the seed in a key offer packet. */
 #define SANCTUM_KEY_OFFER_SALT_LEN	64

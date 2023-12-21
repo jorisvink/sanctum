@@ -29,8 +29,8 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The SACRISTY KDF label. */
-#define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRISTY.KDF"
+/* The SACRAMENT KDF label. */
+#define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRAMENT.KDF"
 
 /* The half-time window in which offers are valid. */
 #define CHAPEL_OFFER_VALID		5
