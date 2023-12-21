@@ -91,7 +91,6 @@ static void	hymn_unlink(const char *, ...)
 		    __attribute__((format (printf, 1, 2)));
 
 static void	hymn_pid_path(char *, size_t, u_int8_t, u_int8_t);
-static void	hymn_key_path(char *, size_t, u_int8_t, u_int8_t);
 static void	hymn_conf_path(char *, size_t, u_int8_t, u_int8_t);
 static void	hymn_control_path(char *, size_t, u_int8_t, u_int8_t);
 
@@ -256,7 +255,7 @@ hymn_add(int argc, char *argv[])
 	int			i;
 	u_int32_t		which;
 	struct config		config;
-	char			confpath[PATH_MAX], keypath[PATH_MAX];
+	char			confpath[PATH_MAX];
 
 	if (argc < 5)
 		usage_add();
@@ -266,14 +265,10 @@ hymn_add(int argc, char *argv[])
 	if (sscanf(argv[0], "%02hhx-%02hhx", &config.src, &config.dst) != 2)
 		usage_add();
 
-	hymn_key_path(keypath, sizeof(keypath), config.src, config.dst);
 	hymn_conf_path(confpath, sizeof(confpath), config.src, config.dst);
 
 	if (access(confpath, R_OK) != -1)
 		fatal("tunnel %02x-%02x config exists", config.src, config.dst);
-
-	if (access(keypath, R_OK) != -1)
-		fatal("tunnel %02x-%02x key exists", config.src, config.dst);
 
 	argc--;
 	argv++;
@@ -740,17 +735,6 @@ hymn_pid_path(char *buf, size_t buflen, u_int8_t src, u_int8_t dst)
 	    HYMN_RUN_PATH, src, dst);
 	if (len == -1 || (size_t)len >= buflen)
 		fatal("snprintf on tunnel pid path");
-}
-
-static void
-hymn_key_path(char *buf, size_t buflen, u_int8_t src, u_int8_t dst)
-{
-	int		len;
-
-	len = snprintf(buf, buflen, "%s/hymn-%02x-%02x.key",
-	    HYMN_BASE_PATH, src, dst);
-	if (len == -1 || (size_t)len >= buflen)
-		fatal("snprintf on tunnel key path");
 }
 
 static void
