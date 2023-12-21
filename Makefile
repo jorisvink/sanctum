@@ -104,6 +104,8 @@ $(VERSION): $(OBJDIR) force
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
+	install -m 555 share/sanctum-key-pack $(DESTDIR)$(INSTALL_DIR)
+	install -m 555 share/sanctum-key-unpack $(DESTDIR)$(INSTALL_DIR)
 	$(MAKE) -C hymn install
 	$(MAKE) -C pontifex install
 

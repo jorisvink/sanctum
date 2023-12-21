@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -e
+
+TDIR=`mktemp -d`
+
+if [ $# -ne 3 ]; then
+	echo "Usage: sanctum-key-unpack [name] [tar] [target]"
+	exit 1
+fi
+
+if [ ! -f $2 ]; then
+	echo "tarball $2 does not exist, or is not a file"
+	exit 1
+fi
+
+if [ ! -d $3 ]; then
+	echo "target directory $3 does not exist, or is not a directory"
+	exit 1
+fi
+
+tar fx $2 -C $TDIR
+
+echo "decrypting key with wrapper"
+nyfe decrypt -f $TDIR/$1-wrapper.key $TDIR/$1.key $3/$1.key
+
+rm -rf $TDIR
