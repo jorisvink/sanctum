@@ -22,10 +22,10 @@ nyfe encrypt -f $TDIR/$1-wrapper.key $2 $TDIR/$1.key
 
 CURDIR=`pwd`
 
-cd $TDIR && tar cf $CURDIR/$2.tar .
+cd $TDIR && tar cf $CURDIR/$1.tar .
 cd $CURDIR
 
 rm -rf $TDIR
 
-echo "key bundle $2.tar created"
-tar tf $2.tar
+echo "key bundle $1.tar created"
+tar tf $1.tar
