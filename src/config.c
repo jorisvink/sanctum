@@ -454,7 +454,7 @@ config_parse_secret(char *path)
 		fatal("secret already specified");
 
 	if (access(path, R_OK) == -1)
-		fatal("secret at path '%s' not readable", path);
+		fatal("secret at path '%s' not readable (%s)", path, errno_s);
 
 	if ((sanctum->secret = strdup(path)) == NULL)
 		fatal("strdup failed");
@@ -513,7 +513,7 @@ config_parse_cathedral_id(char *opt)
 		fatal("no spi prefix has been configured");
 
 	if (sscanf(opt, "0x%08x", &sanctum->cathedral_id) != 1)
-		fatal("cathedral_id <0xff>");
+		fatal("cathedral_id <0xffffffff>");
 }
 
 /*
@@ -527,8 +527,10 @@ config_parse_cathedral_secret(char *secret)
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
-	if (access(secret, R_OK) == -1)
-		fatal("cathedral secret at path '%s' not readable", secret);
+	if (access(secret, R_OK) == -1) {
+		fatal("cathedral secret at path '%s' not readable (%s)",
+		    secret, errno_s);
+	}
 
 	if ((sanctum->cathedral_secret = strdup(secret)) == NULL)
 		fatal("strdup failed");
@@ -549,7 +551,7 @@ config_parse_secretdir(char *opt)
 		fatal("secretdir already specified");
 
 	if (access(opt, R_OK | X_OK) == -1)
-		fatal("secretdir '%s' not readable", opt);
+		fatal("secretdir '%s' not readable (%s)", opt, errno_s);
 
 	if ((sanctum->secretdir = strdup(opt)) == NULL)
 		fatal("strdup failed");
@@ -570,7 +572,7 @@ config_parse_federation(char *opt)
 		fatal("federation already specified");
 
 	if (access(opt, R_OK) == -1)
-		fatal("federation '%s' not readable", opt);
+		fatal("federation '%s' not readable (%s)", opt, errno_s);
 
 	if ((sanctum->federation = strdup(opt)) == NULL)
 		fatal("strdup failed");
