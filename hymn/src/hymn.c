@@ -26,6 +26,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <inttypes.h>
@@ -98,6 +99,7 @@ static int	hymn_up(int, char **);
 static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
 static int	hymn_show(int, char **);
+static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_route(int, char **);
 static int	hymn_keygen(int, char **);
@@ -143,6 +145,7 @@ static const struct {
 	{ "add",		hymn_add },
 	{ "del",		hymn_del },
 	{ "show",		hymn_show },
+	{ "list",		hymn_list },
 	{ "down",		hymn_down },
 	{ "route",		hymn_route },
 	{ "keygen",		hymn_keygen },
@@ -171,6 +174,8 @@ usage(void)
 	fprintf(stderr, "  add      - add a new tunnel\n");
 	fprintf(stderr, "  del      - delete an existing tunnel\n");
 	fprintf(stderr, "  down     - kills the given tunnel\n");
+	fprintf(stderr, "  list     - list all configured tunnels\n");
+	fprintf(stderr, "  show     - show a specific tunnel info\n");
 	fprintf(stderr, "  route    - modify tunnel routing rules\n");
 	fprintf(stderr, "  up       - starts the given tunnel\n");
 
@@ -519,6 +524,44 @@ hymn_show(int argc, char *argv[])
 		hymn_control_path(path, sizeof(path), src, dst);
 		hymn_ctl_status(path);
 	}
+
+	return (0);
+}
+
+static int
+hymn_list(int argc, char *argv[])
+{
+	struct dirent		*dp;
+	DIR			*dir;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 0)
+		fatal("Usage: hymn list");
+
+	if ((dir = opendir(HYMN_BASE_PATH)) == NULL)
+		fatal("opendir(%s): %s", HYMN_BASE_PATH, errno_s);
+
+	while ((dp = readdir(dir)) != NULL) {
+		if (dp->d_type != DT_REG)
+			continue;
+
+		if (strstr(dp->d_name, ".conf") == NULL)
+			continue;
+
+		if (sscanf(dp->d_name, "hymn-%02hhx-%02hhx", &src, &dst) != 2)
+			continue;
+
+		printf("hymn-%02x-%02x - ", src, dst);
+		hymn_pid_path(path, sizeof(path), src, dst);
+
+		if (access(path, R_OK) == -1)
+			printf("down\n");
+		else
+			printf("up\n");
+	}
+
+	(void)closedir(dir);
 
 	return (0);
 }
