@@ -2,5 +2,5 @@ sanctum
 obj
 *.o
 *.a
-hymn
-pontifex
+hymn/hymn
+pontifex/pontifex

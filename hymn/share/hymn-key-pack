@@ -5,7 +5,7 @@ set -e
 TDIR=`mktemp -d`
 
 if [ $# -ne 2 ]; then
-	echo "Usage: sanctum-key-pack [name] [path/to/key]"
+	echo "Usage: hymn-key-pack [name] [path/to/key]"
 	exit 1
 fi
 

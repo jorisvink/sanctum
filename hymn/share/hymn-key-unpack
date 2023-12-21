@@ -5,7 +5,7 @@ set -e
 TDIR=`mktemp -d`
 
 if [ $# -ne 3 ]; then
-	echo "Usage: sanctum-key-unpack [name] [tar] [target]"
+	echo "Usage: hymn-key-unpack [name] [tar] [target]"
 	exit 1
 fi
 
