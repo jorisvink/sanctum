@@ -147,6 +147,8 @@ control_status_request(int fd, struct sockaddr_un *peer)
 	resp.rx.bytes = sanctum_atomic_read(&sanctum->rx.bytes);
 
 	if (sendto(fd, &resp, sizeof(resp), 0,
-	    (const struct sockaddr *)peer, sizeof(*peer)) == -1)
-		fatal("failed to send status to peer: %s", errno_s);
+	    (const struct sockaddr *)peer, sizeof(*peer)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to send status to peer: %s", errno_s);
+	}
 }
