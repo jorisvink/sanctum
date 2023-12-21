@@ -65,6 +65,7 @@ int
 main(int argc, char *argv[])
 {
 	struct timespec		ts;
+	sigset_t		sigset;
 	const char		*config;
 	int			ch, running, sig, foreground;
 
@@ -112,6 +113,15 @@ main(int argc, char *argv[])
 	sanctum_proc_init(argv);
 	sanctum_packet_init();
 	sanctum_proc_start();
+
+	if (sigfillset(&sigset) == -1)
+		fatal("sigfillset: %s", errno_s);
+
+	sigdelset(&sigset, SIGINT);
+	sigdelset(&sigset, SIGHUP);
+	sigdelset(&sigset, SIGCHLD);
+	sigdelset(&sigset, SIGQUIT);
+	(void)sigprocmask(SIG_BLOCK, &sigset, NULL);
 
 	early = 0;
 
@@ -220,6 +230,8 @@ fatal(const char *fmt, ...)
 	struct sanctum_proc	*proc;
 
 	PRECOND(fmt != NULL);
+
+	nyfe_zeroize_all();
 
 	proc = sanctum_process();
 	va_start(args, fmt);

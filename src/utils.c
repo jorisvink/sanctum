@@ -401,6 +401,10 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	if ((fd = sanctum_file_open(path)) == -1)
 		return (-1);
 
+	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
+	nyfe_zeroize_register(secret, sizeof(secret));
+
 	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
 		fatal("failed to read secret");
 
@@ -409,15 +413,15 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	len = 64;
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
-	sanctum_mem_zero(secret, sizeof(secret));
+	nyfe_zeroize(secret, sizeof(secret));
 
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, seed, seed_len);
 	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
-	sanctum_mem_zero(&kdf, sizeof(kdf));
+	nyfe_zeroize(&kdf, sizeof(kdf));
 
 	nyfe_agelas_init(cipher, okm, sizeof(okm));
-	sanctum_mem_zero(&okm, sizeof(okm));
+	nyfe_zeroize(&okm, sizeof(okm));
 
 	return (0);
 }

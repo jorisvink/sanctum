@@ -238,8 +238,10 @@ pilgrim_offer_encrypt(u_int64_t now)
 	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
 
 	/* Derive the key to be used. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
 	}
@@ -248,7 +250,7 @@ pilgrim_offer_encrypt(u_int64_t now)
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);

@@ -143,15 +143,18 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 
 	/* Derive the key we will use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, SHRINE_DERIVE_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1)
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
+	}
 
 	/* Decrypt and verify the integrity of the offer first. */
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return;

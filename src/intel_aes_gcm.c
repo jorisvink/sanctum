@@ -56,6 +56,7 @@ sanctum_cipher_setup(struct sanctum_key *key)
 	if ((cipher = calloc(1, sizeof(*cipher))) == NULL)
 		fatal("failed to allocate cipher context");
 
+	nyfe_zeroize_register(cipher, sizeof(*cipher));
 	aes_gcm_pre_256(key->key, &cipher->key);
 
 	return (cipher);
@@ -150,6 +151,6 @@ sanctum_cipher_cleanup(void *arg)
 
 	cipher = arg;
 
-	sanctum_mem_zero(cipher, sizeof(*cipher));
+	nyfe_zeroize(cipher, sizeof(*cipher));
 	free(cipher);
 }

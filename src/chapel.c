@@ -271,9 +271,11 @@ chapel_cathedral_notify(u_int64_t now)
 	nyfe_random_bytes(&op->data.salt, sizeof(op->data.salt));
 
 	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
 	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
 	}
@@ -282,7 +284,7 @@ chapel_cathedral_notify(u_int64_t now)
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
@@ -429,8 +431,10 @@ chapel_offer_encrypt(u_int64_t now)
 	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
 
 	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
 	}
@@ -439,7 +443,7 @@ chapel_offer_encrypt(u_int64_t now)
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
@@ -489,15 +493,18 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 
 	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1)
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
+	}
 
 	/* Decrypt and verify the integrity of the offer first. */
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return;

@@ -71,6 +71,9 @@ sanctum_confess(struct sanctum_proc *proc)
 
 	memset(&state, 0, sizeof(state));
 
+	nyfe_zeroize_register(&state, sizeof(state));
+	nyfe_zeroize_register(io->rx, sizeof(*io->rx));
+
 	running = 1;
 	suspend = 0;
 
