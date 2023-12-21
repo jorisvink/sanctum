@@ -42,6 +42,7 @@
 struct addr {
 	in_addr_t		ip;
 	in_addr_t		mask;
+	u_int16_t		port;
 	LIST_ENTRY(addr)	list;
 };
 
@@ -52,8 +53,8 @@ struct config {
 	struct addr		tun;
 	u_int16_t		tun_mtu;
 
-	in_addr_t		peer_ip;
-	u_int16_t		peer_port;
+	struct addr		peer;
+	struct addr		local;
 
 	u_int32_t		cathedral_id;
 	int			peer_cathedral;
@@ -95,10 +96,9 @@ static void	hymn_config_save(const char *, struct config *);
 static void	hymn_config_load(const char *, struct config *);
 
 static void	hymn_config_set_mtu(struct config *, const char *);
-static void	hymn_config_set_peer(struct config *, const char *);
-static void	hymn_config_set_cathedral(struct config *, const char *);
 
 static void	hymn_config_parse_peer(struct config *, char *);
+static void	hymn_config_parse_local(struct config *, char *);
 static void	hymn_config_parse_route(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
@@ -106,9 +106,12 @@ static void	hymn_config_parse_cathedral_id(struct config *, char *);
 
 static struct addr	*hymn_route_parse(const char *);
 static const char	*hymn_ip_mask_str(struct addr *);
+static const char	*hymn_ip_port_str(struct addr *);
+static void		hymn_ip_port_parse(struct addr *, char *);
+static void		hymn_ip_mask_parse(struct addr *, const char *);
+
 static unsigned long	hymn_number(const char *, int, unsigned long,
 			    unsigned long);
-static void		hymn_ip_mask_parse(struct addr *, const char *);
 
 static const struct {
 	const char	*name;
@@ -129,6 +132,7 @@ static const struct {
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
 	{ "peer",		hymn_config_parse_peer },
+	{ "local",		hymn_config_parse_local },
 	{ "route",		hymn_config_parse_route },
 	{ "tunnel",		hymn_config_parse_tunnel },
 	{ "cathedral",		hymn_config_parse_cathedral },
@@ -257,9 +261,12 @@ hymn_add(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "mtu")) {
 			hymn_config_set_mtu(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "peer")) {
-			hymn_config_set_peer(&config, argv[i + 1]);
+			hymn_ip_port_parse(&config.peer, argv[i + 1]);
+		} else if (!strcmp(argv[i], "local")) {
+			hymn_ip_port_parse(&config.local, argv[i + 1]);
 		} else if (!strcmp(argv[i], "cathedral")) {
-			hymn_config_set_cathedral(&config, argv[i + 1]);
+			hymn_ip_port_parse(&config.peer, argv[i + 1]);
+			config.peer_cathedral = 1;
 		} else if (!strcmp(argv[i], "identity")) {
 			if (config.peer_cathedral == 0)
 				fatal("identity only relevant for cathedral");
@@ -445,10 +452,7 @@ hymn_show(int argc, char *argv[])
 		printf("  peer\t\t");
 	}
 
-	printf("%u.%u.%u.%u port %u\n",
-	    config.peer_ip & 0xff, (config.peer_ip >> 8) & 0xff,
-	    (config.peer_ip >> 16) & 0xff, (config.peer_ip >> 24) & 0xff,
-	    config.peer_port);
+	printf("%s\n", hymn_ip_port_str(&config.peer));
 
 	printf("  routes\n");
 	if (LIST_EMPTY(&config.routes)) {
@@ -629,6 +633,37 @@ hymn_ip_mask_str(struct addr *addr)
 	return (str);
 }
 
+static void
+hymn_ip_port_parse(struct addr *addr, char *ip)
+{
+	char		*p;
+
+	if ((p = strchr(ip, ':')) == NULL)
+		fatal("'%s' not in ip:port format", ip);
+
+	*(p)++ = '\0';
+
+	errno = 0;
+	addr->port = hymn_number(p, 10, 1, USHRT_MAX);
+	if (addr->port == 0)
+		fatal("port '%s' invalid", p);
+
+	if (inet_pton(AF_INET, ip, &addr->ip) == 0)
+		fatal("ip '%s' is invalid", ip);
+}
+
+static const char *
+hymn_ip_port_str(struct addr *addr)
+{
+	static char	str[INET_ADDRSTRLEN + 6];
+
+	(void)snprintf(str, sizeof(str), "%u.%u.%u.%u:%u",
+	    addr->ip & 0xff, (addr->ip >> 8) & 0xff,
+	    (addr->ip >> 16) & 0xff, (addr->ip >> 24) & 0xff, addr->port);
+
+	return (str);
+}
+
 static unsigned long
 hymn_number(const char *nptr, int base, unsigned long min, unsigned long max)
 {
@@ -770,6 +805,7 @@ hymn_config_save(const char *path, struct config *cfg)
 	    HYMN_BASE_PATH, cfg->src, cfg->dst);
 
 	hymn_config_write(fd, "\n");
+	hymn_config_write(fd, "local %s\n", hymn_ip_port_str(&cfg->local));
 
 	if (cfg->peer_cathedral) {
 		hymn_config_write(fd, "cathedral_id 0x%08x\n",
@@ -781,10 +817,7 @@ hymn_config_save(const char *path, struct config *cfg)
 		hymn_config_write(fd, "peer ");
 	}
 
-	hymn_config_write(fd, "%u.%u.%u.%u:%u\n",
-	    cfg->peer_ip & 0xff, (cfg->peer_ip >> 8) & 0xff,
-	    (cfg->peer_ip >> 16) & 0xff, (cfg->peer_ip >> 24) & 0xff,
-	    cfg->peer_port);
+	hymn_config_write(fd, "%s\n", hymn_ip_port_str(&cfg->peer));
 	hymn_config_write(fd, "\n");
 
 	LIST_FOREACH(rt, &cfg->routes, list) {
@@ -860,6 +893,18 @@ hymn_config_load(const char *path, struct config *cfg)
 }
 
 static void
+hymn_config_parse_peer(struct config *cfg, char *peer)
+{
+	hymn_ip_port_parse(&cfg->peer, peer);
+}
+
+static void
+hymn_config_parse_local(struct config *cfg, char *local)
+{
+	hymn_ip_port_parse(&cfg->local, local);
+}
+
+static void
 hymn_config_parse_tunnel(struct config *cfg, char *peer)
 {
 	char		*mtu;
@@ -874,15 +919,10 @@ hymn_config_parse_tunnel(struct config *cfg, char *peer)
 }
 
 static void
-hymn_config_parse_peer(struct config *cfg, char *peer)
-{
-	hymn_config_set_peer(cfg, peer);
-}
-
-static void
 hymn_config_parse_cathedral(struct config *cfg, char *cathedral)
 {
-	hymn_config_set_cathedral(cfg, cathedral);
+	hymn_ip_port_parse(&cfg->peer, cathedral);
+	cfg->peer_cathedral = 1;
 }
 
 static void
@@ -909,30 +949,4 @@ hymn_config_set_mtu(struct config *cfg, const char *mtu)
 
 	if (cfg->tun_mtu > 9200 || cfg->tun_mtu < 576)
 		fatal("invalid mtu '%s'", mtu);
-}
-
-static void
-hymn_config_set_peer(struct config *cfg, const char *peer)
-{
-	char		*p;
-
-	if ((p = strchr(peer, ':')) == NULL)
-		fatal("peer '%s' not in ip:port format", peer);
-
-	*(p)++ = '\0';
-
-	errno = 0;
-	cfg->peer_port = hymn_number(p, 10, 1, USHRT_MAX);
-	if (cfg->peer_port == 0)
-		fatal("peer port '%s' invalid", p);
-
-	if (inet_pton(AF_INET, peer, &cfg->peer_ip) == 0)
-		fatal("peer ip '%s' is invalid", peer);
-}
-
-static void
-hymn_config_set_cathedral(struct config *cfg, const char *cathedral)
-{
-	cfg->peer_cathedral = 1;
-	hymn_config_set_peer(cfg, cathedral);
 }
