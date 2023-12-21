@@ -39,6 +39,11 @@
 #define HYMN_BASE_PATH		"/etc/hymn"
 #define HYMN_RUN_PATH		"/var/run/hymn"
 
+#define HYMN_TUNNEL		(1 << 1)
+#define HYMN_PEER		(1 << 2)
+#define HYMN_SECRET		(1 << 3)
+#define HYMN_REQUIRED		(HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
+
 struct addr {
 	in_addr_t		ip;
 	in_addr_t		mask;
@@ -58,6 +63,8 @@ struct config {
 
 	u_int32_t		cathedral_id;
 	int			peer_cathedral;
+
+	char			*secret;
 
 	LIST_HEAD(, addr)	routes;
 };
@@ -101,6 +108,7 @@ static void	hymn_config_parse_peer(struct config *, char *);
 static void	hymn_config_parse_local(struct config *, char *);
 static void	hymn_config_parse_route(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
+static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 
@@ -135,6 +143,7 @@ static const struct {
 	{ "local",		hymn_config_parse_local },
 	{ "route",		hymn_config_parse_route },
 	{ "tunnel",		hymn_config_parse_tunnel },
+	{ "secret",		hymn_config_parse_secret },
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
 	{ NULL,			NULL },
@@ -220,7 +229,7 @@ usage_add(void)
 {
 	fprintf(stderr,
 	    "usage: hymn add <src>-<dst> tunnel <ip/mask> mtu <mtu> \\\n");
-	fprintf(stderr, "    [peer | cathedral] <ip:port>\n");
+	fprintf(stderr, "    secret <path> [peer | cathedral] <ip:port>\n");
 	exit(1);
 }
 
@@ -228,10 +237,11 @@ static int
 hymn_add(int argc, char *argv[])
 {
 	int			i;
+	u_int32_t		which;
 	struct config		config;
 	char			confpath[PATH_MAX], keypath[PATH_MAX];
 
-	if (argc != 7 && argc != 9)
+	if (argc < 5)
 		usage_add();
 
 	hymn_config_init(&config);
@@ -254,17 +264,27 @@ hymn_add(int argc, char *argv[])
 	if (argc & 0x01)
 		usage_add();
 
-	/* XXX set flags in config to indicate whats present. */
+	which = 0;
+
 	for (i = 0; i < argc; i += 2) {
 		if (!strcmp(argv[i], "tunnel")) {
+			which |= HYMN_TUNNEL;
 			hymn_ip_mask_parse(&config.tun, argv[i + 1]);
+		} else if (!strcmp(argv[i], "secret")) {
+			which |= HYMN_SECRET;
+			if (config.secret != NULL)
+				fatal("duplicate secret");
+			if ((config.secret = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
 		} else if (!strcmp(argv[i], "mtu")) {
 			hymn_config_set_mtu(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "peer")) {
+			which |= HYMN_PEER;
 			hymn_ip_port_parse(&config.peer, argv[i + 1]);
 		} else if (!strcmp(argv[i], "local")) {
 			hymn_ip_port_parse(&config.local, argv[i + 1]);
 		} else if (!strcmp(argv[i], "cathedral")) {
+			which |= HYMN_PEER;
 			hymn_ip_port_parse(&config.peer, argv[i + 1]);
 			config.peer_cathedral = 1;
 		} else if (!strcmp(argv[i], "identity")) {
@@ -275,12 +295,19 @@ hymn_add(int argc, char *argv[])
 		}
 	}
 
+	if (!(which & HYMN_TUNNEL))
+		printf("missing tunnel\n");
+	if (!(which & HYMN_SECRET))
+		printf("missing secret\n");
+	if (!(which & HYMN_PEER))
+		printf("missing peer\n");
+
+	if ((which & HYMN_REQUIRED) != HYMN_REQUIRED)
+		usage_add();
+
 	hymn_config_save(confpath, &config);
 
-	argv[0] = keypath;
-	argv[1] = NULL;
-
-	return (hymn_keygen(1, argv));
+	return (0);
 }
 
 static void
@@ -294,6 +321,7 @@ static int
 hymn_del(int argc, char *argv[])
 {
 	u_int8_t	src, dst;
+	char		path[PATH_MAX];
 
 	if (argc != 1)
 		usage_del();
@@ -301,7 +329,11 @@ hymn_del(int argc, char *argv[])
 	if (sscanf(argv[0], "%02hhx-%02hhx", &src, &dst) != 2)
 		usage_del();
 
-	hymn_unlink("%s/hymn-%02x-%02x.key", HYMN_BASE_PATH, src, dst);
+	hymn_pid_path(path ,sizeof(path), src, dst);
+
+	if (access(path, R_OK) != -1)
+		fatal("tunnel %02x-%02x still up", src, dst);
+
 	hymn_unlink("%s/hymn-%02x-%02x.conf", HYMN_BASE_PATH, src, dst);
 
 	return (0);
@@ -644,9 +676,7 @@ hymn_ip_port_parse(struct addr *addr, char *ip)
 	*(p)++ = '\0';
 
 	errno = 0;
-	addr->port = hymn_number(p, 10, 1, USHRT_MAX);
-	if (addr->port == 0)
-		fatal("port '%s' invalid", p);
+	addr->port = hymn_number(p, 10, 0, USHRT_MAX);
 
 	if (inet_pton(AF_INET, ip, &addr->ip) == 0)
 		fatal("ip '%s' is invalid", ip);
@@ -801,16 +831,15 @@ hymn_config_save(const char *path, struct config *cfg)
 	    HYMN_RUN_PATH, cfg->src, cfg->dst);
 	hymn_config_write(fd, "tunnel %s %u\n",
 	    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
-	hymn_config_write(fd, "secret %s/hymn-%02x-%02x.key\n",
-	    HYMN_BASE_PATH, cfg->src, cfg->dst);
+	hymn_config_write(fd, "secret %s\n", cfg->secret);
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "local %s\n", hymn_ip_port_str(&cfg->local));
 
 	if (cfg->peer_cathedral) {
-		hymn_config_write(fd, "cathedral_id 0x%08x\n",
+		hymn_config_write(fd, "cathedral_id 0x%x\n",
 		    cfg->cathedral_id);
-		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-0x%08x\n",
+		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-0x%x\n",
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral ");
 	} else {
@@ -916,6 +945,16 @@ hymn_config_parse_tunnel(struct config *cfg, char *peer)
 
 	hymn_ip_mask_parse(&cfg->tun, peer);
 	hymn_config_set_mtu(cfg, mtu);
+}
+
+static void
+hymn_config_parse_secret(struct config *cfg, char *secret)
+{
+	if (cfg->secret != NULL)
+		fatal("duplicate secret");
+
+	if ((cfg->secret = strdup(secret)) == NULL)
+		fatal("strdup");
 }
 
 static void
