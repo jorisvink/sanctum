@@ -244,7 +244,9 @@ usage_add(void)
 {
 	fprintf(stderr,
 	    "usage: hymn add <src>-<dst> tunnel <ip/mask> mtu <mtu> \\\n");
-	fprintf(stderr, "    secret <path> [peer | cathedral] <ip:port>\n");
+	fprintf(stderr, "    local <ip:port> secret <path> "
+	    "[peer | cathedral] <ip:port>\n");
+
 	exit(1);
 }
 
