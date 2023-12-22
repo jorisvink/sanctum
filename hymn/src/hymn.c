@@ -126,7 +126,8 @@ static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 
-static void	hymn_ctl_status(const char *);
+static void	hymn_ctl_status(const char *,
+		    struct sanctum_ctl_status_response *);
 static void	hymn_ctl_response(int, void *, size_t);
 static void	hymn_ctl_request(int, const char *, const void *, size_t);
 
@@ -581,7 +582,7 @@ hymn_show(int argc, char *argv[])
 			fatal("failed to access %s: %s\n", path, errno_s);
 	} else {
 		hymn_control_path(path, sizeof(path), src, dst);
-		hymn_ctl_status(path);
+		hymn_ctl_status(path, NULL);
 	}
 
 	return (0);
@@ -590,10 +591,11 @@ hymn_show(int argc, char *argv[])
 static int
 hymn_list(int argc, char *argv[])
 {
-	struct dirent		*dp;
-	DIR			*dir;
-	u_int8_t		src, dst;
-	char			path[PATH_MAX];
+	struct dirent				*dp;
+	DIR					*dir;
+	struct sanctum_ctl_status_response	resp;
+	u_int8_t				src, dst;
+	char					path[PATH_MAX];
 
 	if (argc != 0)
 		fatal("Usage: hymn list");
@@ -614,10 +616,19 @@ hymn_list(int argc, char *argv[])
 		printf("hymn-%02x-%02x - ", src, dst);
 		hymn_pid_path(path, sizeof(path), src, dst);
 
-		if (access(path, R_OK) == -1)
+		if (access(path, R_OK) == -1) {
 			printf("down\n");
-		else
-			printf("up\n");
+		} else {
+			hymn_control_path(path, sizeof(path), src, dst);
+			hymn_ctl_status(path, &resp);
+
+			if (resp.tx.spi != 0 && resp.rx.spi != 0)
+				printf("online");
+			else
+				printf("pending");
+
+			printf("\n");
+		}
 	}
 
 	(void)closedir(dir);
@@ -1157,7 +1168,7 @@ hymn_unix_socket(struct sockaddr_un *sun, const char *path)
 }
 
 static void
-hymn_ctl_status(const char *path)
+hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 {
 	int					fd;
 	struct sockaddr_un			sun;
@@ -1182,8 +1193,12 @@ hymn_ctl_status(const char *path)
 	hymn_ctl_request(fd, path, &ctl, sizeof(ctl));
 	hymn_ctl_response(fd, &resp, sizeof(resp));
 
-	hymn_dump_ifstat("tx", &resp.tx);
-	hymn_dump_ifstat("rx", &resp.rx);
+	if (out == NULL) {
+		hymn_dump_ifstat("tx", &resp.tx);
+		hymn_dump_ifstat("rx", &resp.rx);
+	} else {
+		memcpy(out, &resp, sizeof(resp));
+	}
 }
 
 static void
