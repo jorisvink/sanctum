@@ -59,6 +59,8 @@ struct addr {
 	LIST_ENTRY(addr)	list;
 };
 
+LIST_HEAD(addrlist, addr);
+
 struct config {
 	u_int8_t		src;
 	u_int8_t		dst;
@@ -74,7 +76,8 @@ struct config {
 
 	char			*secret;
 
-	LIST_HEAD(, addr)	routes;
+	struct addrlist		routes;
+	struct addrlist		accepts;
 };
 
 void		fatal(const char *, ...) __attribute__((noreturn));
@@ -102,6 +105,7 @@ static int	hymn_show(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_route(int, char **);
+static int	hymn_accept(int, char **);
 static int	hymn_keygen(int, char **);
 
 static void	hymn_config_init(struct config *);
@@ -117,6 +121,7 @@ static void	hymn_config_parse_peer(struct config *, char *);
 static void	hymn_config_parse_local(struct config *, char *);
 static void	hymn_config_parse_route(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
+static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
@@ -128,7 +133,12 @@ static void	hymn_ctl_request(int, const char *, const void *, size_t);
 static void	hymn_unix_socket(struct sockaddr_un *, const char *);
 static void	hymn_dump_ifstat(const char *, struct sanctum_ifstat *);
 
-static struct addr	*hymn_route_parse(const char *);
+static void	hymn_netlist_add(const char *,
+		    struct addrlist *, struct addr *);
+static void	hymn_netlist_del(const char *,
+		    struct addrlist *, struct addr *);
+
+static struct addr	*hymn_net_parse(const char *);
 static const char	*hymn_ip_mask_str(struct addr *);
 static const char	*hymn_ip_port_str(struct addr *);
 static void		hymn_ip_port_parse(struct addr *, char *);
@@ -148,6 +158,7 @@ static const struct {
 	{ "list",		hymn_list },
 	{ "down",		hymn_down },
 	{ "route",		hymn_route },
+	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
 	{ NULL,			NULL },
 };
@@ -159,6 +170,7 @@ static const struct {
 	{ "peer",		hymn_config_parse_peer },
 	{ "local",		hymn_config_parse_local },
 	{ "route",		hymn_config_parse_route },
+	{ "accept",		hymn_config_parse_accept },
 	{ "tunnel",		hymn_config_parse_tunnel },
 	{ "secret",		hymn_config_parse_secret },
 	{ "cathedral",		hymn_config_parse_cathedral },
@@ -360,15 +372,15 @@ static void
 usage_route(void)
 {
 	fprintf(stderr,
-	    "usage: hymn route [add | delete] <net/mask> via <src>-<dst>\n");
+	    "usage: hymn route [add | del] <net/mask> via <src>-<dst>\n");
 	exit(1);
 }
 
 static int
 hymn_route(int argc, char *argv[])
 {
+	struct addr		*net;
 	struct config		config;
-	struct addr		*rt, *old;
 	char			path[PATH_MAX];
 
 	if (argc != 4)
@@ -383,29 +395,66 @@ hymn_route(int argc, char *argv[])
 		usage_route();
 
 	hymn_conf_path(path, sizeof(path), config.src, config.dst);
-	rt = hymn_route_parse(argv[1]);
+	net = hymn_net_parse(argv[1]);
 	hymn_config_load(path, &config);
 
 	if (!strcmp(argv[0], "add")) {
-		LIST_FOREACH(old, &config.routes, list) {
-			if (old->ip == rt->ip && old->mask && rt->mask)
-				fatal("route %s exists", hymn_ip_mask_str(rt));
-		}
-		LIST_INSERT_HEAD(&config.routes, rt, list);
+		hymn_netlist_add("route", &config.routes, net);
+		hymn_netlist_add("accept", &config.accepts, net);
 	} else if (!strcmp(argv[0], "del")) {
-		LIST_FOREACH(old, &config.routes, list) {
-			if (old->ip == rt->ip && old->mask && rt->mask) {
-				LIST_REMOVE(old, list);
-				free(old);
-				break;
-			}
-		}
+		hymn_netlist_del("route", &config.routes, net);
+		hymn_netlist_del("accept", &config.accepts, net);
+
 	} else {
 		usage_route();
 	}
 
 	hymn_config_save(path, &config);
-	free(rt);
+	free(net);
+
+	return (0);
+}
+
+static void
+usage_accept(void)
+{
+	fprintf(stderr,
+	    "usage: hymn accept [add | del] <net/mask> on <src>-<dst>\n");
+	exit(1);
+}
+
+static int
+hymn_accept(int argc, char *argv[])
+{
+	struct addr		*net;
+	struct config		config;
+	char			path[PATH_MAX];
+
+	if (argc != 4)
+		usage_accept();
+
+	if (strcmp(argv[2], "on"))
+		usage_accept();
+
+	hymn_config_init(&config);
+
+	if (sscanf(argv[3], "%02hhx-%02hhx", &config.src, &config.dst) != 2)
+		usage_accept();
+
+	hymn_conf_path(path, sizeof(path), config.src, config.dst);
+	net = hymn_net_parse(argv[1]);
+	hymn_config_load(path, &config);
+
+	if (!strcmp(argv[0], "add")) {
+		hymn_netlist_add("accept", &config.accepts, net);
+	} else if (!strcmp(argv[0], "del")) {
+		hymn_netlist_del("accept", &config.accepts, net);
+	} else {
+		usage_accept();
+	}
+
+	hymn_config_save(path, &config);
+	free(net);
 
 	return (0);
 }
@@ -475,7 +524,7 @@ hymn_up(int argc, char *argv[])
 static int
 hymn_show(int argc, char *argv[])
 {
-	struct addr		*rt;
+	struct addr		*net;
 	struct config		config;
 	u_int8_t		src, dst;
 	char			path[PATH_MAX];
@@ -509,8 +558,17 @@ hymn_show(int argc, char *argv[])
 	if (LIST_EMPTY(&config.routes)) {
 		printf("    none\n");
 	} else {
-		LIST_FOREACH(rt, &config.routes, list)
-			printf("    %s\n", hymn_ip_mask_str(rt));
+		LIST_FOREACH(net, &config.routes, list)
+			printf("    %s\n", hymn_ip_mask_str(net));
+	}
+
+	printf("\n");
+	printf("  accepts\n");
+	if (LIST_EMPTY(&config.accepts)) {
+		printf("    none\n");
+	} else {
+		LIST_FOREACH(net, &config.accepts, list)
+			printf("    %s\n", hymn_ip_mask_str(net));
 	}
 
 	printf("\n");
@@ -650,6 +708,32 @@ hymn_keygen(int argc, char *argv[])
 }
 
 static void
+hymn_netlist_add(const char *name, struct addrlist *list, struct addr *net)
+{
+	struct addr	*old;
+
+	LIST_FOREACH(old, list, list) {
+		if (old->ip == net->ip && old->mask == net->mask)
+			fatal("%s %s exists", name, hymn_ip_mask_str(net));
+	}
+	LIST_INSERT_HEAD(list, net, list);
+}
+
+static void
+hymn_netlist_del(const char *name, struct addrlist *list, struct addr *net)
+{
+	struct addr	*old;
+
+	LIST_FOREACH(old, list, list) {
+		if (old->ip == net->ip && old->mask == net->mask) {
+			LIST_REMOVE(old, list);
+			free(old);
+			return;
+		}
+	}
+}
+
+static void
 hymn_mkdir(const char *path, int exists_ok)
 {
 	if (mkdir(path, 0700) == -1) {
@@ -678,7 +762,7 @@ hymn_unlink(const char *fmt, ...)
 }
 
 static struct addr *
-hymn_route_parse(const char *route)
+hymn_net_parse(const char *route)
 {
 	struct addr	*rt;
 
@@ -871,7 +955,7 @@ hymn_config_read(FILE *fp, char *in, size_t len)
 static void
 hymn_config_save(const char *path, struct config *cfg)
 {
-	struct addr	*rt;
+	struct addr	*net;
 	char		tmp[PATH_MAX];
 	int		fd, len, saved_errno;
 
@@ -907,10 +991,11 @@ hymn_config_save(const char *path, struct config *cfg)
 	hymn_config_write(fd, "%s\n", hymn_ip_port_str(&cfg->peer));
 	hymn_config_write(fd, "\n");
 
-	LIST_FOREACH(rt, &cfg->routes, list) {
-		hymn_config_write(fd, "route %s\n", hymn_ip_mask_str(rt));
-		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(rt));
-	}
+	LIST_FOREACH(net, &cfg->routes, list)
+		hymn_config_write(fd, "route %s\n", hymn_ip_mask_str(net));
+
+	LIST_FOREACH(net, &cfg->accepts, list)
+		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(net));
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "run heaven as %s\n", getlogin());
@@ -1031,11 +1116,21 @@ hymn_config_parse_cathedral_id(struct config *cfg, char *id)
 static void
 hymn_config_parse_route(struct config *cfg, char *route)
 {
-	struct addr	*rt;
+	struct addr	*net;
 
-	rt = hymn_route_parse(route);
+	net = hymn_net_parse(route);
 
-	LIST_INSERT_HEAD(&cfg->routes, rt, list);
+	LIST_INSERT_HEAD(&cfg->routes, net, list);
+}
+
+static void
+hymn_config_parse_accept(struct config *cfg, char *accept)
+{
+	struct addr	*net;
+
+	net = hymn_net_parse(accept);
+
+	LIST_INSERT_HEAD(&cfg->accepts, net, list);
 }
 
 static void
