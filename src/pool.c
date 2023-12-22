@@ -107,7 +107,7 @@ sanctum_pool_put(struct sanctum_pool *pool, void *ptr)
 	entry = (struct entry *)uptr;
 
 	if (!sanctum_atomic_cas_simple(&entry->free, 0, 1))
-		fatal("failed to mark %p as free", (void *)entry);
+		fatal("failed to mark %p as free", ptr);
 
 	if (sanctum_ring_queue(&pool->queue, (void *)uptr) == -1)
 		fatal("failed to requeue a free element");

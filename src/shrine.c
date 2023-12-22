@@ -29,13 +29,12 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The SACRISTY KDF label. */
+/* The PILGRIM KDF label. */
 #define SHRINE_DERIVE_LABEL	"SANCTUM.PILGRIMAGE.KDF"
 
 /* The half-time window in which offers are valid. */
 #define SHRINE_OFFER_VALID		(SANCTUM_SA_LIFETIME_SOFT / 2)
 
-static void	shrine_offer_kdf(struct nyfe_agelas *, void *, size_t);
 static void	shrine_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 static void	shrine_drop_access(void);
@@ -143,12 +142,19 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	op = sanctum_packet_head(pkt);
 
+	/* Derive the key we will use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(sanctum->secret, SHRINE_DERIVE_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
 	/* Decrypt and verify the integrity of the offer first. */
-	shrine_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return;
@@ -202,40 +208,4 @@ shrine_install(struct sanctum_key *state, u_int32_t spi, u_int32_t salt,
 	if (!sanctum_atomic_cas_simple(&state->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
 		fatal("failed to swap key state to pending");
-}
-
-/*
- * Derive a symmetrical key from our secret and the given seed and
- * setup the given agelas cipher context.
- */
-static void
-shrine_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
-{
-	int				fd;
-	struct nyfe_kmac256		kdf;
-	u_int8_t			len;
-	u_int8_t			okm[64], secret[SANCTUM_KEY_LENGTH];
-
-	PRECOND(cipher != NULL);
-	PRECOND(seed != NULL);
-	PRECOND(seed_len == 64);
-
-	fd = nyfe_file_open(sanctum->secret, NYFE_FILE_READ);
-	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
-		fatal("failed to read secret");
-	(void)close(fd);
-
-	len = 64;
-
-	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
-	    SHRINE_DERIVE_LABEL, sizeof(SHRINE_DERIVE_LABEL) - 1);
-	sanctum_mem_zero(secret, sizeof(secret));
-
-	nyfe_kmac256_update(&kdf, &len, sizeof(len));
-	nyfe_kmac256_update(&kdf, seed, seed_len);
-	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
-	sanctum_mem_zero(&kdf, sizeof(kdf));
-
-	nyfe_agelas_init(cipher, okm, sizeof(okm));
-	sanctum_mem_zero(&okm, sizeof(okm));
 }

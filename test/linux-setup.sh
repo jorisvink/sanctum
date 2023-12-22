@@ -17,6 +17,7 @@ brctl addif crypto-link left-link
 brctl addif crypto-link right-link
 
 ip link set crypto-link up
+ifconfig crypto-link 1.1.1.254 netmask 255.255.255.0
 
 ip link set cry.left netns left
 ip link set cry.right netns right

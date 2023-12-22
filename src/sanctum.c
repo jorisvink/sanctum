@@ -26,9 +26,14 @@
 #include "sanctum.h"
 
 static void	signal_hdlr(int);
+static void	signal_memfault(int);
 
 static void	usage(void) __attribute__((noreturn));
 static void	version(void) __attribute__((noreturn));
+
+static void	sanctum_pidfile_check(void);
+static void	sanctum_pidfile_write(void);
+static void	sanctum_pidfile_unlink(void);
 
 static int			early = 1;
 volatile sig_atomic_t		sig_recv = -1;
@@ -61,6 +66,7 @@ int
 main(int argc, char *argv[])
 {
 	struct timespec		ts;
+	sigset_t		sigset;
 	const char		*config;
 	int			ch, running, sig, foreground;
 
@@ -97,16 +103,27 @@ main(int argc, char *argv[])
 
 	sanctum_config_init();
 	sanctum_config_load(config);
+	sanctum_pidfile_check();
 
 	sanctum_signal_trap(SIGINT);
 	sanctum_signal_trap(SIGHUP);
 	sanctum_signal_trap(SIGCHLD);
 	sanctum_signal_trap(SIGQUIT);
+	sanctum_signal_trap(SIGSEGV);
 
 	sanctum_platform_init();
 	sanctum_proc_init(argv);
 	sanctum_packet_init();
 	sanctum_proc_start();
+
+	if (sigfillset(&sigset) == -1)
+		fatal("sigfillset: %s", errno_s);
+
+	sigdelset(&sigset, SIGINT);
+	sigdelset(&sigset, SIGHUP);
+	sigdelset(&sigset, SIGCHLD);
+	sigdelset(&sigset, SIGQUIT);
+	(void)sigprocmask(SIG_BLOCK, &sigset, NULL);
 
 	early = 0;
 
@@ -128,6 +145,8 @@ main(int argc, char *argv[])
 	}
 
 	sig_recv = -1;
+
+	sanctum_pidfile_write();
 	sanctum_log(LOG_INFO, "sanctum started (pid=%d)", getpid());
 
 	while (running) {
@@ -157,6 +176,7 @@ main(int argc, char *argv[])
 	}
 
 	sanctum_proc_shutdown();
+	sanctum_pidfile_unlink();
 
 	return (0);
 }
@@ -170,7 +190,11 @@ sanctum_signal_trap(int sig)
 	struct sigaction	sa;
 
 	memset(&sa, 0, sizeof(sa));
-	sa.sa_handler = signal_hdlr;
+
+	if (sig == SIGSEGV)
+		sa.sa_handler = signal_memfault;
+	else
+		sa.sa_handler = signal_hdlr;
 
 	if (sigfillset(&sa.sa_mask) == -1)
 		fatal("sigfillset: %s", errno_s);
@@ -213,6 +237,8 @@ fatal(const char *fmt, ...)
 
 	PRECOND(fmt != NULL);
 
+	nyfe_zeroize_all();
+
 	proc = sanctum_process();
 	va_start(args, fmt);
 
@@ -225,8 +251,10 @@ fatal(const char *fmt, ...)
 
 	va_end(args);
 
-	if (proc == NULL)
+	if (proc == NULL) {
 		sanctum_proc_shutdown();
+		sanctum_pidfile_unlink();
+	}
 
 	exit(1);
 }
@@ -239,4 +267,79 @@ static void
 signal_hdlr(int sig)
 {
 	sig_recv = sig;
+}
+
+/*
+ * The signal handler for when a segmentation fault occurred, we are
+ * catching this so we can just cleanup before dying.
+ */
+static void
+signal_memfault(int sig)
+{
+	nyfe_zeroize_all();
+	abort();
+}
+
+/*
+ * Check if our pidfile already exists, indicating we didn't cleanly
+ * shutdown maybe last time, or that something else is using our path.
+ */
+static void
+sanctum_pidfile_check(void)
+{
+	PRECOND(sanctum != NULL);
+
+	if (sanctum->pidfile == NULL)
+		return;
+
+	/* Don't call fatal() here, we don't want to try and remove it. */
+	if (access(sanctum->pidfile, R_OK) != -1 && errno != ENOENT) {
+		fprintf(stderr, "pidfile '%s' exists\n", sanctum->pidfile);
+		exit(1);
+	}
+}
+
+/*
+ * Create the pidfile at the location given in our configuration file.
+ * Write the guardian process its PID to it.
+ */
+static void
+sanctum_pidfile_write(void)
+{
+	int		fd;
+	FILE		*fp;
+
+	PRECOND(sanctum != NULL);
+
+	if (sanctum->pidfile == NULL)
+		return;
+
+	fd = nyfe_file_open(sanctum->pidfile, NYFE_FILE_CREATE);
+
+	if ((fp = fdopen(fd, "w")) == NULL)
+		fatal("fdopen: %s", strerror(errno));
+
+	(void)fprintf(fp, "%d", getpid());
+
+	if (fclose(fp) != 0) {
+		sanctum_log(LOG_NOTICE,
+		    "close on pidfile failed: %s", strerror(errno));
+	}
+}
+
+/*
+ * Remove our pidfile from disk by unlinking it.
+ */
+static void
+sanctum_pidfile_unlink(void)
+{
+	PRECOND(sanctum != NULL);
+
+	if (sanctum->pidfile == NULL)
+		return;
+
+	if (unlink(sanctum->pidfile) == -1) {
+		sanctum_log(LOG_NOTICE, "failed to remove pidfile '%s' (%s)",
+		    sanctum->pidfile, strerror(errno));
+	}
 }

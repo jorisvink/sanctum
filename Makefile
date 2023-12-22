@@ -3,6 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=sanctum
+LIBNYFE=nyfe/libnyfe.a
 VERSION=$(OBJDIR)/version.c
 
 DESTDIR?=
@@ -15,10 +16,12 @@ CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
 CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -Iinclude
+CFLAGS+=-Inyfe/include
 CFLAGS+=-g
 
 SRC=	src/sanctum.c \
 	src/bless.c \
+	src/cathedral.c \
 	src/chapel.c \
 	src/confess.c \
 	src/config.c \
@@ -38,12 +41,7 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
-ifeq ("$(NYFE)", "")
-$(error "No NYFE path set")
-endif
-
-CFLAGS+=-I$(NYFE)/include
-LDFLAGS+=$(NYFE)/libnyfe.a
+LDFLAGS+=$(LIBNYFE)
 
 ifeq ("$(HPERF)", "1")
 	CFLAGS+=-DSANCTUM_HIGH_PERFORMANCE=1
@@ -68,7 +66,6 @@ ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-DPLATFORM_LINUX
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 	SRC+=src/platform_linux.c
-	LDFLAGS+=-lbsd
 else ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-DPLATFORM_DARWIN
 	SRC+=src/platform_darwin.c
@@ -80,10 +77,11 @@ endif
 OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
-all: $(BIN)
+all: $(BIN) 
+	$(MAKE) -C hymn
 	$(MAKE) -C pontifex
 
-$(BIN): $(OBJDIR) $(OBJS) $(VERSION)
+$(BIN): $(OBJDIR) $(LIBNYFE) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
 $(VERSION): $(OBJDIR) force
@@ -106,7 +104,11 @@ $(VERSION): $(OBJDIR) force
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
+	$(MAKE) -C hymn install
 	$(MAKE) -C pontifex install
+
+$(LIBNYFE):
+	$(MAKE) -C nyfe
 
 src/sanctum.c: $(VERSION)
 
@@ -118,6 +120,8 @@ $(OBJDIR)/%.o: src/%.c
 
 clean:
 	rm -f $(VERSION)
+	$(MAKE) -C nyfe clean
+	$(MAKE) -C hymn clean
 	$(MAKE) -C pontifex clean
 	rm -rf $(OBJDIR) $(BIN)
 

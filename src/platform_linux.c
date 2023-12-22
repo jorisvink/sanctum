@@ -256,6 +256,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_SHRINE:
 	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_CATHEDRAL:
 		pf.filter = keying_seccomp_filter;
 		pf.len = KORE_FILTER_LEN(keying_seccomp_filter);
 		break;

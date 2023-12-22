@@ -31,10 +31,11 @@
 #include "sanctum_ctl.h"
 
 #define PONTIFEX_CLIENT_SOCKET		"/tmp/pontifex.sock"
+#define PONTIFEX_SANCTUM_SOCKET		"/tmp/sanctum-control"
 
 static void	usage(void) __attribute__((noreturn));
 
-static int	pontifex_socket_local(const char *);
+static int	pontifex_socket_local(void);
 static void	pontifex_socket_fill(struct sockaddr_un *, const char *);
 
 static void	pontifex_request_status(void);
@@ -56,8 +57,16 @@ static const struct {
 static void
 usage(void)
 {
-	printf("usage: pontifex [cmd]\n");
-	printf("possible cmd: status, communion\n");
+	fprintf(stderr, "usage: pontifex [cmd]\n");
+	fprintf(stderr, "commands:\n");
+	fprintf(stderr, "  status     - see stats for a sanctum instance\n");
+	fprintf(stderr, "  communion  - force session key refresh\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr,
+	    "When having multiple sanctum instances on your machines,\n");
+	fprintf(stderr,
+	    "use SANCTUM_CONTROL to specify the control socket to talk to.\n");
+
 	exit(1);
 }
 
@@ -96,7 +105,7 @@ pontifex_socket_fill(struct sockaddr_un *sun, const char *path)
 }
 
 static int
-pontifex_socket_local(const char *path)
+pontifex_socket_local(void)
 {
 	int			fd;
 	struct sockaddr_un	sun;
@@ -122,7 +131,7 @@ pontifex_request_status(void)
 	struct sanctum_ctl			ctl;
 	struct sanctum_ctl_status_response	resp;
 
-	fd = pontifex_socket_local("/tmp/pontifex-status");
+	fd = pontifex_socket_local();
 
 	memset(&ctl, 0, sizeof(ctl));
 
@@ -143,7 +152,7 @@ pontifex_request_communion(void)
 	int			fd;
 	struct sanctum_ctl	ctl;
 
-	fd = pontifex_socket_local("/tmp/pontifex-status");
+	fd = pontifex_socket_local();
 
 	memset(&ctl, 0, sizeof(ctl));
 
@@ -189,8 +198,12 @@ pontifex_request(int fd, const void *req, size_t len)
 {
 	ssize_t			ret;
 	struct sockaddr_un	sun;
+	const char		*control;
 
-	pontifex_socket_fill(&sun, "/tmp/sanctum-control");
+	if ((control = getenv("SANCTUM_CONTROL")) == NULL)
+		control = PONTIFEX_SANCTUM_SOCKET;
+
+	pontifex_socket_fill(&sun, control);
 
 	for (;;) {
 		if ((ret = sendto(fd, req, len, 0,

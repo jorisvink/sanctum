@@ -11,7 +11,7 @@ Sanctum 1:1
 
 ## About
 
-This is a very small, reviewable, experimental and fully privilege
+This is a very small, reviewable, capable, experimental and fully privilege
 seperated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
@@ -27,7 +27,7 @@ It's fun, but it doesn't make it less of a serious project.
 
 ## Privilege separation
 
-There are five processes that make up Sanctum:
+There are several processes that make up a sanctum instance:
 
 | Process name | Description  |
 | ------------ | ------------ |
@@ -38,6 +38,7 @@ There are five processes that make up Sanctum:
 | purgatory | The process receiving and sending packets on the outer interface.
 | pilgrim | The process handling TX keys when running in pilgrim mode.
 | shrine | The process handling RX keys when running in shrine mode.
+| cathedral | The process forwarding traffic when running in cathedral mode.
 
 Each process can run as its own user.
 
@@ -79,27 +80,13 @@ cryptographic AE cipher, while the keys are derived using KMAC256.
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
 64-bit sequence numbers and encrypted under AES256-GCM using keys
-exchanged via the chapel sacristy key exchange.
+exchanged via the chapel sacrament key exchange.
 
 ## Building
-
-To be able to build sanctum you need libnyfe.
-
-For now this means you need to clone Nyfe and build the cryptographic
-bits and bobs from there.
-
-```
-$ git clone https://github.com/jorisvink/nyfe
-$ cd nyfe
-$ make lib
-```
-
-After you have built libnyfe, you can build sanctum.
 
 ```
 $ git clone https://github.com/jorisvink/sanctum
 $ cd sanctum
-$ export NYFE=/path/to/nyfe
 $ make
 # make install
 ```

@@ -1,0 +1,6 @@
+sanctum
+obj
+*.o
+*.a
+hymn/hymn
+pontifex/pontifex

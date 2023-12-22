@@ -96,7 +96,8 @@ sanctum_purgatory(struct sanctum_proc *proc)
 			pending = 0;
 		}
 
-		if (sanctum->mode != SANCTUM_MODE_SHRINE) {
+		if (sanctum->mode != SANCTUM_MODE_SHRINE &&
+		    sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
 			if ((pkt = sanctum_ring_dequeue(io->offer)))
 				purgatory_send_packet(pkt);
 		}
@@ -192,13 +193,17 @@ purgatory_send_packet(struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_PURGATORY);
 	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
 
-	peer.sin_family = AF_INET;
-	peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
-	peer.sin_addr.s_addr = sanctum_atomic_read(&sanctum->peer_ip);
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+		peer.sin_family = AF_INET;
+		peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
+		peer.sin_addr.s_addr = sanctum_atomic_read(&sanctum->peer_ip);
 
-	if (peer.sin_addr.s_addr == 0) {
-		sanctum_packet_release(pkt);
-		return;
+		if (peer.sin_addr.s_addr == 0) {
+			sanctum_packet_release(pkt);
+			return;
+		}
+	} else {
+		memcpy(&peer, &pkt->addr, sizeof(pkt->addr));
 	}
 
 	for (;;) {
@@ -226,7 +231,7 @@ purgatory_send_packet(struct sanctum_packet *pkt)
 			if (errno == ENETUNREACH || errno == EHOSTUNREACH) {
 				sanctum_log(LOG_INFO,
 				    "host %s unreachable (%s)",
-				    inet_ntoa(sanctum->peer.sin_addr), errno_s);
+				    inet_ntoa(peer.sin_addr), errno_s);
 				break;
 			}
 			fatal("sendto: %s", errno_s);
@@ -286,12 +291,17 @@ purgatory_recv_packets(void)
 			continue;
 		}
 
-		if (pkt->target == SANCTUM_PROC_CONFESS) {
+		switch (pkt->target) {
+		case SANCTUM_PROC_CONFESS:
 			ret = sanctum_ring_queue(io->confess, pkt);
-		} else if (pkt->target == SANCTUM_PROC_CHAPEL) {
+			break;
+		case SANCTUM_PROC_CHAPEL:
+		case SANCTUM_PROC_CATHEDRAL:
 			ret = sanctum_ring_queue(io->chapel, pkt);
-		} else {
+			break;
+		default:
 			ret = -1;
+			break;
 		}
 
 		if (ret == -1)
@@ -308,6 +318,9 @@ purgatory_recv_packets(void)
  *
  * If these checks fail we do not move the packet forward to the
  * decryption process and instead it will get dropped.
+ *
+ * When running as a cathedral we always forward the packet
+ * (after some early sanity checking) to the cathedral proc.
  *
  * For the anti-replay check we only check if the packet falls
  * inside of the anti-replay window here, the rest is up to
@@ -326,6 +339,12 @@ purgatory_packet_check(struct sanctum_packet *pkt)
 
 	if (sanctum_packet_crypto_checklen(pkt) == -1)
 		return (-1);
+
+	/* In cathedral mode, we always kick it to the cathedral. */
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
+		pkt->target = SANCTUM_PROC_CATHEDRAL;
+		return (0);
+	}
 
 	hdr = sanctum_packet_head(pkt);
 	spi = be32toh(hdr->esp.spi);

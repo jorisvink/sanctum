@@ -29,8 +29,8 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The SACRISTY KDF label. */
-#define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRISTY.KDF"
+/* The SACRAMENT KDF label. */
+#define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRAMENT.KDF"
 
 /* The half-time window in which offers are valid. */
 #define CHAPEL_OFFER_VALID		5
@@ -48,12 +48,12 @@ struct rx_offer {
 };
 
 static void	chapel_peer_check(u_int64_t);
+static void	chapel_cathedral_notify(u_int64_t);
 
 static void	chapel_offer_clear(void);
 static void	chapel_offer_check(u_int64_t);
 static void	chapel_offer_encrypt(u_int64_t);
 static void	chapel_offer_create(u_int64_t, const char *);
-static void	chapel_offer_kdf(struct nyfe_agelas *, void *, size_t);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_drop_access(void);
@@ -74,6 +74,9 @@ static u_int32_t		last_spi = 0;
 /* The next time we can offer at the earliest. */
 static u_int64_t		offer_next = 0;
 
+/* The next time we update the cathedral. */
+static u_int64_t		cathedral_next = 0;
+
 /* Current offer TTL and next send intervals. */
 static u_int64_t		offer_ttl = 5;
 static u_int64_t		offer_next_send = 1;
@@ -87,7 +90,8 @@ static u_int64_t		local_id = 0;
  * This process is responsible sending key offers to our peer, if
  * it is known, as long as we have not seen any RX traffic from it.
  *
- * It also tracks heartbeat timeouts for the peer.
+ * It will track heartbeat timeouts for the peer and submit registration
+ * offers to a configured cathedral.
  */
 void
 sanctum_chapel(struct sanctum_proc *proc)
@@ -125,6 +129,9 @@ sanctum_chapel(struct sanctum_proc *proc)
 		}
 
 		now = sanctum_atomic_read(&sanctum->uptime);
+
+		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)
+			chapel_cathedral_notify(now);
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
 			chapel_offer_decrypt(pkt, now);
@@ -227,6 +234,69 @@ chapel_peer_check(u_int64_t now)
 }
 
 /*
+ * Check if it is time we notify our cathedral about the tunnel we
+ * are configured to carry.
+ */
+static void
+chapel_cathedral_notify(u_int64_t now)
+{
+	struct timespec			ts;
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	struct nyfe_agelas		cipher;
+
+	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
+	PRECOND(sanctum->cathedral_secret != NULL);
+
+	if (now < cathedral_next)
+		return;
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	op = sanctum_packet_head(pkt);
+
+	/* Construct the header and data. */
+	op->hdr.spi = htobe32(sanctum->cathedral_id);
+	op->hdr.magic = htobe64(SANCTUM_CATHEDRAL_MAGIC);
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+
+	op->data.id = htobe64(sanctum->tun_spi);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	/* Fill in the rest with random garbage. */
+	nyfe_random_bytes(op->data.key, sizeof(op->data.key));
+	nyfe_random_bytes(&op->data.salt, sizeof(op->data.salt));
+
+	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
+	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
+	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		sanctum_packet_release(pkt);
+		return;
+	}
+
+	/* Encrypt the offer packet. */
+	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	/* Submit it into purgatory. */
+	pkt->length = sizeof(*op);
+	pkt->target = SANCTUM_PROC_PURGATORY;
+
+	if (sanctum_ring_queue(io->offer, pkt) == -1)
+		sanctum_packet_release(pkt);
+
+	cathedral_next = now + 5;
+}
+
+/*
  * Check if a new offer needs to be sent.
  *
  * In order to send a new offer, we must have the peer address and the peer
@@ -313,6 +383,11 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
 	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
+	if (sanctum->tun_spi != 0) {
+		offer->spi = (offer->spi & 0x0000ffff) |
+		    ((u_int32_t)sanctum->tun_spi << 16);
+	}
+
 	chapel_install(io->rx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));
 
@@ -355,12 +430,20 @@ chapel_offer_encrypt(u_int64_t now)
 	op->data.id = htobe64(local_id);
 	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
 
+	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		sanctum_packet_release(pkt);
+		return;
+	}
+
 	/* Encrypt the offer packet. */
-	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
@@ -409,12 +492,19 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	op = sanctum_packet_head(pkt);
 
+	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
 	/* Decrypt and verify the integrity of the offer first. */
-	chapel_offer_kdf(&cipher, op->hdr.seed, sizeof(op->hdr.seed));
 	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
-	sanctum_mem_zero(&cipher, sizeof(cipher));
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return;
@@ -504,40 +594,4 @@ chapel_erase(struct sanctum_key *state, u_int32_t spi)
 	if (!sanctum_atomic_cas_simple(&state->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
 		fatal("failed to swap key state to erase");
-}
-
-/*
- * Derive a symmetrical key from our secret and the given seed and
- * setup the given agelas cipher context.
- */
-static void
-chapel_offer_kdf(struct nyfe_agelas *cipher, void *seed, size_t seed_len)
-{
-	int				fd;
-	struct nyfe_kmac256		kdf;
-	u_int8_t			len;
-	u_int8_t			okm[64], secret[SANCTUM_KEY_LENGTH];
-
-	PRECOND(cipher != NULL);
-	PRECOND(seed != NULL);
-	PRECOND(seed_len == 64);
-
-	fd = nyfe_file_open(sanctum->secret, NYFE_FILE_READ);
-	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
-		fatal("failed to read secret");
-	(void)close(fd);
-
-	len = 64;
-
-	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
-	    CHAPEL_DERIVE_LABEL, sizeof(CHAPEL_DERIVE_LABEL) - 1);
-	sanctum_mem_zero(secret, sizeof(secret));
-
-	nyfe_kmac256_update(&kdf, &len, sizeof(len));
-	nyfe_kmac256_update(&kdf, seed, seed_len);
-	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
-	sanctum_mem_zero(&kdf, sizeof(kdf));
-
-	nyfe_agelas_init(cipher, okm, sizeof(okm));
-	sanctum_mem_zero(&okm, sizeof(okm));
 }

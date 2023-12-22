@@ -60,6 +60,9 @@ sanctum_bless(struct sanctum_proc *proc)
 
 	memset(&state, 0, sizeof(state));
 
+	nyfe_zeroize_register(&state, sizeof(state));
+	nyfe_zeroize_register(io->tx, sizeof(*io->tx));
+
 	running = 1;
 	suspend = 0;
 
