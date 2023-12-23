@@ -67,20 +67,36 @@ process.
 
 ## Key Exchange
 
-The chapel process is responsible for sending fresh keys on certain
-intervals to the configured peer.
+The key exchange in sanctum happens via either the chapel, pilgrim or
+shrine processes (depending on what mode is configured) but is generally
+the same approach.
 
-The keys are derived from a shared symmetrical secret that both
-sides must have on disk.
+A sanctum instance is responsible for sending its **RX** key to
+the other side. It does this by periodically generating a new
+key uniformly at random and wrapping it with a secret derived
+from the underlying shared secret between both parties.
 
-The exchange is protected in transit by a duplex-sponge based
-cryptographic AE cipher, while the keys are derived using KMAC256.
+This wrapped **RX** key is then transmitted to the other side where
+it is unwrapped and installed as the **TX** key.
+
+This wrapping and unwrapping happens using a duplex-sponge
+based cryptographic AE cipher while the key used is derived
+from the underlying shared secret using KMAC256.
+
+Yes, this isn't PFS.
 
 ## Traffic
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
-64-bit sequence numbers and encrypted under AES256-GCM using keys
-exchanged via the chapel sacrament key exchange.
+64-bit sequence numbers. The traffic is either encrypted with AES256-GCM
+or Agelas and are encrypted under keys exchanged as described above.
+
+You can select what cipher to use by specifying a CIPHER environment
+variable at compile time with either:
+
+- openssl-aes-gcm (AES256-GCM via OpenSSL its low level API).
+- intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
+- nyfe-agelas (Agelas as provided by Nyfe).
 
 ## Building
 
