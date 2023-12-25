@@ -74,6 +74,7 @@ struct config {
 	u_int32_t		cathedral_id;
 	int			peer_cathedral;
 
+	char			*descr;
 	char			*secret;
 
 	struct addrlist		routes;
@@ -116,8 +117,10 @@ static void	hymn_config_save(const char *, struct config *);
 static void	hymn_config_load(const char *, struct config *);
 
 static void	hymn_config_set_mtu(struct config *, const char *);
+static void	hymn_config_set_descr(struct config *, const char *);
 
 static void	hymn_config_parse_peer(struct config *, char *);
+static void	hymn_config_parse_descr(struct config *, char *);
 static void	hymn_config_parse_local(struct config *, char *);
 static void	hymn_config_parse_route(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
@@ -169,6 +172,7 @@ static const struct {
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
 	{ "peer",		hymn_config_parse_peer },
+	{ "descr",		hymn_config_parse_descr },
 	{ "local",		hymn_config_parse_local },
 	{ "route",		hymn_config_parse_route },
 	{ "accept",		hymn_config_parse_accept },
@@ -260,9 +264,10 @@ static void
 usage_add(void)
 {
 	fprintf(stderr,
-	    "usage: hymn add <src>-<dst> tunnel <ip/mask> mtu <mtu> \\\n");
+	    "usage: hymn add <src>-<dst> tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
-	    "[peer | cathedral] <ip:port>\n");
+	    "[peer | cathedral] <ip:port> \\\n");
+	fprintf(stderr, "    [descr <description>]\n");
 
 	exit(1);
 }
@@ -306,6 +311,8 @@ hymn_add(int argc, char *argv[])
 				fatal("duplicate secret");
 			if ((config.secret = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
+		} else if (!strcmp(argv[i], "descr")) {
+			hymn_config_set_descr(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "mtu")) {
 			hymn_config_set_mtu(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "peer")) {
@@ -594,6 +601,7 @@ hymn_list(int argc, char *argv[])
 	struct dirent				*dp;
 	DIR					*dir;
 	struct sanctum_ctl_status_response	resp;
+	struct config				config;
 	u_int8_t				src, dst;
 	char					path[PATH_MAX];
 
@@ -613,11 +621,17 @@ hymn_list(int argc, char *argv[])
 		if (sscanf(dp->d_name, "hymn-%02hhx-%02hhx", &src, &dst) != 2)
 			continue;
 
+		hymn_conf_path(path, sizeof(path), src, dst);
+
+		/* Yes, we leak here, we aren't long term. */
+		hymn_config_init(&config);
+		hymn_config_load(path, &config);
+
 		printf("hymn-%02x-%02x - ", src, dst);
 		hymn_pid_path(path, sizeof(path), src, dst);
 
 		if (access(path, R_OK) == -1) {
-			printf("down\n");
+			printf("down");
 		} else {
 			hymn_control_path(path, sizeof(path), src, dst);
 			hymn_ctl_status(path, &resp);
@@ -626,9 +640,12 @@ hymn_list(int argc, char *argv[])
 				printf("online");
 			else
 				printf("pending");
-
-			printf("\n");
 		}
+
+		if (config.descr != NULL)
+			printf(" (%s)\n", config.descr);
+		else
+			printf("\n");
 	}
 
 	(void)closedir(dir);
@@ -986,6 +1003,9 @@ hymn_config_save(const char *path, struct config *cfg)
 	    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
 	hymn_config_write(fd, "secret %s\n", cfg->secret);
 
+	if (cfg->descr != NULL)
+		hymn_config_write(fd, "descr %s\n", cfg->descr);
+
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "local %s\n", hymn_ip_port_str(&cfg->local));
 
@@ -1082,6 +1102,12 @@ hymn_config_parse_peer(struct config *cfg, char *peer)
 }
 
 static void
+hymn_config_parse_descr(struct config *cfg, char *descr)
+{
+	hymn_config_set_descr(cfg, descr);
+}
+
+static void
 hymn_config_parse_local(struct config *cfg, char *local)
 {
 	hymn_ip_port_parse(&cfg->local, local);
@@ -1142,6 +1168,27 @@ hymn_config_parse_accept(struct config *cfg, char *accept)
 	net = hymn_net_parse(accept);
 
 	LIST_INSERT_HEAD(&cfg->accepts, net, list);
+}
+
+static void
+hymn_config_set_descr(struct config *cfg, const char *descr)
+{
+	size_t		len, idx;
+
+	if (cfg->descr != NULL)
+		fatal("duplicate descr given");
+
+	len = strlen(descr);
+	if (len > 31)
+		fatal("descr is too long");
+
+	for (idx = 0; idx < len; idx++) {
+		if (!isalnum((unsigned char)descr[idx]) && descr[idx] != '-')
+			fatal("descr may only contain alnum and '-'");
+	}
+
+	if ((cfg->descr = strdup(descr)) == NULL)
+		fatal("strdup");
 }
 
 static void

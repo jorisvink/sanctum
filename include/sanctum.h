@@ -412,6 +412,9 @@ struct sanctum_state {
 	/* The sanctum instance name. */
 	char			instance[16];	/* XXX */
 
+	/* The sanctum instance description. */
+	char			descr[32];	/* XXX */
+
 	/* Tx and Rx statistics. */
 	struct sanctum_ifstat	tx;
 	struct sanctum_ifstat	rx;

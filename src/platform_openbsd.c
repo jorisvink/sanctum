@@ -236,8 +236,13 @@ openbsd_configure_tundev(const char *dev)
 	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
 		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
 
-	len = snprintf(descr, sizeof(descr), "sanctum instance %s",
-	    sanctum->instance);
+	if (sanctum->descr[0] != '\0') {
+		len = snprintf(descr, sizeof(descr), "%s (%s)",
+		    sanctum->instance, sanctum->descr);
+	} else {
+		len = snprintf(descr, sizeof(descr), "%s", sanctum->instance);
+	}
+
 	if (len == -1 || (size_t)len >= sizeof(descr))
 		fatal("the description name is too long");
 
