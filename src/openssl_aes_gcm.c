@@ -41,6 +41,9 @@ struct cipher_aes_gcm {
 	GCM128_CONTEXT		*gcm;
 };
 
+/* The cipher indicator for -v. */
+const char	*sanctum_cipher = "openssl-aes-gcm";
+
 /*
  * Setup the AES-GCM cipher by running key expansion first on the
  * given AES key.

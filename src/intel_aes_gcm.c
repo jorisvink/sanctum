@@ -43,6 +43,9 @@ union deconst {
 	const void	*cp;
 };
 
+/* The cipher indicator for -v. */
+const char	*sanctum_cipher = "intel-aes-gcm";
+
 /*
  * Setup the cipher.
  */

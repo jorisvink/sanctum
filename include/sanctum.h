@@ -430,6 +430,7 @@ struct sanctum_state {
 };
 
 extern struct sanctum_state	*sanctum;
+extern const char		*sanctum_cipher;
 
 /* src/config.c */
 void	sanctum_config_init(void);

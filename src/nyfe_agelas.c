@@ -49,6 +49,9 @@ struct cipher_agelas {
 	u_int8_t		key[NYFE_KEY_LEN];
 };
 
+/* The cipher indicator for -v. */
+const char	*sanctum_cipher = "nyfe-agelas";
+
 /*
  * Setup the cipher.
  */
