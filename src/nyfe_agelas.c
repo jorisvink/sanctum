@@ -119,7 +119,15 @@ sanctum_cipher_encrypt(void *arg, const void *nonce, size_t nonce_len,
 	nyfe_agelas_init(&cipher->ctx, cipher->key, sizeof(cipher->key));
 	nyfe_agelas_aad(&cipher->ctx, aad, aad_len);
 
+	/*
+	 * Encrypt the nonce block once to move the keystream forward
+	 * and make it depend on the nonce plaintext.
+	 *
+	 * We ignore this result.
+	 */
 	nyfe_agelas_encrypt(&cipher->ctx, block, block, sizeof(block));
+
+	/* Now encrypt the paintext and authenticate the entire thing. */
 	nyfe_agelas_encrypt(&cipher->ctx, data, data, pkt->length);
 	nyfe_agelas_authenticate(&cipher->ctx, tag, NYFE_TAG_LEN);
 
@@ -161,7 +169,15 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
 	nyfe_agelas_init(&cipher->ctx, cipher->key, sizeof(cipher->key));
 	nyfe_agelas_aad(&cipher->ctx, aad, aad_len);
 
+	/*
+	 * Encrypt the nonce block once to move the keystream forward
+	 * and make it depend on the nonce plaintext.
+	 *
+	 * We ignore this result.
+	 */
 	nyfe_agelas_encrypt(&cipher->ctx, block, block, sizeof(block));
+
+	/* Now decrypt and authenticate the packet. */
 	nyfe_agelas_decrypt(&cipher->ctx, data, data, ctlen);
 	nyfe_agelas_authenticate(&cipher->ctx, calc, sizeof(calc));
 
