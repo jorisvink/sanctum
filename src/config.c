@@ -39,6 +39,7 @@ static void	config_parse_mode(char *);
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
 static void	config_parse_route(char *);
+static void	config_parse_descr(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_accept(char *);
 static void	config_parse_tunnel(char *);
@@ -69,6 +70,7 @@ static const struct {
 	{ "local",		config_parse_local },
 	{ "route",		config_parse_route },
 	{ "run",		config_parse_runas },
+	{ "descr",		config_parse_descr },
 	{ "accept",		config_parse_accept },
 	{ "tunnel",		config_parse_tunnel },
 	{ "secret",		config_parse_secret },
@@ -160,6 +162,9 @@ sanctum_config_load(const char *file)
 		fatal("error reading the configuration file");
 
 	fclose(fp);
+
+	if (sanctum->instance[0] == '\0')
+		fatal("no instance name has been set");
 
 	if (peer_set > 1)
 		fatal("peer and cathedral are mutually exclusive options");
@@ -321,6 +326,28 @@ config_parse_local(char *local)
 	PRECOND(local != NULL);
 
 	config_parse_ip_port(local, &sanctum->local);
+}
+
+/*
+ * Parse the description configuration option.
+ */
+static void
+config_parse_descr(char *opt)
+{
+	int		len;
+	size_t		optlen, idx;
+
+	PRECOND(opt != NULL);
+
+	optlen = strlen(opt);
+	for (idx = 0; idx < optlen; idx++) {
+		if (!isalnum((unsigned char)opt[idx]) && opt[idx] != '-')
+			fatal("description is alnum and '-'");
+	}
+
+	len = snprintf(sanctum->descr, sizeof(sanctum->descr), "%s", opt);
+	if (len == -1 || (size_t)len >= sizeof(sanctum->descr))
+		fatal("description '%s' too long", opt);
 }
 
 /*

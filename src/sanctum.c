@@ -42,8 +42,8 @@ struct sanctum_state		*sanctum = NULL;
 static void
 version(void)
 {
-	fprintf(stderr, "sanctum %s (%s)\n",
-	    sanctum_build_rev, sanctum_build_date);
+	fprintf(stderr, "sanctum %s (%s) (%s)\n",
+	    sanctum_build_rev, sanctum_build_date, sanctum_cipher);
 
 	exit(1);
 }
