@@ -1,0 +1,345 @@
+<!DOCTYPE>
+
+<html>
+
+<head>
+<title>Sanctum setup guide</title>
+
+<style>
+body {
+    background-color: #fffaed;
+    font-family: Verdana, sans-serif;
+}
+
+.content {
+    width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 45px;
+}
+
+.logo {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.sep {
+    background-color: #daa520;
+    width: 100%;
+    height: 5px;
+    border-radius: 5px;
+}
+
+a, a:visited {
+    color: #daa520;
+    text-decoration: none;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="content">
+<div class="logo">
+<a href="/"><img src="/sanctorum_transparent.png" width="64px" height="auto"></a>
+</div>
+
+<div class="sep"></div>
+
+<h2>Table of contents</h2>
+
+<ul>
+<li><a href="/sanctum/guide.html#manual">Manual setup</a></li>
+<li><a href="/sanctum/guide.html#hymn">Hymn based setup</a></li>
+</ul>
+
+<div class="sep"></div>
+
+<h2 id="manual"># Manual setup</h2>
+
+<p>
+This guide is aimed at people wanting to manually setup sanctum between
+two machines where at least one machine has a public IP.
+</p>
+
+<p>
+Let's call this a client-to-server setup.
+</p>
+
+<p>
+For this example we will use the following parameters:
+
+<ul>
+<li>server ip = 1.2.3.4</li>
+<li>client tunnel net = 10.0.0.1/24</li>
+<li>server tunnel net = 10.0.0.2/24</li>
+</ul>
+</p>
+
+<h3>## Building</h3>
+<p>
+On both client and server:
+
+<pre>
+$ git clone https://github.com/jorisvink/sanctum
+$ cd sanctum
+$ make
+# make install
+</pre>
+</p>
+
+<p>
+Using the CIPHER environment variable, one can control what AEAD cipher is
+used for traffic protection. By default it is AES256-GCM using the low
+level OpenSSL APIs.
+</p>
+
+<p>
+Other alternatives are:
+<ul>
+<li>nyfe-agelas - The duplex-sponge based AEAD cipher.</li>
+<li>intel-aes-gcm - AES256-GCM using the libisal_crypto library from intel.</li>
+</ul>
+</p>
+
+<h3>## Environment</h3>
+
+<p>
+Create a directory for sanctum, set the right permissions on it. You will
+want to do this on both client and server.
+</p>
+
+<pre>
+# mkdir -p /etc/sanctum
+# chmod 0700 /etc/sanctum
+</pre>
+
+<h3 id="secret">## The shared secret</h3>
+
+<p>
+Generate the shared secret on either the client or the server and
+figure out a way to securely transfer it to the other peer :)
+</p>
+
+<pre>
+# dd if=/dev/urandom of=/etc/sanctum/secret bs=32 count=1
+</pre>
+
+<p>
+Note that sanctum is based on symmetrical secrets only and does
+not provide PFS. If your shared secret leaks all your traffic can
+be decrypted.
+</p>
+
+<p>
+It is therefor imperative that you have good control over your hardware.
+</p>
+
+<h3>## Configurations</h3>
+
+<p>
+We will configure both the client and server in such a way so that the
+process talking to the outside world (purgatory) is running as a seperate
+user, while the others run as root.
+</p>
+
+<p>
+<strong>Note</strong>: You may configure a different user for
+<strong>each</strong> process.
+</p>
+
+<h4>### Configuring the client</h4>
+
+<p>
+Create the following configuration file under /etc/sanctum/client.conf.
+Make sure you replace <strong>user</strong> with your own username.
+</p>
+
+<pre>
+instance to-server
+
+tunnel 10.0.0.1/24 1422
+secret /etc/sanctum/secret
+
+peer 1.2.3.4:1234
+
+run heaven as <strong>user</strong>
+run purgatory as <strong>user</strong>
+
+run control as <strong>user</strong>
+control /tmp/sanctum.control <strong>user</strong>
+
+run bless as root
+run chapel as root
+run confess as root
+</pre>
+
+<p>
+Now start it.
+</p>
+
+<pre>
+# sanctum -d -c /etc/sanctum/client.conf
+</pre>
+
+<h4>### Configuring the server</h4>
+
+<p>
+Create the following configuration file under /etc/sanctum/server.conf.
+Make sure you replace <strong>user</strong> with your own username.
+</p>
+
+<pre>
+instance to-client
+
+tunnel 10.0.0.2/24 1422
+secret /etc/sanctum/secret
+
+local 1.2.3.4:1234
+
+run heaven as <strong>user</strong>
+run purgatory as <strong>user</strong>
+
+run control as <strong>user</strong>
+control /tmp/sanctum.control <strong>user</strong>
+
+run bless as root
+run chapel as root
+run confess as root
+</pre>
+
+<p>
+Now start it.
+</p>
+
+<pre>
+# sanctum -d -c /etc/sanctum/server.conf
+</pre>
+
+<h3>## Up and running</h3>
+
+<p>
+If everything went well you now have a tunnel between both devices
+and can ping each others tunnel addresses.
+</p>
+
+<pre>
+$ ping 10.0.0.1
+64 bytes from 10.0.0.1: icmp_seq=0 ttl=255 time=21 ms
+64 bytes from 10.0.0.1: icmp_seq=1 ttl=255 time=22 ms
+64 bytes from 10.0.0.1: icmp_seq=2 ttl=255 time=21 ms
+$ 
+</pre>
+
+<div class="sep"></div>
+
+<h2 id="hymn"># Hymn setup</h2>
+
+<p>
+You can also use the hymn tool to more easily get up and running.
+The hymn tool is part of the sanctum repository and acts as a
+system configuration tool.
+</p>
+
+<p>
+These next few steps depend on you having generated and shared the
+secret just as <a href="/sanctum/guide.html#secret">done before</a>.
+</p>
+
+<h3>## Tunnel configuration</h3>
+
+<p>
+Configure the client using the hymn tool:
+</p>
+
+<pre>
+$ sudo hymn add 01-02 tunnel 10.10.0.1/24 mtu 1422 peer 1.2.3.4:1234 \
+    secret /etc/sanctum/secret
+</pre>
+
+<p>
+And now the server side:
+</p>
+
+<pre>
+$ sudo hymn add 02-01 tunnel 10.10.0.2/24 mtu 1422 local 1.2.3.4:1234 \
+    secret /etc/sanctum/secret
+</pre>
+
+<h3>## Tunnel up</h3>
+
+<p>
+Now that you've done that you can bring up the instances. You do this by
+running the <strong>hymn up</strong> command with the correct instance name.
+</p>
+
+<p>
+For example on the client:
+</p>
+
+<pre>
+$ sudo hymn up 01-02
+</pre>
+
+<p>
+And on the server side:
+</p>
+
+<pre>
+$ sudo hymn up 02-01
+</pre>
+
+<p>
+After a few seconds the tunnel will be alive.
+</p>
+
+<h3>## Tunnel status</h3>
+
+<p>
+You can see tunnel status using the <strong>hymn status</strong> command.
+</p>
+
+<pre>
+$ sudo hymn status 01-02
+hymn-01-02:
+  local         0.0.0.0:0
+  tunnel        10.0.0.1/24 (mtu 1422)
+  peer          1.2.3.4:1234
+
+  routes
+    10.0.0.0/24
+
+  accepts
+    10.0.0.0/24
+
+  tx
+    spi            0x0390c23d (age: 1943 seconds)
+    pkt            9929 
+    bytes          1034939 
+    last packet    3 seconds ago
+
+  rx
+    spi            0x9003a866 (age: 1943 seconds)
+    pkt            6151 
+    bytes          2050832 
+    last packet    6 seconds ago
+$
+</pre>
+
+<h3>## Useful hymn commands</h3>
+
+<p>
+Some other useful commands:
+<ul>
+<li>hymn down - Bring down a tunnel.</li>
+<li>hymn list - Showing all configured instances.</li>
+<li>hymn route add - Route a new network over the tunnel.</li>
+<li>hymn route del - Remove a previously added route.</li>
+</ul>
+</p>
+
+</div>
+
+</body>
+</html>
