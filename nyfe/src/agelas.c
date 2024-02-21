@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023, 2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -26,6 +26,7 @@
  * based on Keccak1600. This work is inspired on Keyak, Spongewrap etc.
  *
  * The Keccak sponge is initialized with a capacity of 512-bits for Agelas.
+ * This puts the rate at 136 bytes.
  *
  * init(key):
  *	K_1 = bytepad(len(key) / 2 || key[0..31] || 0x01, 136)
@@ -33,30 +34,28 @@
  *	State <- Keccak1600.init(K_1)
  *
  * encryption(pt):
- *	for each 136 byte block, do
- *		C = bytepad(counter, 136)
- *		C[135] = 0x07
- *		counter = counter + 1
- *		Keccak1600.absorb(C)
- *		Keccak1600.absorb(State)
- *		State <- Keccak1600.squeeze(136)
- *		for i = 0 -> i = 136, do
+ *	for each 127 byte block, do
+ *		for i = 0 -> i = 126, do
  *			ct[i] = pt[i] ^ State[i]
  *			State[i] = pt[i]
  *		clen += len(pt)
+ *		State[127..134] = counter
+ *		State[135] = 0x07
+ *		Keccak1600.absorb(State)
+ *		counter = counter + 1
+ *		State <- Keccak1600.squeeze(136)
  *
  * decryption(ct):
- *	for each 136 byte block, do
- *		C = bytepad(counter, 136)
- *		C[135] = 0x07
- *		counter = counter + 1
- *		Keccak1600.absorb(C)
- *		Keccak1600.absorb(State)
- *		State <- Keccak1600.squeeze(136)
- *		for i = 0 -> i = 136, do
+ *	for each 127 byte block, do
+ *		for i = 0 -> i = 126, do
  *			pt[i] = ct[i] ^ State[i]
  *			State[i] = pt[i]
  *		clen += len(ct)
+ *		State[127..134] = counter
+ *		State[135] = 0x07
+ *		Keccak1600.absorb(State)
+ *		counter = counter + 1
+ *		State <- Keccak1600.squeeze(136)
  *
  * Additional Authenticated Data may be added at any time as long as this
  * matches in both the encryption and decryption process.
@@ -79,17 +78,23 @@
  *	L = bytepad(clen, 136)
  *	L[135] = 0x1f
  *	Keccak1600.absorb(L)
- *	C = bytepad(counter, 136)
- *	C[135] = 0x3f
- *	counter = counter + 1
- *	Keccak1600.absorb(C)
+ *	State[127..134] = counter
+ *	State[135] = 0x03
  *	Keccak1600.absorb(State)
  *	Keccak1600.absorb(K_2)
  *	tag <- Keccak1600.squeeze(taglen)
  */
 
+/* Number of bits for the capacity (c). */
 #define AGELAS_KECCAK_BITS	512
+
+/* The sponge rate (r). */
 #define AGELAS_SPONGE_RATE	136
+
+/* The number of bytes from the state we consume for a block. */
+#define AGELAS_XOR_RATE		(AGELAS_SPONGE_RATE - 9)
+
+/* The number of bytes we can absorb when byte padded. */
 #define AGELAS_ABSORB_LEN	(AGELAS_SPONGE_RATE - 4)
 
 static void	agelas_absorb_state(struct nyfe_agelas *, u_int8_t);
@@ -170,7 +175,7 @@ nyfe_agelas_encrypt(struct nyfe_agelas *ctx, const void *in,
 	dst = out;
 
 	for (idx = 0; idx < len; idx++) {
-		if (ctx->offset == sizeof(ctx->state))
+		if (ctx->offset == AGELAS_XOR_RATE)
 			agelas_absorb_state(ctx, 0x07);
 		tmp = src[idx];
 		dst[idx] = tmp ^ ctx->state[ctx->offset];
@@ -200,7 +205,7 @@ nyfe_agelas_decrypt(struct nyfe_agelas *ctx, const void *in,
 	dst = out;
 
 	for (idx = 0; idx < len; idx++) {
-		if (ctx->offset == sizeof(ctx->state))
+		if (ctx->offset == AGELAS_XOR_RATE)
 			agelas_absorb_state(ctx, 0x07);
 		dst[idx] = src[idx] ^ ctx->state[ctx->offset];
 		ctx->state[ctx->offset++] = dst[idx];
@@ -265,15 +270,13 @@ static void
 agelas_absorb_state(struct nyfe_agelas *ctx, u_int8_t tag)
 {
 	u_int64_t	counter;
-	u_int8_t	buf[AGELAS_SPONGE_RATE];
 
 	PRECOND(ctx != NULL);
 
 	counter = htobe64(ctx->counter);
-	agelas_bytepad(&counter, sizeof(counter), buf, sizeof(buf));
-	buf[AGELAS_SPONGE_RATE - 1] = tag;
+	memcpy(&ctx->state[127], &counter, sizeof(counter));
+	ctx->state[AGELAS_SPONGE_RATE - 1] = tag;
 
-	nyfe_keccak1600_absorb(&ctx->sponge, buf, sizeof(buf));
 	nyfe_keccak1600_absorb(&ctx->sponge, ctx->state, sizeof(ctx->state));
 	nyfe_keccak1600_squeeze(&ctx->sponge, ctx->state, sizeof(ctx->state));
 
