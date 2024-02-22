@@ -229,7 +229,7 @@ heaven_recv_packets(int fd)
 
 /*
  * Check if the packet we are about to send on the heaven interface
- * actually is traffic we expect.
+ * actually is traffic we expect and allow.
  */
 static int
 heaven_is_sinner(struct sanctum_packet *pkt)
