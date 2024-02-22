@@ -60,17 +60,23 @@ sanctum_cipher_setup(struct sanctum_key *key)
 {
 	struct nyfe_kmac256	kdf;
 	struct cipher_agelas	*cipher;
+	u_int32_t		spi, salt;
 
 	PRECOND(key != NULL);
 
 	if ((cipher = calloc(1, sizeof(*cipher))) == NULL)
 		fatal("failed to allocate cipher context");
 
+	spi = sanctum_atomic_read(&key->spi);
+	salt = sanctum_atomic_read(&key->salt);
+
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(cipher, sizeof(*cipher));
 
 	nyfe_kmac256_init(&kdf, key->key, sizeof(key->key),
 	    SANCTUM_DERIVE_LABEL, sizeof(SANCTUM_DERIVE_LABEL) - 1);
+	nyfe_kmac256_update(&kdf, &spi, sizeof(spi));
+	nyfe_kmac256_update(&kdf, &salt, sizeof(salt));
 	nyfe_kmac256_final(&kdf, cipher->key, sizeof(cipher->key));
 
 	nyfe_zeroize(&kdf, sizeof(kdf));
