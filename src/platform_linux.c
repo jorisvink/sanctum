@@ -223,12 +223,6 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 
 /*
  * Apply sandboxing rules according to the current process.
- *
- * We create a seccomp filter from our prologue, our base filter,
- * the proc filter and epilogue that is then loaded.
- *
- * All processes except heaven and purgatory move into a
- * network namespace that we create.
  */
 void
 sanctum_platform_sandbox(struct sanctum_proc *proc)
@@ -428,21 +422,22 @@ linux_configure_tundev(struct ifreq *ifr)
 }
 
 /*
- * Move all processes except heaven and purgatory into a
+ * Move all processes except heaven, cathedral and purgatory into a
  * new network namespace.
  */
 static void
 linux_sandbox_netns(struct sanctum_proc *proc)
 {
 	if (proc->type != SANCTUM_PROC_HEAVEN &&
-	    proc->type != SANCTUM_PROC_PURGATORY) {
+	    proc->type != SANCTUM_PROC_PURGATORY &&
+	    proc->type != SANCTUM_PROC_CATHEDRAL) {
 		if (unshare(CLONE_NEWNET) == -1)
 			fatal("unshare: %s", errno_s);
 	}
 }
 
 /*
- * Apply the correct seccomp rules.
+ * Apply the correct seccomp rules based on the process that is starting.
  */
 static void
 linux_sandbox_seccomp(struct sanctum_proc *proc)
