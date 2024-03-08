@@ -219,10 +219,8 @@ sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 
 	PRECOND(addr != NULL);
 
-	if (sanctum_atomic_cas_simple(addr, 1, 0)) {
-		sanctum_log(LOG_INFO, "not sleeping, returning immediately");
+	if (sanctum_atomic_cas_simple(addr, 1, 0))
 		return;
-	}
 
 	tv.tv_nsec = 0;
 	tv.tv_sec = sleep;
@@ -234,8 +232,10 @@ sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 
 	sanctum_log(LOG_INFO, "sleeping");
 
-	if ((ret = futex(addr, FUTEX_WAIT, 0, tptr, NULL)) == -1)
-		printf("syscall: %d\n", ret);
+	if ((ret = futex(addr, FUTEX_WAIT, 0, tptr, NULL)) == -1) {
+		if (errno != EINTR && errno != ETIMEDOUT && errno != EAGAIN)
+			sanctum_log(LOG_NOTICE, "futex wait: %s", errno_s);
+	}
 }
 
 /*
@@ -252,9 +252,7 @@ sanctum_platform_wakeup(u_int32_t *addr)
 	if (sanctum_atomic_cas_simple(addr, 0, 1)) {
 		ret = futex(addr, FUTEX_WAKE, 1, NULL, NULL);
 		if (ret == -1)
-			sanctum_log(LOG_INFO, "wakeup: %d", ret);
-		else
-			sanctum_log(LOG_INFO, "wokeup sleeping beauty");
+			sanctum_log(LOG_INFO, "futex wakeup: %s", errno_s);
 	}
 }
 
