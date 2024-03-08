@@ -490,7 +490,10 @@ linux_configure_tundev(struct ifreq *ifr)
 static void
 linux_sandbox_netns(struct sanctum_proc *proc)
 {
-	if (proc->type != SANCTUM_PROC_PURGATORY_TX &&
+	if (proc->type != SANCTUM_PROC_HEAVEN_RX &&
+	    proc->type != SANCTUM_PROC_HEAVEN_TX &&
+	    proc->type != SANCTUM_PROC_PURGATORY_RX &&
+	    proc->type != SANCTUM_PROC_PURGATORY_TX &&
 	    proc->type != SANCTUM_PROC_CATHEDRAL) {
 		if (unshare(CLONE_NEWNET) == -1)
 			fatal("unshare: %s", errno_s);
