@@ -22,6 +22,7 @@
 
 #include <fcntl.h>
 #include <inttypes.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -32,11 +33,9 @@
 /* The number of packets in a single run we try to read. */
 #define PACKETS_PER_EVENT		64
 
-static void	purgatory_drop_access(void);
-static int	purgatory_recv_packets(void);
-static void	purgatory_bind_address(void);
-static int	purgatory_packet_check(struct sanctum_packet *);
-static void	purgatory_send_packet(struct sanctum_packet *);
+static void	purgatory_rx_drop_access(void);
+static int	purgatory_rx_recv_packets(int);
+static int	purgatory_rx_packet_check(struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
@@ -44,35 +43,34 @@ static struct sanctum_packet	tpkt;
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 
-/* The purgatory socket. */
-static int			fd = -1;
-
 /*
- * The process responsible for receiving packets on the purgatory side
- * and submitting them to confession.
+ * The process responsible for receiving encrypted packets from purgatory.
  */
 void
-sanctum_purgatory(struct sanctum_proc *proc)
+sanctum_purgatory_rx(struct sanctum_proc *proc)
 {
-	struct sanctum_packet	*pkt;
-	int			suspend, pending, sig, running;
+	struct pollfd		pfd;
+	int			sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
+	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
 	io = proc->arg;
-	purgatory_drop_access();
+	purgatory_rx_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	purgatory_bind_address();
-
 	running = 1;
-	suspend = 0;
 
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+
+	pfd.fd = io->crypto;
+
+	pfd.revents = 0;
+	pfd.events = POLLIN;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -84,38 +82,13 @@ sanctum_purgatory(struct sanctum_proc *proc)
 			}
 		}
 
-#if !defined(SANCTUM_HIGH_PERFORMANCE)
-		if (sanctum_ring_pending(io->purgatory))
-			suspend = 0;
-#endif
-		if (sanctum->mode != SANCTUM_MODE_PILGRIM) {
-			pending = purgatory_recv_packets() == 1;
-			if (pending)
-				suspend = 0;
-		} else {
-			pending = 0;
+		if (poll(&pfd, 1, -1) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("poll: %s", errno_s);
 		}
 
-		if (sanctum->mode != SANCTUM_MODE_SHRINE &&
-		    sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
-			if ((pkt = sanctum_ring_dequeue(io->offer)))
-				purgatory_send_packet(pkt);
-		}
-
-		if (sanctum->mode != SANCTUM_MODE_SHRINE &&
-		    sanctum_ring_pending(io->purgatory)) {
-			suspend = 0;
-			while ((pkt = sanctum_ring_dequeue(io->purgatory)))
-				purgatory_send_packet(pkt);
-		} else if (pending == 0) {
-			if (suspend < 500)
-				suspend++;
-		}
-
-#if !defined(SANCTUM_HIGH_PERFORMANCE)
-		if (sanctum_ring_pending(io->purgatory) == 0 && pending == 0)
-			usleep(suspend * 10);
-#endif
+		purgatory_rx_recv_packets(io->crypto);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -127,8 +100,10 @@ sanctum_purgatory(struct sanctum_proc *proc)
  * Drop access to the queues and fds it does not need.
  */
 static void
-purgatory_drop_access(void)
+purgatory_rx_drop_access(void)
 {
+	(void)close(io->clear);
+
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->bless);
@@ -141,118 +116,17 @@ purgatory_drop_access(void)
 }
 
 /*
- * Setup the purgatory interface by creating a new socket, binding
- * it locally to the specified port and connecting it to the remote peer.
- */
-static void
-purgatory_bind_address(void)
-{
-	int	val;
-
-	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-		fatal("%s: socket: %s", __func__, errno_s);
-
-	sanctum->local.sin_family = AF_INET;
-
-	if (bind(fd, (struct sockaddr *)&sanctum->local,
-	    sizeof(sanctum->local)) == -1)
-		fatal("%s: connect: %s", __func__, errno_s);
-
-	if ((val = fcntl(fd, F_GETFL, 0)) == -1)
-		fatal("%s: fcntl: %s", __func__, errno_s);
-
-	val |= O_NONBLOCK;
-
-	if (fcntl(fd, F_SETFL, val) == -1)
-		fatal("%s: fcntl: %s", __func__, errno_s);
-
-#if defined(__linux__)
-	val = IP_PMTUDISC_DO;
-	if (setsockopt(fd, IPPROTO_IP,
-	    IP_MTU_DISCOVER, &val, sizeof(val)) == -1)
-		fatal("%s: setsockopt: %s", __func__, errno_s);
-#elif !defined(__OpenBSD__)
-	val = 1;
-	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val)) == -1)
-		fatal("%s: setsockopt: %s", __func__, errno_s);
-#endif
-}
-
-/*
- * Send the given packet onto the purgatory interface.
- * This function will return the packet to the packet pool.
- */
-static void
-purgatory_send_packet(struct sanctum_packet *pkt)
-{
-	ssize_t			ret;
-	struct sockaddr_in	peer;
-	u_int8_t		*data;
-
-	PRECOND(pkt != NULL);
-	PRECOND(pkt->target == SANCTUM_PROC_PURGATORY);
-	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
-
-	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
-		peer.sin_family = AF_INET;
-		peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
-		peer.sin_addr.s_addr = sanctum_atomic_read(&sanctum->peer_ip);
-
-		if (peer.sin_addr.s_addr == 0) {
-			sanctum_packet_release(pkt);
-			return;
-		}
-	} else {
-		memcpy(&peer, &pkt->addr, sizeof(pkt->addr));
-	}
-
-	for (;;) {
-		data = sanctum_packet_head(pkt);
-
-		if ((ret = sendto(fd, data, pkt->length, 0,
-		    (struct sockaddr *)&peer, sizeof(peer))) == -1) {
-			if (errno == EINTR)
-				continue;
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				break;
-			if (errno == EADDRNOTAVAIL) {
-				sanctum_log(LOG_INFO,
-				    "network change detected");
-				(void)close(fd);
-				purgatory_bind_address();
-				break;
-			}
-			if (errno == EMSGSIZE) {
-				sanctum_log(LOG_INFO,
-				    "packet (size=%zu) too large, "
-				    "lower tunnel MTU", pkt->length);
-				break;
-			}
-			if (errno == ENETUNREACH || errno == EHOSTUNREACH) {
-				sanctum_log(LOG_INFO,
-				    "host %s unreachable (%s)",
-				    inet_ntoa(peer.sin_addr), errno_s);
-				break;
-			}
-			fatal("sendto: %s", errno_s);
-		}
-		break;
-	}
-
-	sanctum_packet_release(pkt);
-}
-
-/*
  * Read up to PACKETS_PER_EVENT number of packets, queueing them up
  * for decryption via the decryption queue.
  */
 static int
-purgatory_recv_packets(void)
+purgatory_rx_recv_packets(int fd)
 {
 	int			idx;
 	ssize_t			ret;
 	struct sanctum_packet	*pkt;
 	u_int8_t		*data;
+	u_int16_t		target;
 	socklen_t		socklen;
 
 	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
@@ -286,16 +160,19 @@ purgatory_recv_packets(void)
 		pkt->length = ret;
 		pkt->target = SANCTUM_PROC_CONFESS;
 
-		if (purgatory_packet_check(pkt) == -1) {
+		if (purgatory_rx_packet_check(pkt) == -1) {
 			sanctum_packet_release(pkt);
 			continue;
 		}
 
-		switch (pkt->target) {
+		target = pkt->target;
+
+		switch (target) {
 		case SANCTUM_PROC_CONFESS:
 			ret = sanctum_ring_queue(io->confess, pkt);
 			break;
 		case SANCTUM_PROC_CHAPEL:
+		case SANCTUM_PROC_SHRINE:
 		case SANCTUM_PROC_CATHEDRAL:
 			ret = sanctum_ring_queue(io->chapel, pkt);
 			break;
@@ -306,6 +183,8 @@ purgatory_recv_packets(void)
 
 		if (ret == -1)
 			sanctum_packet_release(pkt);
+		else
+			sanctum_proc_wakeup(target);
 	}
 
 	return (idx == PACKETS_PER_EVENT);
@@ -329,7 +208,7 @@ purgatory_recv_packets(void)
  * worst case scenario.
  */
 static int
-purgatory_packet_check(struct sanctum_packet *pkt)
+purgatory_rx_packet_check(struct sanctum_packet *pkt)
 {
 	struct sanctum_ipsec_hdr	*hdr;
 	u_int32_t			seq, spi;
@@ -357,7 +236,10 @@ purgatory_packet_check(struct sanctum_packet *pkt)
 	/* If this has the key offer magic, kick it to the chapel. */
 	if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
-		pkt->target = SANCTUM_PROC_CHAPEL;
+		if (sanctum->mode == SANCTUM_MODE_SHRINE)
+			pkt->target = SANCTUM_PROC_SHRINE;
+		else
+			pkt->target = SANCTUM_PROC_CHAPEL;
 		return (0);
 	}
 

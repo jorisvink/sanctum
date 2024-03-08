@@ -47,7 +47,7 @@ void
 sanctum_bless(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
-	int			suspend, sig, running;
+	int			sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -64,10 +64,12 @@ sanctum_bless(struct sanctum_proc *proc)
 	nyfe_zeroize_register(io->tx, sizeof(*io->tx));
 
 	running = 1;
-	suspend = 0;
 
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+
+	now = sanctum_atomic_read(&sanctum->uptime);
+	next_heartbeat = now + SANCTUM_HEARTBEAT_INTERVAL;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -78,6 +80,9 @@ sanctum_bless(struct sanctum_proc *proc)
 				continue;
 			}
 		}
+
+		now = sanctum_atomic_read(&sanctum->uptime);
+		sanctum_proc_suspend(next_heartbeat - now);
 
 		now = sanctum_atomic_read(&sanctum->uptime);
 
@@ -94,19 +99,8 @@ sanctum_bless(struct sanctum_proc *proc)
 		if (next_heartbeat != 0 && now >= next_heartbeat)
 			bless_packet_heartbeat();
 
-		if (sanctum_ring_pending(io->bless)) {
-			suspend = 0;
-			while ((pkt = sanctum_ring_dequeue(io->bless)))
-				bless_packet_process(pkt);
-		} else if (sanctum_ring_pending(io->bless) == 0) {
-			if (suspend < 500)
-				suspend++;
-		}
-
-#if !defined(SANCTUM_HIGH_PERFORMANCE)
-		if (sanctum_ring_pending(io->bless) == 0)
-			usleep(suspend * 10);
-#endif
+		while ((pkt = sanctum_ring_dequeue(io->bless)))
+			bless_packet_process(pkt);
 	}
 
 	sanctum_sa_clear(&state);
@@ -122,6 +116,9 @@ sanctum_bless(struct sanctum_proc *proc)
 static void
 bless_drop_access(void)
 {
+	(void)close(io->clear);
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->heaven);
@@ -250,12 +247,13 @@ bless_packet_process(struct sanctum_packet *pkt)
 	VERIFY(pkt->length + sizeof(*hdr) < sizeof(pkt->buf));
 
 	pkt->length += sizeof(*hdr);
-	pkt->target = SANCTUM_PROC_PURGATORY;
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	/* Send it into purgatory. */
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
 	} else {
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 		sanctum_atomic_add(&sanctum->tx.pkt, 1);
 		sanctum_atomic_add(&sanctum->tx.bytes, pkt->length);
 		sanctum_atomic_write(&sanctum->tx.last, sanctum->uptime);

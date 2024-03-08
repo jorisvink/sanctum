@@ -88,14 +88,13 @@ sanctum_shrine(struct sanctum_proc *proc)
 			}
 		}
 
+		sanctum_proc_suspend(-1);
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
 			shrine_offer_decrypt(pkt, now);
 			sanctum_packet_release(pkt);
 		}
-
-		usleep(10000);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -109,6 +108,9 @@ sanctum_shrine(struct sanctum_proc *proc)
 static void
 shrine_drop_access(void)
 {
+	(void)close(io->clear);
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->heaven);
 	sanctum_shm_detach(io->confess);
@@ -180,6 +182,9 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	    op->data.salt, op->data.key, sizeof(op->data.key));
 
 	last_spi = op->hdr.spi;
+
+	/* Wakeup confess so it can setup the RX SA. */
+	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 }
 
 /*

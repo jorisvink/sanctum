@@ -2,4 +2,4 @@
 
 export SANCTUM_SECCOMP_TRACE=1
 
-./sanctum -c test/cathedral-right.conf
+ip netns exec right ./sanctum -c test/cathedral-right.conf

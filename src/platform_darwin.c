@@ -273,3 +273,27 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 
 	/* TODO */
 }
+
+/*
+ * XXX
+ *
+ * MacOS has no futex(2) support, but it has ulock_wait and ulock_wait.
+ * However right now we just usleep(500) here and be done with it.
+ */
+void
+sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
+{
+	usleep(500);
+}
+
+/*
+ * XXX
+ *
+ * MacOS has no futex(2) support, but it has ulock_wait and ulock_wait.
+ * However right now we just do nothing for now.
+ */
+void
+sanctum_platform_wakeup(u_int32_t *addr)
+{
+	/* We do not do anything yet. */
+}

@@ -137,16 +137,18 @@ extern int daemon(int, int);
 #define SANCTUM_SA_LIFETIME_HARD	3600
 
 /* Process types */
-#define SANCTUM_PROC_HEAVEN		1
-#define SANCTUM_PROC_PURGATORY		2
-#define SANCTUM_PROC_BLESS		3
-#define SANCTUM_PROC_CONFESS		4
-#define SANCTUM_PROC_CHAPEL		5
-#define SANCTUM_PROC_CONTROL		6
-#define SANCTUM_PROC_PILGRIM		7
-#define SANCTUM_PROC_SHRINE		8
-#define SANCTUM_PROC_CATHEDRAL		9
-#define SANCTUM_PROC_MAX		10
+#define SANCTUM_PROC_HEAVEN_RX		1
+#define SANCTUM_PROC_HEAVEN_TX		2
+#define SANCTUM_PROC_PURGATORY_RX	3
+#define SANCTUM_PROC_PURGATORY_TX	4
+#define SANCTUM_PROC_BLESS		5
+#define SANCTUM_PROC_CONFESS		6
+#define SANCTUM_PROC_CHAPEL		7
+#define SANCTUM_PROC_CONTROL		8
+#define SANCTUM_PROC_PILGRIM		9
+#define SANCTUM_PROC_SHRINE		10
+#define SANCTUM_PROC_CATHEDRAL		11
+#define SANCTUM_PROC_MAX		12
 
 /* The magic for a key offer packet (SACRAMNT). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x53414352414D4E54
@@ -235,6 +237,9 @@ struct sanctum_proc {
  * do not need themselves.
  */
 struct sanctum_proc_io {
+	int			clear;
+	int			crypto;
+
 	struct sanctum_key	*tx;
 	struct sanctum_key	*rx;
 
@@ -427,6 +432,9 @@ struct sanctum_state {
 
 	/* The last heartbeat received from the peer. */
 	volatile u_int64_t	heartbeat;
+
+	/* Process wakeup states. */
+	u_int32_t		wstate[SANCTUM_PROC_MAX];
 };
 
 extern struct sanctum_state	*sanctum;
@@ -451,6 +459,8 @@ void	sanctum_proc_start(void);
 void	sanctum_proc_killall(int);
 void	sanctum_proc_init(char **);
 void	sanctum_proc_shutdown(void);
+void	sanctum_proc_suspend(int64_t);
+void	sanctum_proc_wakeup(u_int16_t);
 void	sanctum_proc_title(const char *);
 void	sanctum_proc_privsep(struct sanctum_proc *);
 void	sanctum_proc_create(u_int16_t,
@@ -459,7 +469,6 @@ void	sanctum_proc_create(u_int16_t,
 struct sanctum_proc	*sanctum_process(void);
 
 /* src/packet.c */
-
 void	sanctum_packet_init(void);
 void	sanctum_packet_release(struct sanctum_packet *);
 int	sanctum_packet_crypto_checklen(struct sanctum_packet *);
@@ -487,6 +496,7 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
+int	sanctum_bind_local(void);
 int	sanctum_file_open(const char *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
@@ -516,6 +526,9 @@ ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
 void	sanctum_platform_tundev_route(struct sockaddr_in *,
 	    struct sockaddr_in *);
 
+void	sanctum_platform_wakeup(u_int32_t *);
+void	sanctum_platform_suspend(u_int32_t *, int64_t);
+
 #if defined(__linux__)
 void	sanctum_linux_trace_start(struct sanctum_proc *);
 int	sanctum_linux_seccomp(struct sanctum_proc *, int);
@@ -523,14 +536,16 @@ int	sanctum_linux_seccomp(struct sanctum_proc *, int);
 
 /* Worker entry points. */
 void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_heaven(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_chapel(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_shrine(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_pilgrim(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_control(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_confess(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_cathedral(struct sanctum_proc *) __attribute__((noreturn));
-void	sanctum_purgatory(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_heaven_rx(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_heaven_tx(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_purgatory_rx(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_purgatory_tx(struct sanctum_proc *) __attribute__((noreturn));
 
 /* The cipher goo. */
 size_t	sanctum_cipher_overhead(void);

@@ -84,8 +84,8 @@ void
 sanctum_cathedral(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
+	int			sig, running;
 	u_int64_t		now, next_expire;
-	int			sig, running, suspend;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -106,7 +106,6 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	cathedral_federation_reload();
 
 	running = 1;
-	suspend = 0;
 	next_expire = 0;
 
 	while (running) {
@@ -122,6 +121,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			}
 		}
 
+		sanctum_proc_suspend(1);
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if (now >= next_expire) {
@@ -129,17 +129,8 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			cathedral_tunnel_expire(now);
 		}
 
-		if (sanctum_ring_pending(io->chapel)) {
-			suspend = 0;
-			while ((pkt = sanctum_ring_dequeue(io->chapel)))
-				cathedral_packet_handle(pkt, now);
-		} else {
-			if (suspend < 500)
-				suspend++;
-		}
-
-		if (sanctum_ring_pending(io->chapel) == 0)
-			usleep(suspend * 10);
+		while ((pkt = sanctum_ring_dequeue(io->chapel)))
+			cathedral_packet_handle(pkt, now);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -338,8 +329,13 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, u_int32_t spi)
 			pkt->addr.sin_port = tunnel->port;
 			pkt->addr.sin_addr.s_addr = tunnel->ip;
 
-			pkt->target = SANCTUM_PROC_PURGATORY;
-			return (sanctum_ring_queue(io->purgatory, pkt));
+			pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+			if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+				return (-1);
+
+			sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+			return (0);
 		}
 	}
 
@@ -403,7 +399,7 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 		memcpy(ptr, op, sizeof(*op));
 
 		pkt->length = sizeof(*op);
-		pkt->target = SANCTUM_PROC_PURGATORY;
+		pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 		pkt->addr.sin_family = AF_INET;
 		pkt->addr.sin_port = tunnel->port;
@@ -413,6 +409,8 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 			sanctum_log(LOG_NOTICE,
 			    "no CATACOMB update possible, failed to queue");
 			sanctum_packet_release(pkt);
+		} else {
+			sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 		}
 	}
 }

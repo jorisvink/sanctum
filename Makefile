@@ -26,12 +26,14 @@ SRC=	src/sanctum.c \
 	src/confess.c \
 	src/config.c \
 	src/control.c \
-	src/heaven.c \
+	src/heaven_rx.c \
+	src/heaven_tx.c \
 	src/proc.c \
 	src/packet.c \
 	src/pool.c \
 	src/pilgrim.c \
-	src/purgatory.c \
+	src/purgatory_rx.c \
+	src/purgatory_tx.c \
 	src/ring.c \
 	src/shrine.c \
 	src/utils.c
