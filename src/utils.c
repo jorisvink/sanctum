@@ -464,5 +464,3 @@ sanctum_bind_local(void)
 
 	return (fd);
 }
-
-
