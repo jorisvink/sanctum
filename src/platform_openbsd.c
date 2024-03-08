@@ -230,8 +230,6 @@ sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 	else
 		tptr = &tv;
 
-	sanctum_log(LOG_INFO, "sleeping");
-
 	if ((ret = futex(addr, FUTEX_WAIT, 0, tptr, NULL)) == -1) {
 		if (errno != EINTR && errno != ETIMEDOUT && errno != EAGAIN)
 			sanctum_log(LOG_NOTICE, "futex wait: %s", errno_s);
