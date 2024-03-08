@@ -69,7 +69,8 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 			}
 		}
 
-		sanctum_proc_suspend(-1);
+		if (sanctum_ring_pending(io->purgatory) == 0)
+			sanctum_proc_suspend(-1);
 
 		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
 			if ((pkt = sanctum_ring_dequeue(io->offer)))

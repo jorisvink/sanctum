@@ -48,6 +48,9 @@ static struct {
 	struct sanctum_sa	pending;
 } state;
 
+/* If we should wakeup SANCTUM_PROC_HEAVEN_TX. */
+static int			tx_wakeup = 0;
+
 /*
  * Confess - The process responsible for the confession of packets coming
  * from the purgatory side.
@@ -89,11 +92,18 @@ sanctum_confess(struct sanctum_proc *proc)
 			}
 		}
 
-		sanctum_proc_suspend(-1);
+		if (sanctum_ring_pending(io->confess) == 0)
+			sanctum_proc_suspend(-1);
+
 		confess_key_management();
 
 		while ((pkt = sanctum_ring_dequeue(io->confess)))
 			confess_packet_process(pkt);
+
+		if (tx_wakeup) {
+			tx_wakeup = 0;
+			sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_TX);
+		}
 	}
 
 	confess_clear_state();
@@ -293,7 +303,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (sanctum_ring_queue(io->heaven, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
-		sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_TX);
+		tx_wakeup = 1;
 
 	return (0);
 }

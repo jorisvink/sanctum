@@ -39,6 +39,9 @@ static struct sanctum_sa	state;
 static u_int64_t		now = 0;
 static u_int64_t		next_heartbeat = 0;
 
+/* If we should wakeup SANCTUM_PROC_PURGATORY_TX. */
+static int			tx_wakeup = 0;
+
 /*
  * Bless - The process responsible for the blessing of packets coming
  * from the heaven side.
@@ -82,7 +85,9 @@ sanctum_bless(struct sanctum_proc *proc)
 		}
 
 		now = sanctum_atomic_read(&sanctum->uptime);
-		sanctum_proc_suspend(next_heartbeat - now);
+
+		if (sanctum_ring_pending(io->bless) == 0)
+			sanctum_proc_suspend(next_heartbeat - now);
 
 		now = sanctum_atomic_read(&sanctum->uptime);
 
@@ -101,6 +106,11 @@ sanctum_bless(struct sanctum_proc *proc)
 
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
 			bless_packet_process(pkt);
+
+		if (tx_wakeup) {
+			tx_wakeup = 0;
+			sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+		}
 	}
 
 	sanctum_sa_clear(&state);
@@ -253,7 +263,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
 	} else {
-		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+		tx_wakeup = 1;
 		sanctum_atomic_add(&sanctum->tx.pkt, 1);
 		sanctum_atomic_add(&sanctum->tx.bytes, pkt->length);
 		sanctum_atomic_write(&sanctum->tx.last, sanctum->uptime);

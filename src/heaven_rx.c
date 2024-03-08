@@ -28,11 +28,8 @@
 
 #include "sanctum.h"
 
-/* The number of packets in a single run we try to read. */
-#define PACKETS_PER_EVENT		64
-
 static void	heaven_rx_drop_access(void);
-static int	heaven_rx_recv_packets(int);
+static void	heaven_rx_recv_packets(int);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
@@ -120,20 +117,22 @@ heaven_rx_drop_access(void)
 }
 
 /*
- * Read up to PACKETS_PER_EVENT number of packets, queueing them up
- * for encryption via the encryption queue.
+ * Read packets from the clear interface and queue them up for encryption
+ * via the bless process. Once the read() returns an error we break.
  */
-static int
+static void
 heaven_rx_recv_packets(int fd)
 {
-	int				idx;
 	ssize_t				ret;
 	struct sanctum_packet		*pkt;
+	int				wakeup;
 
 	PRECOND(fd >= 0);
 	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
 
-	for (idx = 0; idx < PACKETS_PER_EVENT; idx++) {
+	wakeup = 0;
+
+	for (;;) {
 		if ((pkt = sanctum_packet_get()) == NULL)
 			pkt = &tpkt;
 
@@ -141,7 +140,7 @@ heaven_rx_recv_packets(int fd)
 			if (pkt != &tpkt)
 				sanctum_packet_release(pkt);
 			if (errno == EINTR)
-				continue;
+				break;
 			if (errno == EIO)
 				break;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -167,8 +166,9 @@ heaven_rx_recv_packets(int fd)
 		if (sanctum_ring_queue(io->bless, pkt) == -1)
 			sanctum_packet_release(pkt);
 		else
-			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+			wakeup = 1;
 	}
 
-	return (idx == PACKETS_PER_EVENT);
+	if (wakeup)
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 }

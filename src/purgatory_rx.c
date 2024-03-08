@@ -30,11 +30,8 @@
 
 #include "sanctum.h"
 
-/* The number of packets in a single run we try to read. */
-#define PACKETS_PER_EVENT		64
-
 static void	purgatory_rx_drop_access(void);
-static int	purgatory_rx_recv_packets(int);
+static void	purgatory_rx_recv_packets(int);
 static int	purgatory_rx_packet_check(struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
@@ -116,34 +113,42 @@ purgatory_rx_drop_access(void)
 }
 
 /*
- * Read up to PACKETS_PER_EVENT number of packets, queueing them up
- * for decryption via the decryption queue.
+ * Read packets from the purgatory interface and queue them up for
+ * processing on either confess, chapel, shrine or cathedral.
+ *
+ * When the recvfrom() call returns an error we break.
  */
-static int
+static void
 purgatory_rx_recv_packets(int fd)
 {
-	int			idx;
 	ssize_t			ret;
 	struct sanctum_packet	*pkt;
 	u_int8_t		*data;
 	u_int16_t		target;
 	socklen_t		socklen;
+	int			wakeup[SANCTUM_PROC_MAX];
 
 	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
-	for (idx = 0; idx < PACKETS_PER_EVENT; idx++) {
+	wakeup[SANCTUM_PROC_CHAPEL] = 0;
+	wakeup[SANCTUM_PROC_SHRINE] = 0;
+	wakeup[SANCTUM_PROC_CONFESS] = 0;
+	wakeup[SANCTUM_PROC_CATHEDRAL] = 0;
+
+	for (;;) {
 		if ((pkt = sanctum_packet_get()) == NULL)
 			pkt = &tpkt;
 
 		socklen = sizeof(pkt->addr);
 		data = sanctum_packet_head(pkt);
 
-		if ((ret = recvfrom(fd, data, SANCTUM_PACKET_DATA_LEN, 0,
-		    (struct sockaddr *)&pkt->addr, &socklen)) == -1) {
+		if ((ret = recvfrom(fd, data, SANCTUM_PACKET_DATA_LEN,
+		    MSG_DONTWAIT, (struct sockaddr *)&pkt->addr,
+		    &socklen)) == -1) {
 			if (pkt != &tpkt)
 				sanctum_packet_release(pkt);
 			if (errno == EINTR)
-				continue;
+				break;
 			if (errno == EIO)
 				break;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -184,10 +189,20 @@ purgatory_rx_recv_packets(int fd)
 		if (ret == -1)
 			sanctum_packet_release(pkt);
 		else
-			sanctum_proc_wakeup(target);
+			wakeup[target] = 1;
 	}
 
-	return (idx == PACKETS_PER_EVENT);
+	if (wakeup[SANCTUM_PROC_CHAPEL])
+		sanctum_proc_wakeup(SANCTUM_PROC_CHAPEL);
+
+	if (wakeup[SANCTUM_PROC_SHRINE])
+		sanctum_proc_wakeup(SANCTUM_PROC_SHRINE);
+
+	if (wakeup[SANCTUM_PROC_CONFESS])
+		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+
+	if (wakeup[SANCTUM_PROC_CATHEDRAL])
+		sanctum_proc_wakeup(SANCTUM_PROC_CATHEDRAL);
 }
 
 /*

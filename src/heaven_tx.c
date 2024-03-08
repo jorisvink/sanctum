@@ -68,7 +68,8 @@ sanctum_heaven_tx(struct sanctum_proc *proc)
 			}
 		}
 
-		sanctum_proc_suspend(-1);
+		if (sanctum_ring_pending(io->heaven) == 0)
+			sanctum_proc_suspend(-1);
 
 		while ((pkt = sanctum_ring_dequeue(io->heaven)))
 			heaven_tx_send_packet(io->clear, pkt);
