@@ -28,6 +28,7 @@
 #include "sanctum.h"
 
 static void	heaven_tx_drop_access(void);
+static void	heaven_tx_log_block(struct ip *);
 static int	heaven_tx_is_sinner(struct sanctum_packet *);
 static void	heaven_tx_send_packet(int, struct sanctum_packet *);
 
@@ -169,6 +170,7 @@ heaven_tx_is_sinner(struct sanctum_packet *pkt)
 	case IPPROTO_ICMP:
 		break;
 	default:
+		heaven_tx_log_block(ip);
 		return (-1);
 	}
 
@@ -176,14 +178,52 @@ heaven_tx_is_sinner(struct sanctum_packet *pkt)
 	net = sanctum->tun_ip.sin_addr.s_addr & mask;
 
 	if ((ip->ip_src.s_addr & mask) != net) {
-		if (sanctum_config_routable(ip->ip_src.s_addr) == -1)
+		if (sanctum_config_routable(ip->ip_src.s_addr) == -1) {
+			heaven_tx_log_block(ip);
 			return (-1);
+		}
 	}
 
 	if ((ip->ip_dst.s_addr & mask) != net) {
-		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1)
+		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1) {
+			heaven_tx_log_block(ip);
 			return (-1);
+		}
 	}
 
 	return (0);
+}
+
+/*
+ * Log a packet that was blocked by heaven_tx_is_sinner().
+ */
+static void
+heaven_tx_log_block(struct ip *ip)
+{
+	const char	*proto;
+	char		buf[16];
+
+	PRECOND(ip != NULL);
+
+	switch (ip->ip_p) {
+	case IPPROTO_TCP:
+		proto = "tcp";
+		break;
+	case IPPROTO_UDP:
+		proto = "udp";
+	case IPPROTO_ICMP:
+		proto = "icmp";
+		break;
+	default:
+		(void)snprintf(buf, sizeof(buf), "%02x", ip->ip_p);
+		proto = buf;
+		break;
+	}
+
+	sanctum_log(LOG_INFO,
+	    "blocked %s %u.%u.%u.%u -> %u.%u.%u.%u", proto,
+	    ip->ip_src.s_addr & 0xff, (ip->ip_src.s_addr >> 8) & 0xff,
+	    (ip->ip_src.s_addr >> 16) & 0xff, (ip->ip_src.s_addr >> 24) & 0xff,
+	    ip->ip_dst.s_addr & 0xff, (ip->ip_dst.s_addr >> 8) & 0xff,
+	    (ip->ip_dst.s_addr >> 16) & 0xff, (ip->ip_dst.s_addr >> 24) & 0xff);
 }
