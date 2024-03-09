@@ -211,6 +211,7 @@ heaven_tx_log_block(struct ip *ip)
 		break;
 	case IPPROTO_UDP:
 		proto = "udp";
+		break;
 	case IPPROTO_ICMP:
 		proto = "icmp";
 		break;
