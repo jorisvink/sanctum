@@ -425,3 +425,42 @@ sanctum_cipher_kdf(const char *path, const char *label,
 
 	return (0);
 }
+
+/*
+ * Bind a socket to our configured local address and return it.
+ */
+int
+sanctum_bind_local(void)
+{
+	int		fd, val;
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("%s: socket: %s", __func__, errno_s);
+
+	sanctum->local.sin_family = AF_INET;
+
+	if (bind(fd, (struct sockaddr *)&sanctum->local,
+	    sizeof(sanctum->local)) == -1)
+		fatal("%s: connect: %s", __func__, errno_s);
+
+	if ((val = fcntl(fd, F_GETFL, 0)) == -1)
+		fatal("%s: fcntl: %s", __func__, errno_s);
+
+	val |= O_NONBLOCK;
+
+	if (fcntl(fd, F_SETFL, val) == -1)
+		fatal("%s: fcntl: %s", __func__, errno_s);
+
+#if defined(__linux__)
+	val = IP_PMTUDISC_DO;
+	if (setsockopt(fd, IPPROTO_IP,
+	    IP_MTU_DISCOVER, &val, sizeof(val)) == -1)
+		fatal("%s: setsockopt: %s", __func__, errno_s);
+#elif !defined(__OpenBSD__)
+	val = 1;
+	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val)) == -1)
+		fatal("%s: setsockopt: %s", __func__, errno_s);
+#endif
+
+	return (fd);
+}

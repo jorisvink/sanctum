@@ -34,8 +34,10 @@ There are several processes that make up a sanctum instance:
 | bless | The process responsible for encrypting packets.
 | confess | The process responsible for decrypting packets.
 | chapel | The process responsible for deriving new TX/RX keys from a key.
-| heaven | The process receiving and sending packets on the inner interface.
-| purgatory | The process receiving and sending packets on the outer interface.
+| heaven-rx | The process receiving packets on the inner interface.
+| heaven-tx | The process sending packets on the inner interface.
+| purgatory-rx | The process receiving packets on the outer interface.
+| purgatory-tx | The process sending packets on the outer interface.
 | pilgrim | The process handling TX keys when running in pilgrim mode.
 | shrine | The process handling RX keys when running in shrine mode.
 | cathedral | The process forwarding traffic when running in cathedral mode.

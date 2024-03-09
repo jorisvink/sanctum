@@ -128,6 +128,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			}
 		}
 
+		sanctum_proc_suspend(1);
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)
@@ -142,6 +143,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 		    offer != NULL) {
 			offer_next = 0;
 			chapel_erase(io->rx, offer->spi);
+			sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 			chapel_offer_clear();
 		}
 
@@ -163,8 +165,6 @@ sanctum_chapel(struct sanctum_proc *proc)
 		} else {
 			chapel_offer_check(now);
 		}
-
-		usleep(10000);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -221,14 +221,20 @@ chapel_peer_check(u_int64_t now)
 	offer_next_send = 1;
 
 	chapel_erase(io->rx, spi);
+	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+
 	if (offer != NULL) {
-		if (offer->spi != spi)
+		if (offer->spi != spi) {
 			chapel_erase(io->rx, offer->spi);
+			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+		}
 		chapel_offer_clear();
 	}
 
-	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0)
+	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
 		chapel_erase(io->tx, spi);
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+	}
 
 	sanctum_atomic_write(&sanctum->heartbeat, 0);
 }
@@ -288,10 +294,12 @@ chapel_cathedral_notify(u_int64_t now)
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
-	pkt->target = SANCTUM_PROC_PURGATORY;
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
+	else
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 	cathedral_next = now + 5;
 }
@@ -394,6 +402,9 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	sanctum_log(LOG_INFO, "offering fresh key (%s) "
 	    "(spi=0x%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->spi, offer_ttl, offer_next_send);
+
+	/* Wakeup confess so it can setup the RX SA. */
+	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 }
 
 /*
@@ -447,10 +458,12 @@ chapel_offer_encrypt(u_int64_t now)
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
-	pkt->target = SANCTUM_PROC_PURGATORY;
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
+	else
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 cleanup:
 	if (offer->ttl == 0)
@@ -542,6 +555,9 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	offer_ttl = 5;
 	offer_next = 0;
 	offer_next_send = 1;
+
+	/* Wakeup the bless process so it can install the TX SA. */
+	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 }
 
 /*

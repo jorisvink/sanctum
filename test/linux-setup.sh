@@ -26,3 +26,6 @@ ip netns exec left ifconfig cry.left 1.1.1.1 netmask 255.255.255.0
 ip netns exec right ifconfig cry.right 1.1.1.2 netmask 255.255.255.0
 
 iptables -A FORWARD -j ACCEPT
+
+sysctl -w net.core.rmem_max=10485760
+sysctl -w net.core.rmem_default=10485760

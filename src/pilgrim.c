@@ -113,6 +113,7 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 			}
 		}
 
+		sanctum_proc_suspend(1);
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if (offer != NULL) {
@@ -121,8 +122,6 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 		} else {
 			pilgrim_offer_check(now);
 		}
-
-		usleep(10000);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -136,6 +135,9 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 static void
 pilgrim_drop_access(void)
 {
+	(void)close(io->clear);
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->chapel);
 	sanctum_shm_detach(io->heaven);
@@ -201,6 +203,9 @@ pilgrim_offer_check(u_int64_t now)
 	    reason, offer->spi, offer_ttl, offer_next_send);
 
 	offer_next = now + SANCTUM_SA_LIFETIME_SOFT;
+
+	/* Wakeup bless so it can setup the TX SA. */
+	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 }
 
 /*
@@ -254,10 +259,12 @@ pilgrim_offer_encrypt(u_int64_t now)
 
 	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
-	pkt->target = SANCTUM_PROC_PURGATORY;
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
+	else
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 cleanup:
 	if (offer->ttl == 0)

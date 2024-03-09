@@ -15,6 +15,8 @@
  */
 
 #include <sys/types.h>
+#include <sys/time.h>
+#include <sys/futex.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 
@@ -202,6 +204,54 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 
 	/* TODO */
+}
+
+/*
+ * Suspend the calling process using the synchronization addr.
+ * If we were already told to be awake, we simply return and do not block.
+ */
+void
+sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
+{
+	struct timespec		tv;
+	int			ret;
+	const struct timespec	*tptr;
+
+	PRECOND(addr != NULL);
+
+	if (sanctum_atomic_cas_simple(addr, 1, 0))
+		return;
+
+	tv.tv_nsec = 0;
+	tv.tv_sec = sleep;
+
+	if (sleep < 0)
+		tptr = NULL;
+	else
+		tptr = &tv;
+
+	if ((ret = futex(addr, FUTEX_WAIT, 0, tptr, NULL)) == -1) {
+		if (errno != EINTR && errno != ETIMEDOUT && errno != EAGAIN)
+			sanctum_log(LOG_NOTICE, "futex wait: %s", errno_s);
+	}
+}
+
+/*
+ * Wakeup whoever is suspended on the synchronization address in addr,
+ * unless they are already awake.
+ */
+void
+sanctum_platform_wakeup(u_int32_t *addr)
+{
+	int		ret;
+
+	PRECOND(addr != NULL);
+
+	if (sanctum_atomic_cas_simple(addr, 0, 1)) {
+		ret = futex(addr, FUTEX_WAKE, 1, NULL, NULL);
+		if (ret == -1)
+			sanctum_log(LOG_INFO, "futex wakeup: %s", errno_s);
+	}
 }
 
 /* Configure the tunnel device. */

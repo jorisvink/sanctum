@@ -36,14 +36,28 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
+/* A routing message when configuring stuff. */
 struct rtmsg {
 	struct rt_msghdr	rtm;
 	u_int8_t		buf[512];
 };
 
+/* The apple defined name for a tun device. */
 #define APPLE_UTUN_CONTROL	"com.apple.net.utun_control"
 
-void	darwin_configure_tundev(const char *);
+static void	darwin_configure_tundev(const char *);
+
+/*
+ * The ulock_wait and ulock_wakeup() interfaces are considered
+ * private but screw it, we'll use them anyway since they do
+ * not support futex(2) like other more sane operating systems.
+ */
+#define UL_COMPARE_AND_WAIT_SHARED	3
+#define ULF_WAKE_ALL			0x00000100
+
+int __ulock_wait(uint32_t operation, void *addr, uint64_t value,
+	    uint32_t timeout);
+int __ulock_wake(uint32_t operation, void *addr, uint64_t wake_value);
 
 /*
  * Setup the required platform bits and bobs.
@@ -174,48 +188,6 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	return (writev(fd, iov, 2));
 }
 
-/* Configure the tunnel device. */
-void
-darwin_configure_tundev(const char *dev)
-{
-	int			fd;
-	struct ifreq		ifr;
-	struct ifaliasreq	ifra;
-
-	PRECOND(dev != NULL);
-
-	memset(&ifr, 0, sizeof(ifr));
-	memset(&ifra, 0, sizeof(ifra));
-
-	if (strlcpy(ifr.ifr_name, dev, sizeof(ifr.ifr_name)) >=
-	    sizeof(ifr.ifr_name))
-		fatal("ifc '%s' too long", dev);
-
-	if (strlcpy(ifra.ifra_name, dev, sizeof(ifra.ifra_name)) >=
-	    sizeof(ifra.ifra_name))
-		fatal("ifc '%s' too long", dev);
-
-	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-		fatal("socket: %s", errno_s);
-
-	memcpy(&ifra.ifra_addr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-	memcpy(&ifra.ifra_mask, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
-	memcpy(&ifra.ifra_broadaddr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-
-	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
-		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
-
-	ifr.ifr_flags = IFF_UP | IFF_RUNNING;
-	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
-		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
-
-	ifr.ifr_mtu = sanctum->tun_mtu;
-	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
-		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
-
-	(void)close(fd);
-}
-
 /* Adds a new route via our tunnel device. */
 void
 sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
@@ -272,4 +244,89 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 
 	/* TODO */
+}
+
+/*
+ * Suspend the calling process using the synchronization addr.
+ * If we were already told to be awake, we simply return and do not block.
+ */
+void
+sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
+{
+	u_int32_t	timeo;
+
+	PRECOND(addr != NULL);
+
+	if (sanctum_atomic_cas_simple(addr, 1, 0))
+		return;
+
+	if (sleep < 0)
+		timeo = 0;
+	else
+		timeo = sleep * 1e6;
+
+	if (__ulock_wait(UL_COMPARE_AND_WAIT_SHARED, addr, 0, timeo) == -1) {
+		if (errno != ETIMEDOUT)
+			sanctum_log(LOG_NOTICE, "ulock wait: %s", errno_s);
+	}
+}
+
+/*
+ * Wakeup whoever is suspended on the synchronization address in addr,
+ * unless they are already awake.
+ */
+void
+sanctum_platform_wakeup(u_int32_t *addr)
+{
+	int		ret;
+
+	PRECOND(addr != NULL);
+
+	if (sanctum_atomic_cas_simple(addr, 0, 1)) {
+		ret = __ulock_wake(UL_COMPARE_AND_WAIT_SHARED, addr, 0);
+		if (ret == -1)
+			sanctum_log(LOG_INFO, "ulock wake: %s", errno_s);
+	}
+}
+
+/* Configure the tunnel device. */
+static void
+darwin_configure_tundev(const char *dev)
+{
+	int			fd;
+	struct ifreq		ifr;
+	struct ifaliasreq	ifra;
+
+	PRECOND(dev != NULL);
+
+	memset(&ifr, 0, sizeof(ifr));
+	memset(&ifra, 0, sizeof(ifra));
+
+	if (strlcpy(ifr.ifr_name, dev, sizeof(ifr.ifr_name)) >=
+	    sizeof(ifr.ifr_name))
+		fatal("ifc '%s' too long", dev);
+
+	if (strlcpy(ifra.ifra_name, dev, sizeof(ifra.ifra_name)) >=
+	    sizeof(ifra.ifra_name))
+		fatal("ifc '%s' too long", dev);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	memcpy(&ifra.ifra_addr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+	memcpy(&ifra.ifra_mask, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
+	memcpy(&ifra.ifra_broadaddr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+
+	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
+		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
+
+	ifr.ifr_flags = IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
+
+	ifr.ifr_mtu = sanctum->tun_mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	(void)close(fd);
 }

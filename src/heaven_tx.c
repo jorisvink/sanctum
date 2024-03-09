@@ -27,47 +27,37 @@
 
 #include "sanctum.h"
 
-/* The number of packets in a single run we try to read. */
-#define PACKETS_PER_EVENT		64
-
-static void	heaven_drop_access(void);
-static int	heaven_recv_packets(int);
-static int	heaven_is_sinner(struct sanctum_packet *);
-static void	heaven_send_packet(int, struct sanctum_packet *);
-
-/* Temporary packet for when the packet pool is empty. */
-static struct sanctum_packet	tpkt;
+static void	heaven_tx_drop_access(void);
+static void	heaven_tx_log_block(struct ip *);
+static int	heaven_tx_is_sinner(struct sanctum_packet *);
+static void	heaven_tx_send_packet(int, struct sanctum_packet *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 
 /*
- * The process responsible for receiving packets on the heaven side
- * and submitting them for blessing.
+ * The process responsible for submitting decrypted packets into heaven.
  */
 void
-sanctum_heaven(struct sanctum_proc *proc)
+sanctum_heaven_tx(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
-	int			suspend, pending, fd, sig, running;
+	int			sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
+	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
 	io = proc->arg;
-	heaven_drop_access();
+	heaven_tx_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	fd = sanctum_platform_tundev_create();
-	sanctum_config_routes();
-
-	running = 1;
-	suspend = 0;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+
+	running = 1;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -79,36 +69,12 @@ sanctum_heaven(struct sanctum_proc *proc)
 			}
 		}
 
-#if !defined(SANCTUM_HIGH_PERFORMANCE)
-		if (sanctum_ring_pending(io->heaven))
-			suspend = 0;
-#endif
+		if (sanctum_ring_pending(io->heaven) == 0)
+			sanctum_proc_suspend(-1);
 
-		if (sanctum->mode != SANCTUM_MODE_SHRINE) {
-			pending = heaven_recv_packets(fd) == 1;
-			if (pending)
-				suspend = 0;
-		} else {
-			pending = 0;
-		}
-
-		if (sanctum->mode != SANCTUM_MODE_PILGRIM &&
-		    sanctum_ring_pending(io->heaven)) {
-			suspend = 0;
-			while ((pkt = sanctum_ring_dequeue(io->heaven)))
-				heaven_send_packet(fd, pkt);
-		} else if (pending == 0) {
-			if (suspend < 500)
-				suspend++;
-		}
-
-#if !defined(SANCTUM_HIGH_PERFORMANCE)
-		if (sanctum_ring_pending(io->heaven) == 0 && pending == 0)
-			usleep(suspend * 10);
-#endif
+		while ((pkt = sanctum_ring_dequeue(io->heaven)))
+			heaven_tx_send_packet(io->clear, pkt);
 	}
-
-	close(fd);
 
 	sanctum_log(LOG_NOTICE, "exiting");
 
@@ -119,8 +85,10 @@ sanctum_heaven(struct sanctum_proc *proc)
  * Drop access to the queues and fds it does not need.
  */
 static void
-heaven_drop_access(void)
+heaven_tx_drop_access(void)
 {
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->offer);
@@ -141,16 +109,16 @@ heaven_drop_access(void)
  * This function will return the packet to the packet pool.
  */
 static void
-heaven_send_packet(int fd, struct sanctum_packet *pkt)
+heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 {
 	ssize_t		ret;
 
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
-	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN);
+	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
 	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
-	if (heaven_is_sinner(pkt) == -1) {
+	if (heaven_tx_is_sinner(pkt) == -1) {
 		sanctum_packet_release(pkt);
 		return;
 	}
@@ -176,69 +144,17 @@ heaven_send_packet(int fd, struct sanctum_packet *pkt)
 }
 
 /*
- * Read up to PACKETS_PER_EVENT number of packets, queueing them up
- * for encryption via the encryption queue.
- */
-static int
-heaven_recv_packets(int fd)
-{
-	int				idx;
-	ssize_t				ret;
-	struct sanctum_packet		*pkt;
-
-	PRECOND(fd >= 0);
-	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
-
-	for (idx = 0; idx < PACKETS_PER_EVENT; idx++) {
-		if ((pkt = sanctum_packet_get()) == NULL)
-			pkt = &tpkt;
-
-		if ((ret = sanctum_platform_tundev_read(fd, pkt)) == -1) {
-			if (pkt != &tpkt)
-				sanctum_packet_release(pkt);
-			if (errno == EINTR)
-				continue;
-			if (errno == EIO)
-				break;
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				break;
-			fatal("%s: read(): %s", __func__, errno_s);
-		}
-
-		if (ret == 0)
-			fatal("eof on tunnel interface");
-
-		if (ret <= SANCTUM_PACKET_MIN_LEN) {
-			if (pkt != &tpkt)
-				sanctum_packet_release(pkt);
-			continue;
-		}
-
-		if (pkt == &tpkt)
-			continue;
-
-		pkt->length = ret;
-		pkt->target = SANCTUM_PROC_BLESS;
-
-		if (sanctum_ring_queue(io->bless, pkt) == -1)
-			sanctum_packet_release(pkt);
-	}
-
-	return (idx == PACKETS_PER_EVENT);
-}
-
-/*
  * Check if the packet we are about to send on the heaven interface
  * actually is traffic we expect and allow.
  */
 static int
-heaven_is_sinner(struct sanctum_packet *pkt)
+heaven_tx_is_sinner(struct sanctum_packet *pkt)
 {
 	struct ip	*ip;
 	in_addr_t	net, mask;
 
 	PRECOND(pkt != NULL);
-	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN);
+	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
 
 	if (pkt->length < sizeof(*ip))
 		return (-1);
@@ -254,6 +170,7 @@ heaven_is_sinner(struct sanctum_packet *pkt)
 	case IPPROTO_ICMP:
 		break;
 	default:
+		heaven_tx_log_block(ip);
 		return (-1);
 	}
 
@@ -261,14 +178,52 @@ heaven_is_sinner(struct sanctum_packet *pkt)
 	net = sanctum->tun_ip.sin_addr.s_addr & mask;
 
 	if ((ip->ip_src.s_addr & mask) != net) {
-		if (sanctum_config_routable(ip->ip_src.s_addr) == -1)
+		if (sanctum_config_routable(ip->ip_src.s_addr) == -1) {
+			heaven_tx_log_block(ip);
 			return (-1);
+		}
 	}
 
 	if ((ip->ip_dst.s_addr & mask) != net) {
-		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1)
+		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1) {
+			heaven_tx_log_block(ip);
 			return (-1);
+		}
 	}
 
 	return (0);
+}
+
+/*
+ * Log a packet that was blocked by heaven_tx_is_sinner().
+ */
+static void
+heaven_tx_log_block(struct ip *ip)
+{
+	const char	*proto;
+	char		buf[16];
+
+	PRECOND(ip != NULL);
+
+	switch (ip->ip_p) {
+	case IPPROTO_TCP:
+		proto = "tcp";
+		break;
+	case IPPROTO_UDP:
+		proto = "udp";
+	case IPPROTO_ICMP:
+		proto = "icmp";
+		break;
+	default:
+		(void)snprintf(buf, sizeof(buf), "%02x", ip->ip_p);
+		proto = buf;
+		break;
+	}
+
+	sanctum_log(LOG_INFO,
+	    "blocked %s %u.%u.%u.%u -> %u.%u.%u.%u", proto,
+	    ip->ip_src.s_addr & 0xff, (ip->ip_src.s_addr >> 8) & 0xff,
+	    (ip->ip_src.s_addr >> 16) & 0xff, (ip->ip_src.s_addr >> 24) & 0xff,
+	    ip->ip_dst.s_addr & 0xff, (ip->ip_dst.s_addr >> 8) & 0xff,
+	    (ip->ip_dst.s_addr >> 16) & 0xff, (ip->ip_dst.s_addr >> 24) & 0xff);
 }

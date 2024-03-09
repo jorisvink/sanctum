@@ -33,8 +33,10 @@ static LIST_HEAD(, sanctum_proc)		proclist;
 /* Some human understand process types. */
 static const char *proctab[] = {
 	"unknown",
-	"heaven",
-	"purgatory",
+	"heaven-rx",
+	"heaven-tx",
+	"purgatory-rx",
+	"purgatory-tx",
 	"bless",
 	"confess",
 	"chapel",
@@ -68,6 +70,9 @@ sanctum_proc_init(char **argv)
 	proc_argv = argv;
 	proc_title_max = 0;
 
+	for (i = 0; i < SANCTUM_PROC_MAX; i++)
+		sanctum->wstate[i] = 1;
+
 	for (i = 0; environ[i] != NULL; i++) {
 		if ((p = strdup(environ[i])) == NULL)
 			fatal("strdup");
@@ -92,9 +97,12 @@ sanctum_proc_start(void)
 
 	sanctum_proc_create(SANCTUM_PROC_CONTROL, sanctum_control, NULL);
 
+	io.crypto = sanctum_bind_local();
+
 	io.purgatory = sanctum_ring_alloc(1024);
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+		io.clear = sanctum_platform_tundev_create();
 		io.offer = sanctum_ring_alloc(16);
 		io.chapel = sanctum_ring_alloc(16);
 		io.bless = sanctum_ring_alloc(1024);
@@ -103,6 +111,7 @@ sanctum_proc_start(void)
 		io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
 		io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
 	} else {
+		io.clear = -1;
 		io.tx = NULL;
 		io.rx = NULL;
 		io.offer = NULL;
@@ -112,12 +121,29 @@ sanctum_proc_start(void)
 		io.chapel = sanctum_ring_alloc(1024);
 	}
 
-	sanctum_proc_create(SANCTUM_PROC_PURGATORY, sanctum_purgatory, &io);
+	if (sanctum->mode != SANCTUM_MODE_PILGRIM) {
+		sanctum_proc_create(SANCTUM_PROC_PURGATORY_RX,
+		    sanctum_purgatory_rx, &io);
+	}
+
+	if (sanctum->mode != SANCTUM_MODE_SHRINE) {
+		sanctum_proc_create(SANCTUM_PROC_PURGATORY_TX,
+		    sanctum_purgatory_tx, &io);
+	}
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
 		sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
-		sanctum_proc_create(SANCTUM_PROC_HEAVEN, sanctum_heaven, &io);
 		sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
+
+		if (sanctum->mode != SANCTUM_MODE_SHRINE) {
+			sanctum_proc_create(SANCTUM_PROC_HEAVEN_RX,
+			    sanctum_heaven_rx, &io);
+		}
+
+		if (sanctum->mode != SANCTUM_MODE_PILGRIM) {
+			sanctum_proc_create(SANCTUM_PROC_HEAVEN_TX,
+			    sanctum_heaven_tx, &io);
+		}
 	}
 
 	switch (sanctum->mode) {
@@ -137,6 +163,9 @@ sanctum_proc_start(void)
 	default:
 		fatal("unknown mode %u", sanctum->mode);
 	}
+
+	(void)close(io.clear);
+	(void)close(io.crypto);
 
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
@@ -159,8 +188,10 @@ sanctum_proc_create(u_int16_t type,
 	struct passwd		*pw;
 	struct sanctum_proc	*proc;
 
-	PRECOND(type == SANCTUM_PROC_HEAVEN ||
-	    type == SANCTUM_PROC_PURGATORY ||
+	PRECOND(type == SANCTUM_PROC_HEAVEN_RX ||
+	    type == SANCTUM_PROC_HEAVEN_TX ||
+	    type == SANCTUM_PROC_PURGATORY_RX ||
+	    type == SANCTUM_PROC_PURGATORY_TX ||
 	    type == SANCTUM_PROC_BLESS ||
 	    type == SANCTUM_PROC_CONFESS ||
 	    type == SANCTUM_PROC_CHAPEL ||
@@ -222,11 +253,13 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 
 	switch (proc->type) {
 	case SANCTUM_PROC_BLESS:
-	case SANCTUM_PROC_HEAVEN:
 	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_CONFESS:
 	case SANCTUM_PROC_CONTROL:
-	case SANCTUM_PROC_PURGATORY:
+	case SANCTUM_PROC_HEAVEN_RX:
+	case SANCTUM_PROC_HEAVEN_TX:
+	case SANCTUM_PROC_PURGATORY_RX:
+	case SANCTUM_PROC_PURGATORY_TX:
 	case SANCTUM_PROC_SHRINE:
 	case SANCTUM_PROC_PILGRIM:
 	case SANCTUM_PROC_CATHEDRAL:
@@ -347,4 +380,37 @@ sanctum_proc_title(const char *name)
 		fatal("proctitle 'sanctum-%s' too large", name);
 
 	memset(proc_argv[0] + len, 0, proc_title_max - len);
+}
+
+/*
+ * Suspend the current process using the shared sanctum wake state
+ * as a synchronization point.
+ */
+void
+sanctum_proc_suspend(int64_t sleep)
+{
+	PRECOND(process != NULL);
+
+	sanctum_platform_suspend(&sanctum->wstate[process->type], sleep);
+}
+
+/*
+ * Wakeup the given process from a suspended state.
+ */
+void
+sanctum_proc_wakeup(u_int16_t type)
+{
+	PRECOND(type == SANCTUM_PROC_HEAVEN_RX ||
+	    type == SANCTUM_PROC_HEAVEN_TX ||
+	    type == SANCTUM_PROC_PURGATORY_RX ||
+	    type == SANCTUM_PROC_PURGATORY_TX ||
+	    type == SANCTUM_PROC_BLESS ||
+	    type == SANCTUM_PROC_CONFESS ||
+	    type == SANCTUM_PROC_CHAPEL ||
+	    type == SANCTUM_PROC_CONTROL ||
+	    type == SANCTUM_PROC_PILGRIM ||
+	    type == SANCTUM_PROC_SHRINE ||
+	    type == SANCTUM_PROC_CATHEDRAL);
+
+	sanctum_platform_wakeup(&sanctum->wstate[type]);
 }

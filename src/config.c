@@ -89,8 +89,10 @@ static const struct {
 	const char		*name;
 	u_int16_t		type;
 } proctab[] = {
-	{ "heaven",		SANCTUM_PROC_HEAVEN },
-	{ "purgatory",		SANCTUM_PROC_PURGATORY },
+	{ "heaven-rx",		SANCTUM_PROC_HEAVEN_RX },
+	{ "heaven-tx",		SANCTUM_PROC_HEAVEN_TX },
+	{ "purgatory-rx",	SANCTUM_PROC_PURGATORY_RX },
+	{ "purgatory-tx",	SANCTUM_PROC_PURGATORY_TX },
 	{ "chapel",		SANCTUM_PROC_CHAPEL },
 	{ "bless",		SANCTUM_PROC_BLESS },
 	{ "confess",		SANCTUM_PROC_CONFESS },

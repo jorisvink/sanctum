@@ -1029,8 +1029,10 @@ hymn_config_save(const char *path, struct config *cfg)
 		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(net));
 
 	hymn_config_write(fd, "\n");
-	hymn_config_write(fd, "run heaven as %s\n", getlogin());
-	hymn_config_write(fd, "run purgatory as %s\n", getlogin());
+	hymn_config_write(fd, "run heaven-rx as %s\n", getlogin());
+	hymn_config_write(fd, "run heaven-tx as %s\n", getlogin());
+	hymn_config_write(fd, "run purgatory-rx as %s\n", getlogin());
+	hymn_config_write(fd, "run purgatory-tx as %s\n", getlogin());
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "run control as root\n");

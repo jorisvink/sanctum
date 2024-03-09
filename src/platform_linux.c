@@ -18,6 +18,7 @@
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
+#include <sys/syscall.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 
@@ -27,6 +28,8 @@
 #include <linux/if_tun.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+
+#include <linux/futex.h>
 
 #include <linux/audit.h>
 #include <linux/filter.h>
@@ -38,12 +41,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <sched.h>
 #include <unistd.h>
 
 #include "sanctum.h"
 #include "seccomp.h"
 
 static void	linux_configure_tundev(struct ifreq *);
+static void	linux_sandbox_netns(struct sanctum_proc *);
+static void	linux_sandbox_seccomp(struct sanctum_proc *);
 static void	linux_seccomp_violation(struct sanctum_proc *);
 static void	linux_rt_sin(struct nlmsghdr *, void *, u_int16_t,
 		    struct sockaddr_in *);
@@ -86,6 +92,7 @@ static struct sock_filter filter_epilogue[] = {
 };
 
 static struct sock_filter common_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),
 	KORE_SYSCALL_ALLOW(exit_group),
@@ -96,15 +103,25 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
 };
 
-static struct sock_filter heaven_seccomp_filter[] = {
+static struct sock_filter heaven_rx_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(poll),
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(close),
+};
+
+static struct sock_filter heaven_tx_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(write),
 };
 
-static struct sock_filter purgatory_seccomp_filter[] = {
+static struct sock_filter purgatory_rx_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(poll),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(recvfrom),
+};
+
+static struct sock_filter purgatory_tx_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(close),
 };
 
 static struct sock_filter keying_seccomp_filter[] = {
@@ -220,94 +237,14 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 
 /*
  * Apply sandboxing rules according to the current process.
- *
- * We create a seccomp filter from our prologue, our base filter,
- * the proc filter and epilogue that is then loaded.
  */
 void
 sanctum_platform_sandbox(struct sanctum_proc *proc)
 {
-	struct sock_filter		*sf;
-	struct sock_fprog		prog, pf;
-	size_t				len, idx, off;
-
 	PRECOND(proc != NULL);
 
-	/*
-	 * If we are going to be doing seccomp tracing, do the ptrace()
-	 * dance now so our parent can get cracking.
-	 */
-	if (seccomp_tracing) {
-		filter_epilogue[0].k = SECCOMP_RET_TRACE;
-		if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1)
-			fatal("ptrace: %s", errno_s);
-		if (kill(proc->pid, SIGSTOP) == -1)
-			fatal("kill: %s", errno_s);
-	}
-
-	len = KORE_FILTER_LEN(filter_prologue);
-
-	switch (proc->type) {
-	case SANCTUM_PROC_BLESS:
-	case SANCTUM_PROC_CONFESS:
-		/* Only uses the common filter with the bare minimum. */
-		pf.len = 0;
-		pf.filter = NULL;
-		break;
-	case SANCTUM_PROC_CHAPEL:
-	case SANCTUM_PROC_SHRINE:
-	case SANCTUM_PROC_PILGRIM:
-	case SANCTUM_PROC_CATHEDRAL:
-		pf.filter = keying_seccomp_filter;
-		pf.len = KORE_FILTER_LEN(keying_seccomp_filter);
-		break;
-	case SANCTUM_PROC_HEAVEN:
-		pf.filter = heaven_seccomp_filter;
-		pf.len = KORE_FILTER_LEN(heaven_seccomp_filter);
-		break;
-	case SANCTUM_PROC_CONTROL:
-		pf.filter = control_seccomp_filter;
-		pf.len = KORE_FILTER_LEN(control_seccomp_filter);
-		break;
-	case SANCTUM_PROC_PURGATORY:
-		pf.filter = purgatory_seccomp_filter;
-		pf.len = KORE_FILTER_LEN(purgatory_seccomp_filter);
-		break;
-	default:
-		fatal("%s: unknown process type %d", __func__, proc->type);
-	}
-
-	len += KORE_FILTER_LEN(common_seccomp_filter);
-	len += pf.len;
-	len += KORE_FILTER_LEN(filter_epilogue);
-
-	if ((sf = calloc(len, sizeof(*sf))) == NULL)
-		fatal("calloc(%zu): %s", len, errno_s);
-
-	off = 0;
-
-	for (idx = 0; idx < KORE_FILTER_LEN(filter_prologue); idx++)
-		sf[off++] = filter_prologue[idx];
-
-	for (idx = 0; idx < KORE_FILTER_LEN(common_seccomp_filter); idx++)
-		sf[off++] = common_seccomp_filter[idx];
-
-	if (pf.len > 0) {
-		for (idx = 0; idx < pf.len; idx++)
-			sf[off++] = pf.filter[idx];
-	}
-
-	for (idx = 0; idx < KORE_FILTER_LEN(filter_epilogue); idx++)
-		sf[off++] = filter_epilogue[idx];
-
-	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
-		fatal("prctl(privs): %s", errno_s);
-
-	prog.len = len;
-	prog.filter = sf;
-
-	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
-		fatal("prctl(seccomp): %s", errno_s);
+	linux_sandbox_netns(proc);
+	linux_sandbox_seccomp(proc);
 }
 
 /*
@@ -446,6 +383,54 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 	(void)close(s);
 }
 
+/*
+ * Suspend the calling process using the synchronization addr.
+ * If we were already told to be awake, we simply return and do not block.
+ */
+void
+sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
+{
+	long			ret;
+	struct timespec		tv, *tptr;
+
+	PRECOND(addr != NULL);
+
+	if (sanctum_atomic_cas_simple(addr, 1, 0))
+		return;
+
+	tv.tv_nsec = 0;
+	tv.tv_sec = sleep;
+
+	if (sleep < 0)
+		tptr = NULL;
+	else
+		tptr = &tv;
+
+	if ((ret = syscall(SYS_futex,
+	    addr, FUTEX_WAIT, 0, tptr, NULL, 0)) == -1) {
+		if (errno != EINTR && errno != ETIMEDOUT && errno != EAGAIN)
+			sanctum_log(LOG_NOTICE, "futex wait: %s", errno_s);
+	}
+}
+
+/*
+ * Wakeup whoever is suspended on the synchronization address in addr,
+ * unless they are already awake.
+ */
+void
+sanctum_platform_wakeup(u_int32_t *addr)
+{
+	long		ret;
+
+	PRECOND(addr != NULL);
+
+	if (sanctum_atomic_cas_simple(addr, 0, 1)) {
+		ret = syscall(SYS_futex, addr, FUTEX_WAKE, 1, NULL, NULL, 0);
+		if (ret == -1)
+			sanctum_log(LOG_NOTICE, "futex wake: %s", errno_s);
+	}
+}
+
 /* Helper to stuff a sockaddr_in into an rtattr for netlink. */
 static void
 linux_rt_sin(struct nlmsghdr *hdr, void *attr, u_int16_t type,
@@ -496,6 +481,120 @@ linux_configure_tundev(struct ifreq *ifr)
 		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
 
 	(void)close(fd);
+}
+
+/*
+ * Move all processes except cathedral and purgatory-tx into a
+ * new network namespace.
+ */
+static void
+linux_sandbox_netns(struct sanctum_proc *proc)
+{
+	if (proc->type != SANCTUM_PROC_HEAVEN_RX &&
+	    proc->type != SANCTUM_PROC_HEAVEN_TX &&
+	    proc->type != SANCTUM_PROC_PURGATORY_RX &&
+	    proc->type != SANCTUM_PROC_PURGATORY_TX &&
+	    proc->type != SANCTUM_PROC_CATHEDRAL) {
+		if (unshare(CLONE_NEWNET) == -1)
+			fatal("unshare: %s", errno_s);
+	}
+}
+
+/*
+ * Apply the correct seccomp rules based on the process that is starting.
+ */
+static void
+linux_sandbox_seccomp(struct sanctum_proc *proc)
+{
+	struct sock_filter		*sf;
+	struct sock_fprog		prog, pf;
+	size_t				len, idx, off;
+
+	PRECOND(proc != NULL);
+
+	/*
+	 * If we are going to be doing seccomp tracing, do the ptrace()
+	 * dance now so our parent can get cracking.
+	 */
+	if (seccomp_tracing) {
+		filter_epilogue[0].k = SECCOMP_RET_TRACE;
+		if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1)
+			fatal("ptrace: %s", errno_s);
+		if (kill(proc->pid, SIGSTOP) == -1)
+			fatal("kill: %s", errno_s);
+	}
+
+	len = KORE_FILTER_LEN(filter_prologue);
+
+	switch (proc->type) {
+	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_CONFESS:
+		/* Only uses the common filter with the bare minimum. */
+		pf.len = 0;
+		pf.filter = NULL;
+		break;
+	case SANCTUM_PROC_CHAPEL:
+	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_CATHEDRAL:
+		pf.filter = keying_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(keying_seccomp_filter);
+		break;
+	case SANCTUM_PROC_CONTROL:
+		pf.filter = control_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(control_seccomp_filter);
+		break;
+	case SANCTUM_PROC_HEAVEN_TX:
+		pf.filter = heaven_tx_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(heaven_tx_seccomp_filter);
+		break;
+	case SANCTUM_PROC_HEAVEN_RX:
+		pf.filter = heaven_rx_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(heaven_rx_seccomp_filter);
+		break;
+	case SANCTUM_PROC_PURGATORY_TX:
+		pf.filter = purgatory_tx_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(purgatory_tx_seccomp_filter);
+		break;
+	case SANCTUM_PROC_PURGATORY_RX:
+		pf.filter = purgatory_rx_seccomp_filter;
+		pf.len = KORE_FILTER_LEN(purgatory_rx_seccomp_filter);
+		break;
+	default:
+		fatal("%s: unknown process type %d", __func__, proc->type);
+	}
+
+	len += KORE_FILTER_LEN(common_seccomp_filter);
+	len += pf.len;
+	len += KORE_FILTER_LEN(filter_epilogue);
+
+	if ((sf = calloc(len, sizeof(*sf))) == NULL)
+		fatal("calloc(%zu): %s", len, errno_s);
+
+	off = 0;
+
+	for (idx = 0; idx < KORE_FILTER_LEN(filter_prologue); idx++)
+		sf[off++] = filter_prologue[idx];
+
+	for (idx = 0; idx < KORE_FILTER_LEN(common_seccomp_filter); idx++)
+		sf[off++] = common_seccomp_filter[idx];
+
+	if (pf.len > 0) {
+		for (idx = 0; idx < pf.len; idx++)
+			sf[off++] = pf.filter[idx];
+	}
+
+	for (idx = 0; idx < KORE_FILTER_LEN(filter_epilogue); idx++)
+		sf[off++] = filter_epilogue[idx];
+
+	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+		fatal("prctl(privs): %s", errno_s);
+
+	prog.len = len;
+	prog.filter = sf;
+
+	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+		fatal("prctl(seccomp): %s", errno_s);
 }
 
 /*

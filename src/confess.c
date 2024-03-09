@@ -48,6 +48,9 @@ static struct {
 	struct sanctum_sa	pending;
 } state;
 
+/* If we should wakeup SANCTUM_PROC_HEAVEN_TX. */
+static int			tx_wakeup = 0;
+
 /*
  * Confess - The process responsible for the confession of packets coming
  * from the purgatory side.
@@ -58,7 +61,7 @@ void
 sanctum_confess(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
-	int			suspend, sig, running;
+	int			sig, running;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -75,7 +78,6 @@ sanctum_confess(struct sanctum_proc *proc)
 	nyfe_zeroize_register(io->rx, sizeof(*io->rx));
 
 	running = 1;
-	suspend = 0;
 
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
@@ -90,21 +92,18 @@ sanctum_confess(struct sanctum_proc *proc)
 			}
 		}
 
+		if (sanctum_ring_pending(io->confess) == 0)
+			sanctum_proc_suspend(-1);
+
 		confess_key_management();
 
-		if (sanctum_ring_pending(io->confess)) {
-			suspend = 0;
-			while ((pkt = sanctum_ring_dequeue(io->confess)))
-				confess_packet_process(pkt);
-		} else if (sanctum_ring_pending(io->confess) == 0) {
-			if (suspend < 500)
-				suspend++;
-		}
+		while ((pkt = sanctum_ring_dequeue(io->confess)))
+			confess_packet_process(pkt);
 
-#if !defined(SANCTUM_HIGH_PERFORMANCE)
-		if (sanctum_ring_pending(io->confess) == 0)
-			usleep(suspend * 10);
-#endif
+		if (tx_wakeup) {
+			tx_wakeup = 0;
+			sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_TX);
+		}
 	}
 
 	confess_clear_state();
@@ -119,6 +118,9 @@ sanctum_confess(struct sanctum_proc *proc)
 static void
 confess_drop_access(void)
 {
+	(void)close(io->clear);
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->offer);
@@ -296,9 +298,12 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		return (-1);
 
 	/* The packet checks out, it is bound for heaven. */
-	pkt->target = SANCTUM_PROC_HEAVEN;
+	pkt->target = SANCTUM_PROC_HEAVEN_TX;
+
 	if (sanctum_ring_queue(io->heaven, pkt) == -1)
 		sanctum_packet_release(pkt);
+	else
+		tx_wakeup = 1;
 
 	return (0);
 }
