@@ -266,7 +266,7 @@ sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 		timeo = sleep * 1e6;
 
 	if (__ulock_wait(UL_COMPARE_AND_WAIT_SHARED, addr, 0, timeo) == -1) {
-		if (errno != ETIMEDOUT)
+		if (errno != ETIMEDOUT && errno != EINTR)
 			sanctum_log(LOG_NOTICE, "ulock wait: %s", errno_s);
 	}
 }
