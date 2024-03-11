@@ -85,7 +85,8 @@ This wrapping and unwrapping happens using a duplex-sponge
 based cryptographic AE cipher while the key used is derived
 from the underlying shared secret using KMAC256.
 
-Yes, this isn't PFS.
+While this isn't PFS, the underlying key may be swapped out
+OOB by other means. I recommend you rotate this key often.
 
 ## Traffic
 
@@ -152,12 +153,18 @@ local x.x.x.x:2333
 # moves networks a lot.
 peer y.y.y.y:2333
 
-# Processes can run as different users.
-run bless as _sanctum
-run heaven as _sanctum
-run confess as _sanctum
-run purgatory as _sanctum
+# The encryption and decryption processes.
+run bless as _bless
+run confess as _confess
 
-# Run chapel as different user.
+# Run the internal io processes as one user.
+run heaven-rx as _heaven
+run heaven-tx as _heaven
+
+# Run the external io processes as another.
+run purgatory-rx as _purgatory
+run purgatory-tx as _purgatory
+
+# Run chapel for the key exchange as yet another user.
 run chapel as _chapel
 ```
