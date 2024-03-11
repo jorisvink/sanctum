@@ -104,7 +104,10 @@ static struct sock_filter common_seccomp_filter[] = {
 };
 
 static struct sock_filter heaven_rx_seccomp_filter[] = {
+#if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
+#endif
+	KORE_SYSCALL_ALLOW(ppoll),
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(close),
 };
@@ -115,7 +118,10 @@ static struct sock_filter heaven_tx_seccomp_filter[] = {
 };
 
 static struct sock_filter purgatory_rx_seccomp_filter[] = {
+#if defined(SYS_poll)
 	KORE_SYSCALL_ALLOW(poll),
+#endif
+	KORE_SYSCALL_ALLOW(ppoll),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(recvfrom),
 };
