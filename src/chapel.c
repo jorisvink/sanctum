@@ -226,7 +226,7 @@ chapel_peer_check(u_int64_t now)
 	if (offer != NULL) {
 		if (offer->spi != spi) {
 			chapel_erase(io->rx, offer->spi);
-			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+			sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 		}
 		chapel_offer_clear();
 	}
