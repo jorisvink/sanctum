@@ -1,0 +1,24 @@
+;; Sandbox rules for the chapel process.
+
+(version 3)
+(deny default)
+
+(import "/usr/local/share/sanctum/sb/common.sb")
+
+;; Opening of the secret file.
+(allow syscall-unix
+	(syscall-number SYS_open)
+	(syscall-number SYS_read)
+	(syscall-number SYS_access)
+	(syscall-number SYS_fstat64)
+	(syscall-number SYS_openat))
+
+;; Allow access to the secret, most likely under /etc.
+(allow file-read* file-test-existence
+	(subpath "/etc")
+	(subpath "/var")
+	(subpath "/usr/local/bin")
+	(subpath "/private/etc")
+	(subpath "/private/var")
+	(subpath "/private/var/db/timezone")
+	(path (param "KEY_PATH")))

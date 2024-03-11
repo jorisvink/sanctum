@@ -1,0 +1,51 @@
+;; Common rules for all sanctum processes.
+
+(version 3)
+
+;; The common syscall shared between processes.
+;; This list may need some fine-tuning.
+
+(deny syscall-unix (with telemetry)(with message "sanctum-unix-syscall"))
+
+(allow syscall-unix
+	(syscall-number SYS_exit)
+	(syscall-number SYS_fstat64)
+	(syscall-number SYS_close)
+	(syscall-number SYS_access)
+	(syscall-number SYS_fcntl)
+	(syscall-number SYS_getpid)
+	(syscall-number SYS_csrctl)
+	(syscall-number SYS_sendto)
+	(syscall-number SYS_sysctl)
+	(syscall-number SYS_proc_info)
+	(syscall-number SYS_getattrlist)
+	(syscall-number SYS_fgetattrlist)
+	(syscall-number SYS___mac_syscall)
+	(syscall-number SYS_read_nocancel)
+	(syscall-number SYS_write_nocancel)
+	(syscall-number SYS_issetugid)
+	(syscall-number SYS_sigreturn)
+	(syscall-number SYS_ulock_wait)
+	(syscall-number SYS_getentropy)
+	(syscall-number SYS_ulock_wake))
+
+;; For now we allow these, so it can be fine-tuned later.
+
+(allow (with report) syscall-mach)
+(allow (with report) system-fcntl)
+(allow (with report) system-mac-syscall (mac-policy-name "Sandbox"))
+
+;; Allow access to the files we require, read-only.
+
+(allow file-read* file-test-existence
+	(subpath "/private/var/db/timezone")
+	(path "/etc/localtime"))
+
+(allow file-read-metadata file-test-existence
+	(subpath "/etc")
+	(subpath "/usr/local/bin")
+	(subpath "/private/etc/")
+	(subpath "/private/var/")
+	(subpath "/var"))
+
+(allow process-info-pidinfo)

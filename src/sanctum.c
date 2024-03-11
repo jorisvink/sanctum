@@ -109,6 +109,7 @@ main(int argc, char *argv[])
 	sanctum_signal_trap(SIGHUP);
 	sanctum_signal_trap(SIGCHLD);
 	sanctum_signal_trap(SIGQUIT);
+	sanctum_signal_trap(SIGTERM);
 	sanctum_signal_trap(SIGSEGV);
 
 	sanctum_platform_init();
@@ -122,6 +123,7 @@ main(int argc, char *argv[])
 	sigdelset(&sigset, SIGINT);
 	sigdelset(&sigset, SIGHUP);
 	sigdelset(&sigset, SIGCHLD);
+	sigdelset(&sigset, SIGTERM);
 	sigdelset(&sigset, SIGQUIT);
 	(void)sigprocmask(SIG_BLOCK, &sigset, NULL);
 
@@ -156,6 +158,7 @@ main(int argc, char *argv[])
 			case SIGINT:
 			case SIGHUP:
 			case SIGQUIT:
+			case SIGTERM:
 				running = 0;
 				continue;
 			case SIGCHLD:

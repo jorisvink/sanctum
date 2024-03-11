@@ -9,6 +9,8 @@ VERSION=$(OBJDIR)/version.c
 DESTDIR?=
 PREFIX?=/usr/local
 INSTALL_DIR=$(PREFIX)/bin
+SHARE_DIR=$(PREFIX)/share/sanctum
+DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
 CIPHER?=openssl-aes-gcm
 
@@ -63,6 +65,8 @@ else
 $(error "No CIPHER selected")
 endif
 
+INSTALL_TARGETS=install-bin
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-DPLATFORM_LINUX
@@ -71,6 +75,7 @@ ifeq ("$(OSNAME)", "linux")
 else ifeq ("$(OSNAME)", "darwin")
 	CFLAGS+=-DPLATFORM_DARWIN
 	SRC+=src/platform_darwin.c
+	INSTALL_TARGETS+=install-darwin-sb
 else ifeq ("$(OSNAME)", "openbsd")
 	CFLAGS+=-DPLATFORM_OPENBSD
 	SRC+=src/platform_openbsd.c
@@ -79,7 +84,7 @@ endif
 OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
-all: $(BIN) 
+all: $(BIN)
 	$(MAKE) -C hymn
 	$(MAKE) -C pontifex
 
@@ -103,11 +108,17 @@ $(VERSION): $(OBJDIR) force
 	@printf "const char *sanctum_build_date = \"%s\";\n" \
 	    `date +"%Y-%m-%d"` >> $(VERSION);
 
-install: $(BIN)
+install: $(INSTALL_TARGETS)
+
+install-bin: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 	$(MAKE) -C hymn install
 	$(MAKE) -C pontifex install
+
+install-darwin-sb:
+	mkdir -p $(DARWIN_SB_PATH)
+	install -m 644 share/sb/*.sb $(DARWIN_SB_PATH)
 
 $(LIBNYFE):
 	$(MAKE) -C nyfe

@@ -1,0 +1,12 @@
+;; Sandbox rules for the purgatory-rx process.
+
+(version 3)
+(deny default)
+
+(import "/usr/local/share/sanctum/sb/common.sb")
+
+(allow syscall-unix
+	(syscall-number SYS_poll)
+	(syscall-number SYS_recvfrom))
+
+(allow network-inbound (local udp4))

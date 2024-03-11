@@ -1,0 +1,6 @@
+;; Sandbox rules for the confess process.
+
+(version 3)
+(deny default)
+
+(import "/usr/local/share/sanctum/sb/common.sb")
