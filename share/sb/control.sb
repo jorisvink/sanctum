@@ -1,0 +1,6 @@
+;; Sandbox rules for the control process.
+
+(version 3)
+
+;; Just accept anything for control.
+(allow default)

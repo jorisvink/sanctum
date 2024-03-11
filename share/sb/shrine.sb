@@ -1,0 +1,4 @@
+;; Sandbox rules for the shrine process.
+;; Same as chapel.
+
+(import "/usr/local/share/sanctum/sb/chapel.sb")

@@ -1,0 +1,6 @@
+;; Sandbox rules for the bless process.
+
+(version 3)
+(deny default)
+
+(import "/usr/local/share/sanctum/sb/common.sb")

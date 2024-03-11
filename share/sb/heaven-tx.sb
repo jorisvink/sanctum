@@ -1,0 +1,11 @@
+;; Sandbox rules for the heaven-tx process.
+
+(version 3)
+(deny default)
+
+(import "/usr/local/share/sanctum/sb/common.sb")
+
+(allow syscall-unix
+	(syscall-number SYS_poll)
+	(syscall-number SYS_writev)
+	(syscall-number SYS_write))

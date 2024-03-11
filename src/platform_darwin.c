@@ -19,6 +19,7 @@
 #include <sys/kern_control.h>
 #include <sys/socket.h>
 #include <sys/sys_domain.h>
+#include <sys/stat.h>
 #include <sys/uio.h>
 
 #include <arpa/inet.h>
@@ -28,6 +29,7 @@
 #include <net/route.h>
 
 #include <fcntl.h>
+#include <sandbox.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +44,9 @@ struct rtmsg {
 	u_int8_t		buf[512];
 };
 
+/* XXX Hard coded installation path. */
+#define APPLE_SB_PATH		"/usr/local/share/sanctum/sb"
+
 /* The apple defined name for a tun device. */
 #define APPLE_UTUN_CONTROL	"com.apple.net.utun_control"
 
@@ -55,9 +60,13 @@ static void	darwin_configure_tundev(const char *);
 #define UL_COMPARE_AND_WAIT_SHARED	3
 #define ULF_WAKE_ALL			0x00000100
 
-int __ulock_wait(uint32_t operation, void *addr, uint64_t value,
+int	__ulock_wait(uint32_t operation, void *addr, uint64_t value,
 	    uint32_t timeout);
-int __ulock_wake(uint32_t operation, void *addr, uint64_t wake_value);
+int	__ulock_wake(uint32_t operation, void *addr, uint64_t wake_value);
+
+/* This sandbox API isn't declared publically either. */
+int	sandbox_init_with_parameters(const char *profile,
+	    uint64_t flags, const char *const parameters[], char **errorbuf);
 
 /*
  * Setup the required platform bits and bobs.
@@ -237,13 +246,75 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 	(void)close(s);
 }
 
-/* Sandboxing code (NYI). */
+/*
+ * Load a sandbox profile from disk and apply it to our current process.
+ * See all *.sb files inside of share/sb for the actual profiles.
+ */
 void
 sanctum_platform_sandbox(struct sanctum_proc *proc)
 {
+	struct stat	st;
+	size_t		flen;
+	int		fd, len;
+	const char	*params[8];
+	char		*profile, *errmsg, path[1024];
+
 	PRECOND(proc != NULL);
 
-	/* TODO */
+	switch (proc->type) {
+	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_CHAPEL:
+	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_CONFESS:
+	case SANCTUM_PROC_CONTROL:
+	case SANCTUM_PROC_CATHEDRAL:
+	case SANCTUM_PROC_HEAVEN_TX:
+	case SANCTUM_PROC_HEAVEN_RX:
+	case SANCTUM_PROC_PURGATORY_TX:
+	case SANCTUM_PROC_PURGATORY_RX:
+		break;
+	default:
+		fatal("%s: unknown proc type %d", __func__, proc->type);
+		break;
+	}
+
+	/* Construct all parameters that the profiles can use. */
+	params[0] = "KEY_PATH";
+	params[1] = sanctum->secret;
+	params[2] = NULL;
+
+	/* Open the profile from disk. */
+	len = snprintf(path, sizeof(path), "%s/%s.sb",
+	    APPLE_SB_PATH, proc->name);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to create path to sandbox profile");
+
+	if ((fd = sanctum_file_open(path)) == -1)
+		fatal("failed to open sandbox profile '%s'", path);
+
+	if (fstat(fd, &st) == -1)
+		fatal("fstat(%s): %s", path, errno_s);
+
+	if (st.st_size < 0 || st.st_size > 1024 * 1024)
+		fatal("sandbox profile filesize for '%s' is weird", proc->name);
+
+	flen = (size_t)st.st_size;
+
+	if ((profile = calloc(1, flen + 1)) == NULL)
+		fatal("calloc failed");
+
+	if (nyfe_file_read(fd, profile, flen) != flen)
+		fatal("failed to read profile");
+
+	profile[flen] = '\0';
+
+	/* And finally, apply it. */
+	if (sandbox_init_with_parameters(profile, 0, params, &errmsg) == -1)
+		fatal("sandbox init: %s", errmsg);
+
+	free(profile);
+	(void)close(fd);
 }
 
 /*
