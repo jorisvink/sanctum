@@ -36,7 +36,7 @@
 #define CHAPEL_OFFER_VALID		5
 
 /* The clock jump in seconds we always offer keys at. */
-#definef CHAPEL_CLOCK_JUMP_MAX		60
+#define CHAPEL_CLOCK_JUMP_MAX		60
 
 /*
  * An RX offer we send to our peer (meaning the peer can use this key as
@@ -178,10 +178,10 @@ sanctum_chapel(struct sanctum_proc *proc)
 			chapel_offer_clear();
 		}
 
-		if (delay == 0)
+		if (delay_check == 0)
 			chapel_peer_check(now);
 		else
-			delay--;
+			delay_check--;
 
 		if (offer != NULL) {
 			/*
