@@ -359,7 +359,11 @@ sanctum_inet_mask(void *saddr, u_int32_t mask)
 #endif
 
 	sin->sin_family = AF_INET;
-	sin->sin_addr.s_addr = htonl(0xffffffff << (32 - mask));
+
+	if (mask == 0)
+		sin->sin_addr.s_addr = 0;
+	else
+		sin->sin_addr.s_addr = htonl(0xffffffff << (32 - mask));
 }
 
 /*
