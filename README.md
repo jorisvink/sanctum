@@ -54,13 +54,13 @@ The processes share packets between each other in a very well defined way.
 For incoming packets:
 
 ```
-purgatory (crypto) -> confess (decryption) -> heaven (clear)
+purgatory-rx (black) -> confess (decryption) -> heaven-tx (red)
 ```
 
 For outgoing packets:
 
 ```
-heaven (clear) -> bless (encrypt) -> purgatory (crypto)
+heaven-rx (red) -> bless (encrypt) -> purgatory-tx (black)
 ```
 
 Due to the design of sanctum it is impossible to move a packet straight
