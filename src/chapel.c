@@ -35,6 +35,9 @@
 /* The half-time window in which offers are valid. */
 #define CHAPEL_OFFER_VALID		5
 
+/* The clock jump in seconds we always offer keys at. */
+#define CHAPEL_CLOCK_JUMP_MAX		60
+
 /*
  * An RX offer we send to our peer (meaning the peer can use this key as
  * a TX key and we will be able to decrypt traffic with it).
@@ -84,6 +87,9 @@ static u_int64_t		offer_next_send = 1;
 /* Randomly generated local ID. */
 static u_int64_t		local_id = 0;
 
+/* The randomly generated peer ID. */
+static u_int64_t		peer_id = 0;
+
 /*
  * Chapel - The keying process.
  *
@@ -96,10 +102,12 @@ static u_int64_t		local_id = 0;
 void
 sanctum_chapel(struct sanctum_proc *proc)
 {
+	struct timespec		ts;
 	u_int64_t		now;
 	u_int32_t		spi;
 	struct sanctum_packet	*pkt;
-	int			sig, running;
+	time_t			last_rtime;
+	int			sig, running, delay_check;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -114,6 +122,8 @@ sanctum_chapel(struct sanctum_proc *proc)
 	sanctum_signal_ignore(SIGINT);
 
 	running = 1;
+	last_rtime = 0;
+	delay_check = 0;
 
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
@@ -129,7 +139,28 @@ sanctum_chapel(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
+
+		(void)clock_gettime(CLOCK_REALTIME, &ts);
 		now = sanctum_atomic_read(&sanctum->uptime);
+
+		/*
+		 * If the clock jumped a lot, generate a new local_id
+		 * to signal a soft "restart" to the other side.
+		 *
+		 * Note that we delay the peer check for 10 seconds in the
+		 * case we just created our offer and it decided the peer
+		 * is unresponsive and clears it.
+		 */
+		if (last_rtime != 0 &&
+		    (ts.tv_sec - last_rtime) >= CHAPEL_CLOCK_JUMP_MAX) {
+			delay_check = 10;
+			if (offer != NULL)
+				chapel_offer_clear();
+			nyfe_random_bytes(&local_id, sizeof(local_id));
+			chapel_offer_create(now, "clock jump");
+		}
+
+		last_rtime = ts.tv_sec;
 
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)
 			chapel_cathedral_notify(now);
@@ -147,7 +178,10 @@ sanctum_chapel(struct sanctum_proc *proc)
 			chapel_offer_clear();
 		}
 
-		chapel_peer_check(now);
+		if (delay_check == 0)
+			chapel_peer_check(now);
+		else
+			delay_check--;
 
 		if (offer != NULL) {
 			/*
@@ -214,7 +248,7 @@ chapel_peer_check(u_int64_t now)
 		sanctum_atomic_write(&sanctum->peer_ip, 0);
 		sanctum_atomic_write(&sanctum->peer_port, 0);
 	} else {
-		offer_next = now + 25;
+		offer_next = now;
 	}
 
 	offer_ttl = 5;
@@ -226,7 +260,7 @@ chapel_peer_check(u_int64_t now)
 	if (offer != NULL) {
 		if (offer->spi != spi) {
 			chapel_erase(io->rx, offer->spi);
-			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+			sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 		}
 		chapel_offer_clear();
 	}
@@ -549,15 +583,25 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	chapel_install(io->tx, op->hdr.spi,
 	    op->data.salt, op->data.key, sizeof(op->data.key));
 
-	last_spi = op->hdr.spi;
+	/* Wakeup the bless process so it can install the TX SA. */
+	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 
 	/* Reduce offer settings back to base values. */
 	offer_ttl = 5;
 	offer_next = 0;
 	offer_next_send = 1;
 
-	/* Wakeup the bless process so it can install the TX SA. */
-	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+	/*
+	 * If the peer ID differs, the remote restarted and we should
+	 * offer keys immediately in response to this.
+	 */
+	if (peer_id != 0 && op->data.id != peer_id) {
+		if (offer == NULL)
+			chapel_offer_create(now, "peer restart");
+	}
+
+	peer_id = op->data.id;
+	last_spi = op->hdr.spi;
 }
 
 /*

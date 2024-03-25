@@ -1,0 +1,5 @@
+This directory holds the sandbox profiles for sanctum
+processes when running under MacOS.
+
+These files are installed under /usr/local/share/sanctum/sb and
+loaded at runtime by the sanctum binary.
