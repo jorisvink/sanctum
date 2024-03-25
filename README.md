@@ -85,8 +85,10 @@ This wrapping and unwrapping happens using a duplex-sponge
 based cryptographic AE cipher while the key used is derived
 from the underlying shared secret using KMAC256.
 
-While this isn't PFS, the underlying key may be swapped out
-OOB by other means. I recommend you rotate this key often.
+While this alone does not provide PFS, the underlying key
+may be swapped out OOB by other means while sanctum is running.
+
+I recommend you rotate this key often.
 
 ## Traffic
 
