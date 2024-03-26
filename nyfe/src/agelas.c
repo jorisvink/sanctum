@@ -25,8 +25,12 @@
  * Agelas: An experimental, simple and fully authenticated stream cipher
  * based on Keccak1600. This work is inspired on Keyak, Spongewrap etc.
  *
- * The Keccak sponge is initialized with a capacity of 512-bits for Agelas.
- * This puts the rate at 136 bytes.
+ * The underlying keccak state is initialized with a capacity of 512-bits.
+ *
+ * This puts the rate at 136 bytes. Agelas operates on 128 byte blocks
+ * as it retains 8 bytes per block for a 56-bit state counter and a single
+ * domain seperation byte. The domain seperation byte has different values
+ * when absorbing the state for different purposes.
  *
  * init(key):
  *	K_1 = bytepad(len(key) / 2 || key[0..31] || 0x01, 136)
@@ -34,24 +38,24 @@
  *	State <- Keccak1600.init(K_1)
  *
  * encryption(pt):
- *	for each 127 byte block, do
- *		for i = 0 -> i = 126, do
+ *	for each 128 byte block, do
+ *		for i = 0 -> i = 127, do
  *			ct[i] = pt[i] ^ State[i]
  *			State[i] = pt[i]
  *		clen += len(pt)
- *		State[127..134] = counter
+ *		State[128..134] = counter
  *		State[135] = 0x07
  *		Keccak1600.absorb(State)
  *		counter = counter + 1
  *		State <- Keccak1600.squeeze(136)
  *
  * decryption(ct):
- *	for each 127 byte block, do
- *		for i = 0 -> i = 126, do
+ *	for each 128 byte block, do
+ *		for i = 0 -> i = 127, do
  *			pt[i] = ct[i] ^ State[i]
  *			State[i] = pt[i]
  *		clen += len(ct)
- *		State[127..134] = counter
+ *		State[128..134] = counter
  *		State[135] = 0x07
  *		Keccak1600.absorb(State)
  *		counter = counter + 1
@@ -78,7 +82,7 @@
  *	L = bytepad(clen, 136)
  *	L[135] = 0x1f
  *	Keccak1600.absorb(L)
- *	State[127..134] = counter
+ *	State[128..134] = counter
  *	State[135] = 0x03
  *	Keccak1600.absorb(State)
  *	Keccak1600.absorb(K_2)
@@ -92,7 +96,7 @@
 #define AGELAS_SPONGE_RATE	136
 
 /* The number of bytes from the state we consume for a block. */
-#define AGELAS_XOR_RATE		(AGELAS_SPONGE_RATE - 9)
+#define AGELAS_XOR_RATE		(AGELAS_SPONGE_RATE - 8)
 
 /* The number of bytes we can absorb when byte padded. */
 #define AGELAS_ABSORB_LEN	(AGELAS_SPONGE_RATE - 4)
@@ -269,12 +273,15 @@ nyfe_agelas_authenticate(struct nyfe_agelas *ctx, u_int8_t *tag, size_t len)
 static void
 agelas_absorb_state(struct nyfe_agelas *ctx, u_int8_t tag)
 {
-	u_int64_t	counter;
-
 	PRECOND(ctx != NULL);
 
-	counter = htobe64(ctx->counter);
-	memcpy(&ctx->state[127], &counter, sizeof(counter));
+	ctx->state[AGELAS_SPONGE_RATE - 8] = ctx->counter >> 48;
+	ctx->state[AGELAS_SPONGE_RATE - 7] = ctx->counter >> 40;
+	ctx->state[AGELAS_SPONGE_RATE - 6] = ctx->counter >> 32;
+	ctx->state[AGELAS_SPONGE_RATE - 5] = ctx->counter >> 24;
+	ctx->state[AGELAS_SPONGE_RATE - 4] = ctx->counter >> 16;
+	ctx->state[AGELAS_SPONGE_RATE - 3] = ctx->counter >> 8;
+	ctx->state[AGELAS_SPONGE_RATE - 2] = ctx->counter & 0xff;
 	ctx->state[AGELAS_SPONGE_RATE - 1] = tag;
 
 	nyfe_keccak1600_absorb(&ctx->sponge, ctx->state, sizeof(ctx->state));
