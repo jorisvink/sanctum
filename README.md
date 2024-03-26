@@ -54,13 +54,13 @@ The processes share packets between each other in a very well defined way.
 For incoming packets:
 
 ```
-purgatory (crypto) -> confess (decryption) -> heaven (clear)
+purgatory-rx (black) -> confess (decryption) -> heaven-tx (red)
 ```
 
 For outgoing packets:
 
 ```
-heaven (clear) -> bless (encrypt) -> purgatory (crypto)
+heaven-rx (red) -> bless (encrypt) -> purgatory-tx (black)
 ```
 
 Due to the design of sanctum it is impossible to move a packet straight
@@ -85,8 +85,10 @@ This wrapping and unwrapping happens using a duplex-sponge
 based cryptographic AE cipher while the key used is derived
 from the underlying shared secret using KMAC256.
 
-While this isn't PFS, the underlying key may be swapped out
-OOB by other means. I recommend you rotate this key often.
+While this alone does not provide PFS, the underlying key
+may be swapped out OOB by other means while sanctum is running.
+
+I recommend you rotate this key often.
 
 ## Traffic
 

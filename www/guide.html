@@ -127,20 +127,23 @@ figure out a way to securely transfer it to the other peer :)
 </pre>
 
 <p>
-Note that sanctum is based on symmetrical secrets only and does
-not provide PFS. If your shared secret leaks all your traffic can
-be decrypted.
+Note that the wrapping of session keys is done using a symmetrical
+key derived from a strong shared secret and is thus by itself
+not PFS. The underlying shared secret may be swapped out via
+an OOB mechanic while sanctum is running however.
 </p>
 
 <p>
-It is therefor imperative that you have good control over your hardware.
+It is therefor imperative that you have good control over your hardware
+and that you find a good OOB method to update your underlying shared
+secrets.
 </p>
 
 <h3>## Configurations</h3>
 
 <p>
 We will configure both the client and server in such a way so that the
-process talking to the outside world (purgatory) is running as a seperate
+process talking to the outside world (purgatory-*) is running as a seperate
 user, while the others run as root.
 </p>
 
@@ -164,8 +167,10 @@ secret /etc/sanctum/secret
 
 peer 1.2.3.4:1234
 
-run heaven as <strong>user</strong>
-run purgatory as <strong>user</strong>
+run heaven-rx as <strong>user</strong>
+run heaven-tx as <strong>user</strong>
+run purgatory-rx as <strong>user</strong>
+run purgatory-tx as <strong>user</strong>
 
 run control as <strong>user</strong>
 control /tmp/sanctum.control <strong>user</strong>
@@ -198,8 +203,10 @@ secret /etc/sanctum/secret
 
 local 1.2.3.4:1234
 
-run heaven as <strong>user</strong>
-run purgatory as <strong>user</strong>
+run heaven-rx as <strong>user</strong>
+run heaven-tx as <strong>user</strong>
+run purgatory-rx as <strong>user</strong>
+run purgatory-tx as <strong>user</strong>
 
 run control as <strong>user</strong>
 control /tmp/sanctum.control <strong>user</strong>
