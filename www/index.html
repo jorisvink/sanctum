@@ -12,7 +12,7 @@ body {
 }
 
 .content {
-    width: 800px;
+    width: 600px;
     margin-left: auto;
     margin-right: auto;
     margin-top: 45px;
@@ -63,6 +63,69 @@ a, a:visited {
         encrypted network traffic between two peers.
     </p>
 
+    <h3>Multi-process</h3>
+
+    <p>
+        Sanctum is built using a multi-process approach where each process
+        is only doing one thing. This allows for more fine-grained sandboxing
+        in relation to permissions or allowed system calls.
+    </p>
+
+    <h3>Encryption</h3>
+
+    <p>
+        Traffic is usually encrypted under AES256-GCM with unique keys
+        in both RX and TX directions, using a 64-bit packet counter as
+        the nonce.
+    </p>
+
+    <p>
+        Using the <strong>CIPHER</strong> environment variable you can however
+        change traffic encryption to use <a href="https://github.com/jorisvink/sanctum/blob/master/nyfe/src/agelas.c" target="_blank">Agelas</a>,
+        which is a duplex-sponge based AEAD cipher based on Keccak-p[1600,24].
+    </p>
+
+    <h3>Key exchange</h3>
+
+    <p>
+        Sanctum uses strong shared symmetrical secrets from which an
+        encryption key is derived for wrapping a generated session
+        key that is transmitted to its peer.
+    </p>
+
+    <p>
+        Keys are expired automatically after a given number of packets
+        have been submitted on them (1 << 34), or after 1-hour.
+    </p>
+
+    <p>
+        The underlying algorithm for this is the AEAD duplex-sponge
+        stream cipher mentioned earlier. The entire key derivation and
+        offer process is as follows:
+    </p>
+
+<pre>
+    Wrapping key (wk) derivation:
+        s = shared secret, 256-bit
+        se = seed selected uniformly at random, 512-bit
+        wk = KMAC256(s, len(se) || se), 512-bit
+
+    Key offer:
+        now = Seconds since boot, 64-bit
+        salt = The salt for nonce construction, 32-bit
+        id = unique sanctum ID generated at start, 64-bit
+        key = session key selected uniformly at random, 256-bit
+
+        seed = se from wk derivation above
+        spi = The SPI for this association
+
+        header = magic || spi || seed
+        encdata = id || now || key || salt
+
+        encdata = Agelas(wk, aad=header, encdata)
+        send(header || encdata)
+</pre>
+
     <h3>Why did you write sanctum?</h3>
 
     <p>
@@ -88,11 +151,9 @@ a, a:visited {
 
     <p>
         If you are asking yourself that question, that's ok.
-        The people who know, know.
-    </p>
-
-    <p>
-        If this makes you nervous and rather not use Sanctum that is
+        The people who know, know. I have been building these
+        type of things for many years at high assurance levels.
+        Now, if this makes you nervous and rather not use Sanctum that is
         fine, there are
         <a href="https://www.wireguard.com" target="_blank">plenty</a>
         <a href="https://openvpn.net" target="_blank">of</a>
@@ -101,19 +162,6 @@ a, a:visited {
 
     <p>
         But none of them have cool mythology though ;)
-    </p>
-
-    <h3>Duplex-sponge based cryptography</h3>
-
-    <p>
-        Sanctum contains cryptography based on the duplex-sponge
-        construct, it uses this for traffic protection when built
-        with CIPHER=nyfe-<a href="https://github.com/jorisvink/sanctum/blob/master/nyfe/src/agelas.c" target="_blank">agelas</a>.
-    </p>
-
-    <p>
-        Sanctum always uses the duplex-sponge based cipher for
-        wrapping session keys when they are to be transmitted to your peer.
     </p>
 
     <h3>Source?</h3>
