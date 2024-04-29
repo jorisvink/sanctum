@@ -12,8 +12,13 @@ body {
     font-family: Verdana, sans-serif;
 }
 
+h2, h3, h4 {
+    color: #a66520;
+}
+
 .content {
-    width: 800px;
+    width: 600px;
+    text-align: justify;
     margin-left: auto;
     margin-right: auto;
     margin-top: 45px;
@@ -57,7 +62,7 @@ a, a:visited {
 
 <div class="sep"></div>
 
-<h2 id="manual"># Manual setup</h2>
+<h2 id="manual">Manual setup</h2>
 
 <p>
 This guide is aimed at people wanting to manually setup sanctum between
@@ -78,7 +83,7 @@ For this example we will use the following parameters:
 </ul>
 </p>
 
-<h3>## Building</h3>
+<h3>Building</h3>
 <p>
 On both client and server:
 
@@ -104,7 +109,7 @@ Other alternatives are:
 </ul>
 </p>
 
-<h3>## Environment</h3>
+<h3>Environment</h3>
 
 <p>
 Create a directory for sanctum, set the right permissions on it. You will
@@ -116,7 +121,7 @@ want to do this on both client and server.
 # chmod 0700 /etc/sanctum
 </pre>
 
-<h3 id="secret">## The shared secret</h3>
+<h3 id="secret">The shared secret</h3>
 
 <p>
 Generate the shared secret on either the client or the server and
@@ -140,7 +145,7 @@ and that you find a good OOB method to update your underlying shared
 secrets.
 </p>
 
-<h3>## Configurations</h3>
+<h3>Configurations</h3>
 
 <p>
 We will configure both the client and server in such a way so that the
@@ -153,7 +158,7 @@ user, while the others run as root.
 <strong>each</strong> process.
 </p>
 
-<h4>### Configuring the client</h4>
+<h4>Configuring the client</h4>
 
 <p>
 Create the following configuration file under /etc/sanctum/client.conf.
@@ -189,7 +194,7 @@ Now start it.
 # sanctum -d -c /etc/sanctum/client.conf
 </pre>
 
-<h4>### Configuring the server</h4>
+<h4>Configuring the server</h4>
 
 <p>
 Create the following configuration file under /etc/sanctum/server.conf.
@@ -225,7 +230,7 @@ Now start it.
 # sanctum -d -c /etc/sanctum/server.conf
 </pre>
 
-<h3>## Up and running</h3>
+<h3>Up and running</h3>
 
 <p>
 If everything went well you now have a tunnel between both devices
@@ -242,7 +247,7 @@ $
 
 <div class="sep"></div>
 
-<h2 id="hymn"># Hymn setup</h2>
+<h2 id="hymn">Hymn setup</h2>
 
 <p>
 You can also use the hymn tool to more easily get up and running.
@@ -255,7 +260,7 @@ These next few steps depend on you having generated and shared the
 secret just as <a href="/sanctum/guide.html#secret">done before</a>.
 </p>
 
-<h3>## Tunnel configuration</h3>
+<h3>Tunnel configuration</h3>
 
 <p>
 Configure the client using the hymn tool:
@@ -275,7 +280,7 @@ $ sudo hymn add 02-01 tunnel 10.10.0.2/24 mtu 1422 local 1.2.3.4:1234 \
     peer 0.0.0.0:0 secret /etc/sanctum/secret
 </pre>
 
-<h3>## Tunnel up</h3>
+<h3>Tunnel up</h3>
 
 <p>
 Now that you've done that you can bring up the instances. You do this by
@@ -302,7 +307,7 @@ $ sudo hymn up 02-01
 After a few seconds the tunnel will be alive.
 </p>
 
-<h3>## Tunnel status</h3>
+<h3>Tunnel status</h3>
 
 <p>
 You can see tunnel status using the <strong>hymn status</strong> command.
@@ -335,7 +340,7 @@ hymn-01-02:
 $
 </pre>
 
-<h3>## Useful hymn commands</h3>
+<h3>Useful hymn commands</h3>
 
 <p>
 Some other useful commands:
