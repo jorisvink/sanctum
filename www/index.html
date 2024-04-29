@@ -72,6 +72,26 @@ a, a:visited {
         in relation to permissions or allowed system calls.
     </p>
 
+    <p>
+        Several different processes exist that all only perform one task:
+        <ul>
+        <li>bless - The encryption process.</li>
+        <li>confess - The decryption process.</li>
+        <li>chapel - The key exchange process.</li>
+        <li>heaven-rx - The red side receiving process.</li>
+        <li>heaven-tx - The red side transmitting process.</li>
+        <li>purgatory-rx - The black side receiving process.</li>
+        <li>purgatory-tx - The black side transmitting process.</li>
+        </ul>
+    </p>
+
+    <p>
+        Packets flow between these processes in a well-defined manner
+        making it impossible to move a packet straight from the red
+        side to the black side without passing the encryption process and
+        vice-versa.
+    </li>
+
     <h3>Traffic encryption</h3>
 
     <p>
