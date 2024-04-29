@@ -12,8 +12,13 @@ body {
     font-family: Verdana, sans-serif;
 }
 
+h2 {
+    color: #a66520;
+}
+
 .content {
     width: 600px;
+    text-align: justify;
     margin-left: auto;
     margin-right: auto;
     margin-top: 45px;
@@ -56,7 +61,7 @@ a, a:visited {
 
     <div class="sep"></div>
 
-    <h3>What is sanctum?</h3>
+    <h2>What is sanctum?</h2>
 
     <p>
         Sanctum is a small, reviewable, experimental and <strong>fully
@@ -64,7 +69,7 @@ a, a:visited {
         encrypted network traffic between two peers.
     </p>
 
-    <h3>Multi-process</h3>
+    <h2>Multi-process</h2>
 
     <p>
         Sanctum is built using a multi-process approach where each process
@@ -92,7 +97,7 @@ a, a:visited {
         vice-versa.
     </li>
 
-    <h3>Traffic encryption</h3>
+    <h2>Traffic encryption</h2>
 
     <p>
         Traffic is usually encrypted under AES256-GCM with unique keys
@@ -103,16 +108,18 @@ a, a:visited {
     <p>
         Using the <strong>CIPHER</strong> environment variable you can however
         change traffic encryption to use <a href="https://github.com/jorisvink/sanctum/blob/master/nyfe/src/agelas.c" target="_blank">Agelas</a>,
-        which is an experimental duplex-sponge based AEAD cipher based on
-        Keccak-p[1600,24].
+        which is an experimental duplex-sponge AEAD cipher based on the
+        Keccak-p[1600,24] permutation.
     </p>
 
-    <h3>Key exchange</h3>
+    <h2>Key exchange</h2>
 
     <p>
         Sanctum uses strong shared symmetrical secrets from which an
         encryption key is derived for wrapping a generated session
-        key that is transmitted to its peer.
+        key that is transmitted to its peer. Each sanctum instance is
+        responsible for sending its <strong>RX</strong> session key
+        to its configured peer periodically.
     </p>
 
     <p>
@@ -121,9 +128,9 @@ a, a:visited {
     </p>
 
     <p>
-        The underlying algorithm for this is the AEAD duplex-sponge
-        stream cipher mentioned earlier. The entire key derivation and
-        offer process is as follows:
+        The underlying algorithm for wrapping the generated session key is
+        the AEAD duplex-sponge stream cipher mentioned earlier. The entire
+        key derivation and offer process is as follows:
     </p>
 
 <pre>
@@ -148,14 +155,14 @@ a, a:visited {
         send(header || encdata)
 </pre>
 
-    <h3>Why did you write sanctum?</h3>
+    <h2>Why did you write sanctum?</h2>
 
     <p>
         I wrote it so I can be certain that my packets are blessed
         correctly according to the scriptures of cryptology.
     </p>
 
-    <h3>Huh?</h3>
+    <h2>Huh?</h2>
 
     <p>
         Ok, I wrote sanctum because I wanted something I can trust
@@ -169,7 +176,7 @@ a, a:visited {
         Plus, it's cool to hack on stuff.
     </p>
 
-    <h3>What makes you qualified to build this?</h3>
+    <h2>What makes you qualified to build this?</h2>
 
     <p>
         If you are asking yourself that question, that's ok.
@@ -186,7 +193,7 @@ a, a:visited {
         But none of them have cool mythology though ;)
     </p>
 
-    <h3>Source?</h3>
+    <h2>Source?</h2>
 
     <p>
         Latest release: <a href="/sanctum/releases/sanctum-0.9.2.tgz">sanctum 0.9.2</a>
@@ -196,13 +203,13 @@ a, a:visited {
         A mirror of the repository is available on <a href="https://github.com/jorisvink/sanctum" target="_blank">github</a>.
     </p>
 
-    <h3>How?</h3>
+    <h2>How?</h2>
 
     <p>
         A small simple guide is available <a href="/sanctum/guide.html">here</a>.
     </p>
 
-    <h3>I want to contribute!</h3>
+    <h2>I want to contribute!</h2>
 
     <p>
         mail diffs to joris snabel-a sanctorum punkt se
