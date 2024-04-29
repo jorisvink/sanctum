@@ -669,14 +669,11 @@ hymn_down(int argc, char *argv[])
 
 	hymn_pid_path(path, sizeof(path), src, dst);
 
-	if (access(path, R_OK) == -1) {
+	if ((fp = fopen(path, "r")) == NULL) {
 		if (errno == ENOENT)
 			fatal("hymn tunnel %02x-%02x is down", src, dst);
-		fatal("failed to access %s: %s", path, errno_s);
-	}
-
-	if ((fp = fopen(path, "r")) == NULL)
 		fatal("fopen(%s): %s", path, errno_s);
+	}
 
 	if ((ptr = hymn_config_read(fp, buf, sizeof(buf))) == NULL)
 		fatal("failed to read %s", path);
