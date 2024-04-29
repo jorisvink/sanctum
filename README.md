@@ -1,7 +1,3 @@
-<p align="center">
-<img src="images/sanctum_logo.png" alt="sanctum" width="256px" />
-</p>
-
 # Sanctum
 
 "Thee packets that are chosen needeth not fear purgatory, for thee
