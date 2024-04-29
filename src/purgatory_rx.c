@@ -103,11 +103,13 @@ purgatory_rx_drop_access(void)
 
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
+	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->heaven);
 
 	io->tx = NULL;
 	io->rx = NULL;
+	io->offer = NULL;
 	io->bless = NULL;
 	io->heaven = NULL;
 }
