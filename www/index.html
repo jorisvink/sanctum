@@ -100,9 +100,9 @@ a, a:visited {
     <h2>Traffic encryption</h2>
 
     <p>
-        Traffic is usually encrypted under AES256-GCM with unique keys
-        in both RX and TX directions, using a 64-bit packet counter as
-        the nonce.
+        Traffic is by default encrypted under AES256-GCM with unique keys in
+        both RX and TX directions using a 96-bit nonce consisting of a 32-bit
+        salt and a 64-bit packet counter (see rfc4106).
     </p>
 
     <p>
