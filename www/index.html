@@ -155,6 +155,13 @@ a, a:visited {
         send(header || encdata)
 </pre>
 
+    <p>
+        While this alone does not provide PFS, the underlying key
+        may be swapped out OOB by other means while sanctum is running.
+
+        I recommend you rotate this key often via a mechanism of your liking.
+    </p>
+
     <h2>Why did you write sanctum?</h2>
 
     <p>
