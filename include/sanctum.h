@@ -347,6 +347,9 @@ struct sanctum_sun {
 /* A cathedral was configured. */
 #define SANCTUM_FLAG_CATHEDRAL_ACTIVE	(1 << 2)
 
+/* If Traffic Flow Condidentiality is enabled (TFC) */
+#define SANCTUM_FLAG_TFC_ENABLED	(1 << 3)
+
 /*
  * The modes in which sanctum can run.
  *

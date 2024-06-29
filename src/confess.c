@@ -18,7 +18,9 @@
 #include <sys/socket.h>
 
 #include <netinet/in.h>
+#include <netinet/ip.h>
 
+#include <endian.h>
 #include <poll.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -236,6 +238,7 @@ static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
 	u_int64_t			now;
+	struct ip			*ip;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
 	u_int8_t			nonce[12], aad[12];
@@ -296,6 +299,12 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	if (tail->next != IPPROTO_IP)
 		return (-1);
+
+	/* Remove the TFC padding if enabled. */
+	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
+		ip = sanctum_packet_data(pkt);
+		pkt->length = be16toh(ip->ip_len);
+	}
 
 	/* The packet checks out, it is bound for heaven. */
 	pkt->target = SANCTUM_PROC_HEAVEN_TX;

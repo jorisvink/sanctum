@@ -35,6 +35,7 @@ struct route {
 };
 
 static void	config_parse_spi(char *);
+static void	config_parse_tfc(char *);
 static void	config_parse_mode(char *);
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
@@ -65,6 +66,7 @@ static const struct {
 	void			(*cb)(char *);
 } keywords[] = {
 	{ "spi",		config_parse_spi },
+	{ "tfc",		config_parse_tfc },
 	{ "mode",		config_parse_mode },
 	{ "peer",		config_parse_peer },
 	{ "local",		config_parse_local },
@@ -275,6 +277,21 @@ config_parse_spi(char *opt)
 		fatal("spi <0xffff>");
 
 	sanctum->tun_spi = spi;
+}
+
+/*
+ * Parse the tfc configuration option.
+ */
+static void
+config_parse_tfc(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "on")) {
+		sanctum->flags = SANCTUM_FLAG_TFC_ENABLED;
+	} else if (strcmp(opt, "off")) {
+		fatal("unknown tfc option '%s'", opt);
+	}
 }
 
 /*

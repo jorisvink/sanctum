@@ -172,8 +172,8 @@ bless_packet_process(struct sanctum_packet *pkt)
 {
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
-	size_t				overhead;
-	u_int8_t			nonce[12], aad[12];
+	size_t				overhead, offset;
+	u_int8_t			nonce[12], aad[12], *data;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
@@ -225,7 +225,18 @@ bless_packet_process(struct sanctum_packet *pkt)
 		return;
 	}
 
-	/* Fill in ESP header and t(r)ail. */
+	/* Apply TFC padding if requested. */
+	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
+	    pkt->length != sanctum->tun_mtu) {
+		offset = pkt->length;
+		pkt->length = sanctum->tun_mtu;
+		data = sanctum_packet_data(pkt);
+
+		if (pkt->length - offset > 0)
+			nyfe_mem_zero(&data[offset], pkt->length - offset);
+	}
+
+	/* Fill in ESP header and tail. */
 	hdr = sanctum_packet_head(pkt);
 	tail = sanctum_packet_tail(pkt);
 
