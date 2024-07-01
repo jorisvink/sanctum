@@ -20,7 +20,6 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 
-#include <endian.h>
 #include <poll.h>
 #include <inttypes.h>
 #include <stdio.h>
