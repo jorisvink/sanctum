@@ -288,7 +288,7 @@ config_parse_tfc(char *opt)
 	PRECOND(opt != NULL);
 
 	if (!strcmp(opt, "on")) {
-		sanctum->flags = SANCTUM_FLAG_TFC_ENABLED;
+		sanctum->flags |= SANCTUM_FLAG_TFC_ENABLED;
 	} else if (strcmp(opt, "off")) {
 		fatal("unknown tfc option '%s'", opt);
 	}
