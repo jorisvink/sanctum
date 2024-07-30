@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -32,9 +32,6 @@
 /* The SACRAMENT KDF label. */
 #define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRAMENT.KDF"
 
-/* The half-time window in which offers are valid. */
-#define CHAPEL_OFFER_VALID		5
-
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
@@ -52,6 +49,12 @@ struct rx_offer {
 
 static void	chapel_peer_check(u_int64_t);
 static void	chapel_cathedral_notify(u_int64_t);
+static void	chapel_cathedral_ambry(struct sanctum_packet *, u_int64_t);
+
+static void	chapel_ambry_write(struct sanctum_offer *, u_int64_t);
+static void	chapel_ambry_unwrap(struct sanctum_offer *, u_int64_t);
+
+static void	chapel_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_offer_clear(void);
 static void	chapel_offer_check(u_int64_t);
@@ -89,6 +92,9 @@ static u_int64_t		local_id = 0;
 
 /* The randomly generated peer ID. */
 static u_int64_t		peer_id = 0;
+
+/* The ambry generation, initially 0. */
+static u_int32_t		ambry_generation = 0;
 
 /*
  * Chapel - The keying process.
@@ -166,7 +172,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			chapel_cathedral_notify(now);
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
-			chapel_offer_decrypt(pkt, now);
+			chapel_packet_handle(pkt, now);
 			sanctum_packet_release(pkt);
 		}
 
@@ -274,6 +280,37 @@ chapel_peer_check(u_int64_t now)
 }
 
 /*
+ * Handle an incoming packet and decide who gets to handle it.
+ *
+ * We accept key exchange packets and cathedral packets.
+ */
+static void
+chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
+{
+	struct sanctum_ipsec_hdr	*hdr;
+	u_int32_t			spi, seq;
+
+	PRECOND(pkt != NULL);
+
+	if (pkt->length != sizeof(struct sanctum_offer))
+		return;
+
+	hdr = sanctum_packet_head(pkt);
+	seq = be32toh(hdr->esp.seq);
+	spi = be32toh(hdr->esp.spi);
+
+	if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
+		chapel_offer_decrypt(pkt, now);
+	} else if ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
+		chapel_cathedral_ambry(pkt, now);
+	} else {
+		fatal("invalid chapel packet (spi=0x%x, seq=0x%x)", spi, seq);
+	}
+}
+
+/*
  * Check if it is time we notify our cathedral about the tunnel we
  * are configured to carry.
  */
@@ -303,12 +340,15 @@ chapel_cathedral_notify(u_int64_t now)
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 
+	/* Add the relevant pieces of data we will encrypt. */
 	op->data.id = htobe64(sanctum->tun_spi);
+	op->data.salt = htobe32(ambry_generation);
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
-	/* Fill in the rest with random garbage. */
+	/* Rest is unused. */
 	nyfe_random_bytes(op->data.key, sizeof(op->data.key));
-	nyfe_random_bytes(&op->data.salt, sizeof(op->data.salt));
+	nyfe_random_bytes(op->data.tag, sizeof(op->data.tag));
+	nyfe_random_bytes(op->data.seed, sizeof(op->data.seed));
 
 	/* Derive the key we should use. */
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
@@ -336,6 +376,180 @@ chapel_cathedral_notify(u_int64_t now)
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 	cathedral_next = now + 5;
+}
+
+/*
+ * Handle a cathedral ambry packet by attempting to verifying and
+ * decrypting the outer part of it.
+ *
+ * It that worked, we attempt to verify and unwrap the key stored inside
+ * of it using our configured KEK.
+ */
+static void
+chapel_cathedral_ambry(struct sanctum_packet *pkt, u_int64_t now)
+{
+	struct sanctum_offer		*op;
+	struct nyfe_agelas		cipher;
+
+	PRECOND(pkt != NULL);
+	PRECOND(pkt->length == sizeof(*op));
+	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
+	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
+
+	if (sanctum->kek == NULL) {
+		sanctum_log(LOG_NOTICE, "got unexpected cathedral message");
+		return;
+	}
+
+	op = sanctum_packet_head(pkt);
+
+	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
+	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
+	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		sanctum_packet_release(pkt);
+		return;
+	}
+
+	/* Verify and decrypt the offer. */
+	if (sanctum_offer_decrypt(&cipher, op, SANCTUM_OFFER_VALID) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	/* Quick sanity check on the tunnel. */
+	op->data.id = be64toh(op->data.id);
+	if (op->data.id != sanctum->tun_spi) {
+		sanctum_log(LOG_NOTICE,
+		    "got an ambry not ment for us (0x%" PRIx64 ")",
+		    op->data.id);
+		return;
+	}
+
+	/* Seems sane, lets try unwrapping the ambry completely. */
+	chapel_ambry_unwrap(op, now);
+}
+
+/*
+ * Unwrap the ambry using our configured kek.
+ */
+static void
+chapel_ambry_unwrap(struct sanctum_offer *op, u_int64_t now)
+{
+	int				fd;
+	u_int8_t			len;
+	struct nyfe_kmac256		kdf;
+	struct nyfe_agelas		cipher;
+	u_int16_t			tunnel;
+	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
+	u_int8_t			tag[SANCTUM_AMBRY_TAG_LEN];
+	u_int8_t			okm[SANCTUM_AMBRY_OKM_LEN];
+
+	PRECOND(op != NULL);
+	PRECOND(sanctum->kek != NULL);
+
+	/* Read our kek from disk. */
+	if ((fd = sanctum_file_open(sanctum->kek)) == -1)
+		return;
+
+	nyfe_zeroize_register(kek, sizeof(kek));
+	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
+	if (nyfe_file_read(fd, kek, sizeof(kek)) != sizeof(kek))
+		fatal("failed to read kek");
+
+	(void)close(fd);
+
+	/* We need these for AAD. */
+	len = SANCTUM_AMBRY_OKM_LEN;
+	tunnel = op->data.id & 0xffff;
+
+	/* Derive a unique key using the seed. */
+	nyfe_kmac256_init(&kdf, kek, sizeof(kek),
+	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
+	nyfe_zeroize(kek, sizeof(kek));
+
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, op->data.seed, sizeof(op->data.seed));
+	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
+	nyfe_zeroize(&kdf, sizeof(kdf));
+
+	/* Attempt to verify and unwrap the ambry. */
+	nyfe_agelas_init(&cipher, okm, sizeof(okm));
+	nyfe_zeroize(okm, sizeof(okm));
+
+	nyfe_agelas_aad(&cipher, &op->data.salt, sizeof(op->data.salt));
+	nyfe_agelas_aad(&cipher, op->data.seed, sizeof(op->data.seed));
+	nyfe_agelas_aad(&cipher, &tunnel, sizeof(tunnel));
+
+	nyfe_agelas_decrypt(&cipher,
+	    op->data.key, op->data.key, sizeof(op->data.key));
+	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	if (memcmp(op->data.tag, tag, sizeof(tag))) {
+		sanctum_log(LOG_NOTICE, "ambry integrity check failed");
+		return;
+	}
+
+	/* We have a valid ambry, install its key under santum->secret. */
+	chapel_ambry_write(op, now);
+}
+
+/*
+ * Write the ambry key under op->data.key to the sanctum configured
+ * secret file so it can be used by chapel.
+ */
+static void
+chapel_ambry_write(struct sanctum_offer *op, u_int64_t now)
+{
+	int		fd, len;
+	char		path[1024];
+
+	PRECOND(op != NULL);
+
+	/* Write the ambry key to a temporary file. */
+	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to create tmp secret path");
+
+	if (unlink(path) == -1 && errno != ENOENT) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to remove tmp file (%s)", errno_s);
+		return;
+	}
+
+	fd = nyfe_file_open(path, NYFE_FILE_CREATE);
+	nyfe_file_write(fd, op->data.key, sizeof(op->data.key));
+	nyfe_file_close(fd);
+
+	/* Rename it into place. */
+	if (rename(path, sanctum->secret) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to rename secret into place (%s)", errno_s);
+
+		if (unlink(path) == -1) {
+			sanctum_log(LOG_NOTICE,
+			    "failed to remove tmp file (%s)", errno_s);
+		}
+	} else {
+		/* The ambry generation is active. */
+		ambry_generation = be32toh(op->data.salt);
+		sanctum_log(LOG_INFO, "ambry generation 0x%08x active",
+		    ambry_generation);
+
+		/* Force a key offer to go out. */
+		if (offer != NULL)
+			chapel_offer_clear();
+
+		chapel_offer_create(now, "ambry generation switch");
+	}
 }
 
 /*
@@ -415,6 +629,9 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
 		return;
 
+	if (sanctum->kek != NULL && ambry_generation == 0)
+		return;
+
 	if ((offer = calloc(1, sizeof(*offer))) == NULL)
 		fatal("calloc");
 
@@ -443,7 +660,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 
 /*
  * Generate a new encrypted packet containing our current offer for
- * our peer and submit it via the crypto process.
+ * our peer and submit it via the purgatory process.
  */
 static void
 chapel_offer_encrypt(u_int64_t now)
@@ -474,6 +691,10 @@ chapel_offer_encrypt(u_int64_t now)
 	op->data.salt = offer->salt;
 	op->data.id = htobe64(local_id);
 	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
+
+	/* These two fields are unused. */
+	nyfe_random_bytes(op->data.tag, sizeof(op->data.tag));
+	nyfe_random_bytes(op->data.seed, sizeof(op->data.seed));
 
 	/* Derive the key we should use. */
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
@@ -526,16 +747,12 @@ chapel_offer_clear(void)
 static void
 chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
-	struct timespec			ts;
 	struct sanctum_offer		*op;
 	struct nyfe_agelas		cipher;
-	u_int8_t			tag[32];
 
 	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);
-
-	if (pkt->length != sizeof(*op))
-		return;
+	PRECOND(pkt->length == sizeof(*op));
 
 	op = sanctum_packet_head(pkt);
 
@@ -547,22 +764,13 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 	}
 
-	/* Decrypt and verify the integrity of the offer first. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
+	/* Verify and decrypt the offer. */
+	if (sanctum_offer_decrypt(&cipher, op, SANCTUM_OFFER_VALID) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
 	nyfe_zeroize(&cipher, sizeof(cipher));
-
-	if (memcmp(op->tag, tag, sizeof(op->tag)))
-		return;
-
-	/* Make sure the offer isn't too old. */
-	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	op->data.timestamp = be64toh(op->data.timestamp);
-
-	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - CHAPEL_OFFER_VALID) ||
-	    op->data.timestamp > ((u_int64_t)ts.tv_sec + CHAPEL_OFFER_VALID))
-		return;
 
 	/* If we have seen this offer recently, ignore it. */
 	op->hdr.spi = be32toh(op->hdr.spi);

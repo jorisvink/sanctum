@@ -92,6 +92,7 @@ static struct sock_filter filter_epilogue[] = {
 };
 
 static struct sock_filter common_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(brk),
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),
@@ -132,7 +133,11 @@ static struct sock_filter purgatory_tx_seccomp_filter[] = {
 
 static struct sock_filter keying_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(fstat),
+	KORE_SYSCALL_ALLOW(unlink),
+	KORE_SYSCALL_ALLOW(rename),
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(getrandom),
 	KORE_SYSCALL_ALLOW(newfstatat),

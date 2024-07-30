@@ -50,6 +50,7 @@
 #define HYMN_TUNNEL		(1 << 1)
 #define HYMN_PEER		(1 << 2)
 #define HYMN_SECRET		(1 << 3)
+#define HYMN_KEK		(1 << 4)
 #define HYMN_REQUIRED		(HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
 
 struct addr {
@@ -74,6 +75,7 @@ struct config {
 	u_int32_t		cathedral_id;
 	int			peer_cathedral;
 
+	char			*kek;
 	char			*descr;
 	char			*secret;
 
@@ -119,6 +121,7 @@ static void	hymn_config_load(const char *, struct config *);
 static void	hymn_config_set_mtu(struct config *, const char *);
 static void	hymn_config_set_descr(struct config *, const char *);
 
+static void	hymn_config_parse_kek(struct config *, char *);
 static void	hymn_config_parse_peer(struct config *, char *);
 static void	hymn_config_parse_descr(struct config *, char *);
 static void	hymn_config_parse_local(struct config *, char *);
@@ -171,6 +174,7 @@ static const struct {
 	const char		*option;
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
+	{ "kek",		hymn_config_parse_kek },
 	{ "peer",		hymn_config_parse_peer },
 	{ "descr",		hymn_config_parse_descr },
 	{ "local",		hymn_config_parse_local },
@@ -267,7 +271,7 @@ usage_add(void)
 	    "usage: hymn add <src>-<dst> tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
 	    "[peer | cathedral] <ip:port> \\\n");
-	fprintf(stderr, "    [descr <description>]\n");
+	fprintf(stderr, "    [kek <path>] [descr <description>]\n");
 
 	exit(1);
 }
@@ -275,9 +279,10 @@ usage_add(void)
 static int
 hymn_add(int argc, char *argv[])
 {
-	int			i;
 	u_int32_t		which;
 	struct config		config;
+	int			i, len;
+	char			secret[PATH_MAX];
 	char			confpath[PATH_MAX];
 
 	if (argc < 5)
@@ -311,6 +316,12 @@ hymn_add(int argc, char *argv[])
 				fatal("duplicate secret");
 			if ((config.secret = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
+		} else if (!strcmp(argv[i], "kek")) {
+			which |= HYMN_KEK;
+			if (config.kek != NULL)
+				fatal("duplicate kek");
+			if ((config.kek= strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
 		} else if (!strcmp(argv[i], "descr")) {
 			hymn_config_set_descr(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "mtu")) {
@@ -330,6 +341,24 @@ hymn_add(int argc, char *argv[])
 			config.cathedral_id = hymn_number(argv[i + 1], 16,
 			    0, UINT_MAX);
 		}
+	}
+
+	if (which & HYMN_KEK) {
+		if (config.peer_cathedral == 0)
+			fatal("kek is relevant with a cathedral");
+
+		if (which & HYMN_SECRET)
+			fatal("no need to specify a secret when using a kek");
+
+		len = snprintf(secret, sizeof(secret), "%s/%02x-%02x.secret",
+		    HYMN_BASE_PATH, config.src, config.dst);
+		if (len == -1 || (size_t)len >= sizeof(secret))
+			fatal("snprintf on tunnel secret path");
+
+		if ((config.secret = strdup(secret)) == NULL)
+			fatal("strdup");
+
+		which |= HYMN_SECRET;
 	}
 
 	if (!(which & HYMN_TUNNEL))
@@ -998,6 +1027,10 @@ hymn_config_save(const char *path, struct config *cfg)
 	    HYMN_RUN_PATH, cfg->src, cfg->dst);
 	hymn_config_write(fd, "tunnel %s %u\n",
 	    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
+
+	if (cfg->kek != NULL)
+		hymn_config_write(fd, "kek %s\n", cfg->kek);
+
 	hymn_config_write(fd, "secret %s\n", cfg->secret);
 
 	if (cfg->descr != NULL)
@@ -1124,6 +1157,16 @@ hymn_config_parse_tunnel(struct config *cfg, char *peer)
 
 	hymn_ip_mask_parse(&cfg->tun, peer);
 	hymn_config_set_mtu(cfg, mtu);
+}
+
+static void
+hymn_config_parse_kek(struct config *cfg, char *kek)
+{
+	if (cfg->kek != NULL)
+		fatal("duplicate kek");
+
+	if ((cfg->kek = strdup(kek)) == NULL)
+		fatal("strdup");
 }
 
 static void

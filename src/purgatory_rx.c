@@ -260,6 +260,18 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 		return (0);
 	}
 
+	/*
+	 * Cathedral responses go to the chapel if we're in tunnel mode
+	 * and have a cathedral configured.
+	 */
+	if (sanctum->mode == SANCTUM_MODE_TUNNEL &&
+	    (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
+	    ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff)))) {
+		pkt->target = SANCTUM_PROC_CHAPEL;
+		return (0);
+	}
+
 	/* If we don't know the SPI, drop the packet. */
 	if (spi != sanctum_atomic_read(&sanctum->rx.spi)) {
 		/* If the SPI matches the pending one, skip initial AR check. */

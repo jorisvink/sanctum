@@ -55,6 +55,7 @@ extern int daemon(int, int);
 #define be64toh(x)		OSSwapBigToHostInt64(x)
 #endif
 
+#include "sanctum_ambry.h"
 #include "sanctum_ctl.h"
 #include "libnyfe.h"
 
@@ -150,6 +151,9 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_CATHEDRAL		11
 #define SANCTUM_PROC_MAX		12
 
+/* The half-time window in which offers are valid. */
+#define SANCTUM_OFFER_VALID		5
+
 /* The magic for a key offer packet (SACRAMNT). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x53414352414D4E54
 
@@ -164,6 +168,9 @@ extern int daemon(int, int);
 
 /*
  * Packets used when doing key offering or cathedral forward registration.
+ *
+ * Note that the internal seed and tag in sanctum_offer_data is only
+ * populated when the cathedral sends an ambry.
  */
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -175,7 +182,9 @@ struct sanctum_offer_data {
 	u_int64_t		id;
 	u_int32_t		salt;
 	u_int64_t		timestamp;
+	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
+	u_int8_t		tag[32];
 } __attribute__((packed));
 
 struct sanctum_offer {
@@ -399,14 +408,17 @@ struct sanctum_state {
 	/* The path to the traffic secret. */
 	char			*secret;
 
+	/* The path to the kek, if any (tunnel mode only). */
+	char			*kek;
+
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
 
 	/* The path to the secredir directory (cathedral mode only). */
 	char			*secretdir;
 
-	/* The path to the federation config (cathedral mode only). */
-	char			*federation;
+	/* The path to the cathedral settings (cathedral mode only). */
+	char			*settings;
 
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
@@ -519,6 +531,8 @@ int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
 int	sanctum_cipher_kdf(const char *, const char *,
 	    struct nyfe_agelas *cipher, void *, size_t);
+int	sanctum_offer_decrypt(struct nyfe_agelas *,
+	    struct sanctum_offer *, int);
 
 /* platform bits. */
 void	sanctum_platform_init(void);

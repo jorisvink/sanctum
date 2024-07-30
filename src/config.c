@@ -34,6 +34,7 @@ struct route {
 	LIST_ENTRY(route)	list;
 };
 
+static void	config_parse_kek(char *);
 static void	config_parse_spi(char *);
 static void	config_parse_tfc(char *);
 static void	config_parse_mode(char *);
@@ -48,9 +49,9 @@ static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
 static void	config_parse_pidfile(char *);
 static void	config_parse_instance(char *);
-static void	config_parse_cathedral(char *);
 static void	config_parse_secretdir(char *);
-static void	config_parse_federation(char *);
+static void	config_parse_cathedral(char *);
+static void	config_parse_settings(char *);
 static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
@@ -65,6 +66,7 @@ static const struct {
 	const char		*option;
 	void			(*cb)(char *);
 } keywords[] = {
+	{ "kek",		config_parse_kek },
 	{ "spi",		config_parse_spi },
 	{ "tfc",		config_parse_tfc },
 	{ "mode",		config_parse_mode },
@@ -81,7 +83,7 @@ static const struct {
 	{ "instance",		config_parse_instance },
 	{ "cathedral",		config_parse_cathedral },
 	{ "secretdir",		config_parse_secretdir },
-	{ "federation",		config_parse_federation },
+	{ "settings",		config_parse_settings },
 	{ "cathedral_id",	config_parse_cathedral_id },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
 	{ NULL,			NULL },
@@ -181,7 +183,11 @@ sanctum_config_load(const char *file)
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		break;
-	default:
+	case SANCTUM_MODE_TUNNEL:
+		if (sanctum->kek != NULL &&
+		    !(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE))
+			fatal("kek configured but no cathedral set");
+
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
 			if (sanctum->cathedral_secret == NULL)
 				fatal("cathedral given but no secret set");
@@ -189,6 +195,13 @@ sanctum_config_load(const char *file)
 				fatal("cathedral given but no id set");
 		}
 		break;
+	default:
+		break;
+	}
+
+	if (sanctum->mode != SANCTUM_MODE_TUNNEL) {
+		if (sanctum->kek != NULL)
+			fatal("kek is only used in tunnel mode");
 	}
 
 	if (sanctum->peer_ip == 0)
@@ -261,6 +274,24 @@ sanctum_config_read(FILE *fp, char *in, size_t len)
 	}
 
 	return (p);
+}
+
+/*
+ * Parse the kek configuration option.
+ */
+static void
+config_parse_kek(char *path)
+{
+	PRECOND(path != NULL);
+
+	if (sanctum->kek != NULL)
+		fatal("kek already specified");
+
+	if (access(path, R_OK) == -1)
+		fatal("kek at path '%s' not readable (%s)", path, errno_s);
+
+	if ((sanctum->kek = strdup(path)) == NULL)
+		fatal("strdup failed");
 }
 
 /*
@@ -496,11 +527,17 @@ config_parse_pidfile(char *path)
 static void
 config_parse_secret(char *path)
 {
+	PRECOND(path != NULL);
+
 	if (sanctum->secret != NULL)
 		fatal("secret already specified");
 
-	if (access(path, R_OK) == -1)
-		fatal("secret at path '%s' not readable (%s)", path, errno_s);
+	if (sanctum->kek == NULL) {
+		if (access(path, R_OK) == -1) {
+			fatal("secret at path '%s' not readable (%s)",
+			    path, errno_s);
+		}
+	}
 
 	if ((sanctum->secret = strdup(path)) == NULL)
 		fatal("strdup failed");
@@ -604,23 +641,23 @@ config_parse_secretdir(char *opt)
 }
 
 /*
- * Parse the federation configuration option.
+ * Parse the settings option.
  */
 static void
-config_parse_federation(char *opt)
+config_parse_settings(char *opt)
 {
 	PRECOND(opt != NULL);
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
-		fatal("federation is only for cathedral mode");
+		fatal("settings is only for cathedral mode");
 
-	if (sanctum->federation != NULL)
-		fatal("federation already specified");
+	if (sanctum->settings != NULL)
+		fatal("setttings already specified");
 
 	if (access(opt, R_OK) == -1)
-		fatal("federation '%s' not readable (%s)", opt, errno_s);
+		fatal("file '%s' not readable (%s)", opt, errno_s);
 
-	if ((sanctum->federation = strdup(opt)) == NULL)
+	if ((sanctum->settings = strdup(opt)) == NULL)
 		fatal("strdup failed");
 }
 

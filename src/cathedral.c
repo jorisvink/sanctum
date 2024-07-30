@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -55,7 +56,31 @@ struct tunnel {
 	LIST_ENTRY(tunnel)	list;
 };
 
-static void	cathedral_federation_reload(void);
+/*
+ * A mapping of a secret key id that is used by an endpoint to send us
+ * updates and the spis they are allowed to send updates for.
+ */
+struct allow {
+	u_int32_t		id;
+	u_int8_t		spi;
+	LIST_ENTRY(allow)	list;
+};
+
+/*
+ * An ambry that can be given to a client.
+ */
+struct ambry {
+	struct sanctum_ambry_entry	entry;
+	LIST_ENTRY(ambry)		list;
+};
+
+static void	cathedral_ambries_clear(void);
+
+static void	cathedral_settings_reload(void);
+static void	cathedral_settings_allow(const char *);
+static void	cathedral_settings_ambry(const char *);
+static void	cathedral_settings_federate_to(const char *);
+
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
@@ -63,15 +88,26 @@ static void	cathedral_tunnel_federate(struct sanctum_packet *);
 static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
 		    u_int64_t, int);
+static void	cathedral_tunnel_ambry(struct sockaddr_in *, struct ambry *,
+		    u_int32_t);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 
-/* The list of tunnels we know. */
+/* The list of tunnel endpoints we know. */
 static LIST_HEAD(, tunnel)	tunnels;
 
 /* The list of federation cathedrals we can forward too. */
 static LIST_HEAD(, tunnel)	federations;
+
+/* The list of allowed id -> spi mappings. */
+static LIST_HEAD(, allow)	allowlist;
+
+/* The list of ambries that we have loaded in. */
+static LIST_HEAD(, ambry)	ambries;
+
+/* The current ambry generation. */
+static u_int32_t		ambry_generation = 0;
 
 /*
  * Cathedral - The place packets all meet and get exchanged.
@@ -79,6 +115,8 @@ static LIST_HEAD(, tunnel)	federations;
  * When running as a cathedral, we receive packets immediately
  * from the purgatory side. We check if we know the tunnel encoded inside
  * of the esp header and forward the packet to the correct endpoint.
+ *
+ * The cathedral can also send the endpoint its ambry for the tunnel.
  */
 void
 sanctum_cathedral(struct sanctum_proc *proc)
@@ -98,12 +136,14 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
+	LIST_INIT(&ambries);
 	LIST_INIT(&tunnels);
+	LIST_INIT(&allowlist);
 	LIST_INIT(&federations);
 
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
-	cathedral_federation_reload();
+	cathedral_settings_reload();
 
 	running = 1;
 	next_expire = 0;
@@ -116,7 +156,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 				running = 0;
 				continue;
 			case SIGHUP:
-				cathedral_federation_reload();
+				cathedral_settings_reload();
 				break;
 			}
 		}
@@ -213,14 +253,14 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 static void
 cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 {
-	struct timespec			ts;
 	int				len;
 	u_int32_t			spi;
 	struct sanctum_offer		*op;
 	struct nyfe_agelas		cipher;
+	struct ambry			*ambry;
 	const char			*label;
 	struct tunnel			*tunnel;
-	u_int8_t			tag[32];
+	struct allow			*allow;
 	char				*secret, path[1024];
 
 	PRECOND(pkt != NULL);
@@ -256,25 +296,41 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 		return;
 	}
 
-	/* Decrypt and verify the integrity of the offer first. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
+	/* Verify and decrypt the offer. */
+	if (sanctum_offer_decrypt(&cipher, op, SANCTUM_OFFER_VALID) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
 	nyfe_zeroize(&cipher, sizeof(cipher));
-
-	if (memcmp(op->tag, tag, sizeof(op->tag)))
-		return;
-
-	/* Make sure the offer isn't too old. */
-	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	op->data.timestamp = be64toh(op->data.timestamp);
-
-	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - CATHEDRAL_REG_VALID) ||
-	    op->data.timestamp > ((u_int64_t)ts.tv_sec + CATHEDRAL_REG_VALID))
-		return;
 
 	/* The tunnel is is carried in the encrypted payload. */
 	op->data.id = be64toh(op->data.id);
+
+	/* The ambry generation is carried in the salt field. */
+	op->data.salt = be32toh(op->data.salt);
+
+	/* Verify that this key is allowed to update this entry. */
+	LIST_FOREACH(allow, &allowlist, list) {
+		if (allow->spi == (op->data.id >> 8))
+			break;
+	}
+
+	if (allow == NULL) {
+		sanctum_log(LOG_NOTICE, "0x%x tried updating id 0x%" PRIx64,
+		    spi, op->data.id >> 8);
+		return;
+	}
+
+	/* Check if we can and should send an ambry. */
+	if (catacomb == 0 && op->data.salt != ambry_generation) {
+		LIST_FOREACH(ambry, &ambries, list) {
+			if (op->data.id == ambry->entry.tunnel) {
+				cathedral_tunnel_ambry(&pkt->addr, ambry, spi);
+				break;
+			}
+		}
+	}
 
 	/*
 	 * Check if the tunnel exists, if it does we update the endpoint.
@@ -300,6 +356,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 	tunnel->ip = pkt->addr.sin_addr.s_addr;
 
 	LIST_INSERT_HEAD(&tunnels, tunnel, list);
+	sanctum_log(LOG_INFO, "new tunnel 0x%04x discovered", tunnel->id);
 
 	if (catacomb == 0)
 		cathedral_tunnel_federate(pkt);
@@ -379,6 +436,7 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
 	/* Make sure we revert the data.id back. */
+	op->data.salt = 0;
 	op->data.id = htobe64(op->data.id);
 
 	/* Encrypt and authenticate entire message. */
@@ -416,6 +474,94 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 }
 
 /*
+ * Send an endpoint its wrapped ambry so it can use it for
+ * session establishment with its peer.
+ *
+ * We encrypt the ambry entry with the key we share with the endpoint.
+ */
+static void
+cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
+{
+	struct timespec		ts;
+	int			len;
+	struct sanctum_offer	*op;
+	struct sanctum_packet	*pkt;
+	struct nyfe_agelas	cipher;
+	char			path[1024];
+
+	PRECOND(s != NULL);
+	PRECOND(ambry != NULL);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	sanctum_log(LOG_INFO,
+	    "ambry update for tunnel 0x%04x (0x%x)", ambry->entry.tunnel, id);
+
+	/* Get path to the shared secret. */
+	len = snprintf(path, sizeof(path), "%s/0x%x.key",
+	    sanctum->secretdir, id);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to construct path to secret");
+
+	/* We send the ambry with the magic set to KATEDRAL. */
+	op = sanctum_packet_head(pkt);
+	op->hdr.magic = htobe64(SANCTUM_CATHEDRAL_MAGIC);
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+
+	/* Belts and suspenders. */
+	VERIFY(sizeof(op->data.key) == sizeof(ambry->entry.key));
+	VERIFY(sizeof(op->data.tag) == sizeof(ambry->entry.tag));
+	VERIFY(sizeof(op->data.seed) == sizeof(ambry->entry.seed));
+
+	/*
+	 * Most fields we carry are taken from the ambry, except time.
+	 *	The offer key = ambry->entry.key
+	 *	The offer seed = ambry->entry.seed
+	 *	The offer id = ambry->entry.tunnel
+	 *	The offer ambry tag = ambry->entry.tag
+	 */
+	op->data.id = ambry->entry.tunnel;
+	op->data.id = htobe64(op->data.id);
+	op->data.salt = htobe32(ambry_generation);
+	nyfe_memcpy(op->data.key, ambry->entry.key, sizeof(op->data.key));
+	nyfe_memcpy(op->data.tag, ambry->entry.tag, sizeof(op->data.tag));
+	nyfe_memcpy(op->data.seed, ambry->entry.seed, sizeof(op->data.seed));
+
+	/* Update in the current timestamp. */
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(path, SANCTUM_CATHEDRAL_KDF_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		sanctum_packet_release(pkt);
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
+	/* Encrypt and authenticate entire message. */
+	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	/* Submit it into purgatory. */
+	pkt->length = sizeof(*op);
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	pkt->addr.sin_family = AF_INET;
+	pkt->addr.sin_port = s->sin_port;
+	pkt->addr.sin_addr.s_addr = s->sin_addr.s_addr;
+
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+		sanctum_packet_release(pkt);
+	else
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+}
+
+/*
  * Expire tunnels that are too old and remove them from the known list.
  */
 static void
@@ -434,24 +580,22 @@ cathedral_tunnel_expire(u_int64_t now)
 }
 
 /*
- * Reload the federation rules from disk, if they exist.
+ * Reload the settings from disk and apply them to the cathedral.
  */
 static void
-cathedral_federation_reload(void)
+cathedral_settings_reload(void)
 {
-	struct sockaddr_in	sin;
 	FILE			*fp;
-	u_int16_t		port;
+	struct allow		*allow;
 	struct tunnel		*tunnel;
-	char			buf[256], *option;
-	char			ip[INET_ADDRSTRLEN];
+	char			buf[256], *kw, *option;
 
-	if (sanctum->federation == NULL)
+	if (sanctum->settings == NULL)
 		return;
 
-	if ((fp = fopen(sanctum->federation, "r")) == NULL) {
+	if ((fp = fopen(sanctum->settings, "r")) == NULL) {
 		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
-		    sanctum->federation, errno_s);
+		    sanctum->settings, errno_s);
 		return;
 	}
 
@@ -460,36 +604,196 @@ cathedral_federation_reload(void)
 		free(tunnel);
 	}
 
-	LIST_INIT(&federations);
-
-	while ((option = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
-		if (strlen(option) == 0)
-			continue;
-
-		if (sscanf(option, "%15s %hu", ip, &port) != 2) {
-			sanctum_log(LOG_NOTICE,
-			    "format error '%s' in federation config", option);
-			continue;
-		}
-
-		if (inet_pton(AF_INET, ip, &sin.sin_addr) != 1) {
-			sanctum_log(LOG_NOTICE,
-			    "invalid ip address '%s' in federation config", ip);
-			continue;
-		}
-
-		if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
-			fatal("calloc: failed to allocate federation");
-
-		tunnel->port = htobe16(port);
-		tunnel->ip = sin.sin_addr.s_addr;
-
-		LIST_INSERT_HEAD(&federations, tunnel, list);
-
-		sanctum_log(LOG_INFO, "federation: %s:%u", ip, port);
+	while ((allow = LIST_FIRST(&allowlist)) != NULL) {
+		LIST_REMOVE(allow, list);
+		free(allow);
 	}
 
-	sanctum_log(LOG_INFO, "federation reload");
+	cathedral_ambries_clear();
+
+	LIST_INIT(&ambries);
+	LIST_INIT(&allowlist);
+	LIST_INIT(&federations);
+
+	while ((kw = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
+		if (strlen(kw ) == 0)
+			continue;
+
+		if ((option = strchr(kw, ' ')) == NULL) {
+			sanctum_log(LOG_NOTICE,
+			    "format error '%s' in settings", kw);
+			continue;
+		}
+
+		*(option)++ = '\0';
+
+		if (!strcmp(kw, "federate-to")) {
+			cathedral_settings_federate_to(option);
+		} else if (!strcmp(kw, "allow")) {
+			cathedral_settings_allow(option);
+		} else if (!strcmp(kw, "ambry")) {
+			cathedral_settings_ambry(option);
+		} else {
+			sanctum_log(LOG_NOTICE,
+			    "unknown keyword '%s' in settings", kw);
+		}
+	}
+
+	sanctum_log(LOG_INFO, "settings reloaded");
 
 	(void)fclose(fp);
+}
+
+/*
+ * Adds a new federation to the cathedral.
+ */
+static void
+cathedral_settings_federate_to(const char *option)
+{
+	struct sockaddr_in	sin;
+	u_int16_t		port;
+	struct tunnel		*tunnel;
+	char			ip[INET_ADDRSTRLEN];
+
+	PRECOND(option != NULL);
+
+	if (sscanf(option, "%15s %hu", ip, &port) != 2) {
+		sanctum_log(LOG_NOTICE,
+		    "format error '%s' in federate-to", option);
+		return;
+	}
+
+	if (inet_pton(AF_INET, ip, &sin.sin_addr) != 1) {
+		sanctum_log(LOG_NOTICE,
+		    "invalid ip address '%s' in federate-to", ip);
+		return;
+	}
+
+	if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
+		fatal("calloc: failed to allocate federation");
+
+	tunnel->port = htobe16(port);
+	tunnel->ip = sin.sin_addr.s_addr;
+
+	LIST_INSERT_HEAD(&federations, tunnel, list);
+
+	sanctum_log(LOG_INFO, "federation-to %s:%u", ip, port);
+}
+
+/*
+ * Adds a new allow for a key ID and tunnel SPI.
+ */
+static void
+cathedral_settings_allow(const char *option)
+{
+	u_int32_t	id;
+	u_int8_t	spi;
+	struct allow	*allow;
+
+	PRECOND(option != NULL);
+
+	if (sscanf(option, "%x spi %hhx", &id, &spi) != 2) {
+		sanctum_log(LOG_NOTICE,
+		    "format error '%s' in allow", option);
+		return;
+	}
+
+	if ((allow = calloc(1, sizeof(*allow))) == NULL)
+		fatal("calloc: failed to allocate allow entry");
+
+	allow->id = id;
+	allow->spi = spi;
+
+	LIST_INSERT_HEAD(&allowlist, allow, list);
+
+	sanctum_log(LOG_INFO, "allow id=0x%02x for id=0x%02x", id, spi);
+}
+
+/*
+ * Load the ambry file containing wrapped secrets for clients.
+ */
+static void
+cathedral_settings_ambry(const char *option)
+{
+	int				fd;
+	struct stat			st;
+	struct sanctum_ambry_head	hdr;
+	struct sanctum_ambry_entry	entry;
+	struct ambry			*ambry;
+	size_t				len, count, ret;
+
+	PRECOND(option != NULL);
+
+	count = 0;
+	if ((fd = sanctum_file_open(option)) == -1)
+		return;
+
+	if (fstat(fd, &st) == -1) {
+		sanctum_log(LOG_NOTICE, "fstat on ambry file '%s' failed (%s)",
+		    option, errno_s);
+		goto out;
+	}
+
+	len = st.st_size;
+
+	if (len < sizeof(hdr)) {
+		sanctum_log(LOG_NOTICE, "ambry file has an abnormal size");
+		goto out;
+	}
+
+	if (nyfe_file_read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+		sanctum_log(LOG_NOTICE, "failed to read ambry header");
+		goto out;
+	}
+
+	ambry_generation = be32toh(hdr.generation);
+	len -= sizeof(hdr);
+
+	if ((len % sizeof(entry)) != 0) {
+		sanctum_log(LOG_NOTICE, "ambry file has an abnormal size");
+		goto out;
+	}
+
+	for (;;) {
+		if ((ambry = calloc(1, sizeof(*ambry))) == NULL)
+			fatal("calloc: failed to allocate ambry entry");
+
+		ret = nyfe_file_read(fd, &ambry->entry, sizeof(ambry->entry));
+		if (ret == 0) {
+			free(ambry);
+			break;
+		}
+
+		LIST_INSERT_HEAD(&ambries, ambry, list);
+
+		if (ret != sizeof(entry)) {
+			sanctum_log(LOG_NOTICE,
+			    "ambry file had partial entries, ignoring file");
+			cathedral_ambries_clear();
+			break;
+		}
+
+		count++;
+	}
+
+	sanctum_log(LOG_INFO, "loaded %zu ambries, generation 0x%x",
+	    count, ambry_generation);
+
+out:
+	(void)close(fd);
+}
+
+/*
+ * Clear all ambries from memory.
+ */
+static void
+cathedral_ambries_clear(void)
+{
+	struct ambry	*ambry;
+
+	while ((ambry = LIST_FIRST(&ambries)) != NULL) {
+		LIST_REMOVE(ambry, list);
+		nyfe_mem_zero(&ambry->entry, sizeof(ambry->entry));
+		free(ambry);
+	}
 }

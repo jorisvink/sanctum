@@ -431,6 +431,40 @@ sanctum_cipher_kdf(const char *path, const char *label,
 }
 
 /*
+ * Verify and decrypt a sanctum_offer packet.
+ * Note: does not zeroize the cipher, this is the caller its responsibility.
+ */
+int
+sanctum_offer_decrypt(struct nyfe_agelas *cipher,
+    struct sanctum_offer *op, int valid)
+{
+	struct timespec		ts;
+	u_int8_t		tag[32];
+
+	PRECOND(cipher != NULL);
+	PRECOND(op != NULL);
+	PRECOND(valid > 0);
+
+	/* Decrypt and verify the integrity of the offer first. */
+	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_decrypt(cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(cipher, tag, sizeof(tag));
+
+	if (memcmp(op->tag, tag, sizeof(op->tag)))
+		return (-1);
+
+	/* Make sure the offer isn't too old. */
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = be64toh(op->data.timestamp);
+
+	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - valid) ||
+	    op->data.timestamp > ((u_int64_t)ts.tv_sec + valid))
+		return (-1);
+
+	return (0);
+}
+
+/*
  * Bind a socket to our configured local address and return it.
  */
 int

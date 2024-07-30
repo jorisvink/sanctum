@@ -131,10 +131,8 @@ shrine_drop_access(void)
 static void
 shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
-	struct timespec			ts;
 	struct sanctum_offer		*op;
 	struct nyfe_agelas		cipher;
-	u_int8_t			tag[32];
 
 	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);
@@ -152,22 +150,13 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 	}
 
-	/* Decrypt and verify the integrity of the offer first. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_decrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
+	/* Verify and decrypt the offer. */
+	if (sanctum_offer_decrypt(&cipher, op, SHRINE_OFFER_VALID) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
 	nyfe_zeroize(&cipher, sizeof(cipher));
-
-	if (memcmp(op->tag, tag, sizeof(op->tag)))
-		return;
-
-	/* Make sure the offer isn't too old. */
-	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	op->data.timestamp = be64toh(op->data.timestamp);
-
-	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - SHRINE_OFFER_VALID) ||
-	    op->data.timestamp > ((u_int64_t)ts.tv_sec + SHRINE_OFFER_VALID))
-		return;
 
 	/* If we have seen this offer recently, ignore it. */
 	op->hdr.spi = be32toh(op->hdr.spi);
