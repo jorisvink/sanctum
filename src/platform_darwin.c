@@ -279,10 +279,16 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		break;
 	}
 
+	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to construct new path");
+
 	/* Construct all parameters that the profiles can use. */
 	params[0] = "KEY_PATH";
 	params[1] = sanctum->secret;
-	params[2] = NULL;
+	params[2] = "KEY_PATH_NEW";
+	params[3] = path;
+	params[4] = NULL;
 
 	/* Open the profile from disk. */
 	len = snprintf(path, sizeof(path), "%s/%s.sb",

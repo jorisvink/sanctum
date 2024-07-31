@@ -271,7 +271,8 @@ usage_add(void)
 	    "usage: hymn add <src>-<dst> tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
 	    "[peer | cathedral] <ip:port> \\\n");
-	fprintf(stderr, "    [kek <path>] [descr <description>]\n");
+	fprintf(stderr, "    [kek <path>] [descr <description>] ");
+	fprintf(stderr, "[identity <0xabcdef>]\n");
 
 	exit(1);
 }
