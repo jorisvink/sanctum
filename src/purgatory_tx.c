@@ -114,7 +114,6 @@ purgatory_tx_drop_access(void)
 static void
 purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 {
-	ssize_t			ret;
 	struct sockaddr_in	peer;
 	u_int8_t		*data;
 
@@ -138,8 +137,8 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	for (;;) {
 		data = sanctum_packet_head(pkt);
 
-		if ((ret = sendto(fd, data, pkt->length, 0,
-		    (struct sockaddr *)&peer, sizeof(peer))) == -1) {
+		if (sendto(fd, data, pkt->length, 0,
+		    (struct sockaddr *)&peer, sizeof(peer)) == -1) {
 			if (errno == EINTR)
 				continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)

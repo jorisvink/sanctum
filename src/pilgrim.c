@@ -157,7 +157,6 @@ pilgrim_drop_access(void)
 static void
 pilgrim_offer_check(u_int64_t now)
 {
-	u_int32_t		spi;
 	u_int64_t		age;
 	const char		*reason;
 	int			offer_now;
@@ -170,7 +169,7 @@ pilgrim_offer_check(u_int64_t now)
 	offer_now = 0;
 	reason = NULL;
 
-	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
+	if (sanctum_atomic_read(&sanctum->tx.spi) != 0) {
 		age = sanctum_atomic_read(&sanctum->tx.age);
 		if (now - age >= SANCTUM_SA_LIFETIME_SOFT) {
 			offer_now = 1;

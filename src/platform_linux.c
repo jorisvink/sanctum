@@ -405,7 +405,6 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 void
 sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 {
-	long			ret;
 	struct timespec		tv, *tptr;
 
 	PRECOND(addr != NULL);
@@ -421,8 +420,7 @@ sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 	else
 		tptr = &tv;
 
-	if ((ret = syscall(SYS_futex,
-	    addr, FUTEX_WAIT, 0, tptr, NULL, 0)) == -1) {
+	if (syscall(SYS_futex, addr, FUTEX_WAIT, 0, tptr, NULL, 0) == -1) {
 		if (errno != EINTR && errno != ETIMEDOUT && errno != EAGAIN)
 			sanctum_log(LOG_NOTICE, "futex wait: %s", errno_s);
 	}

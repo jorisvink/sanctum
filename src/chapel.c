@@ -614,7 +614,6 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 static void
 chapel_offer_check(u_int64_t now)
 {
-	u_int32_t	spi;
 	const char	*reason;
 	int		offer_now;
 	u_int64_t	pkt, age, hbeat;
@@ -630,7 +629,7 @@ chapel_offer_check(u_int64_t now)
 	offer_now = 0;
 	reason = NULL;
 
-	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) != 0) {
+	if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
 		/* Default is now to offer for 60 seconds. */
 		offer_ttl = 6;
 		offer_next_send = 10;

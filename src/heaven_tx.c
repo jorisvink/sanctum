@@ -111,8 +111,6 @@ heaven_tx_drop_access(void)
 static void
 heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 {
-	ssize_t		ret;
-
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
@@ -124,7 +122,7 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	}
 
 	for (;;) {
-		if ((ret = sanctum_platform_tundev_write(fd, pkt)) == -1) {
+		if (sanctum_platform_tundev_write(fd, pkt) == -1) {
 			if (errno == EINTR)
 				continue;
 			if (errno == EIO)
