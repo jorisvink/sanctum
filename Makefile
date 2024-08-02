@@ -47,8 +47,8 @@ endif
 
 LDFLAGS+=$(LIBNYFE)
 
-ifeq ("$(HPERF)", "1")
-	CFLAGS+=-DSANCTUM_HIGH_PERFORMANCE=1
+ifeq ("$(JUMBO_FRAMES)", "1")
+	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
 endif
 
 ifeq ("$(CIPHER)", "openssl-aes-gcm")

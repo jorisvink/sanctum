@@ -114,14 +114,6 @@ If this is to complicated for you, this isn't your software.
 
 Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux-y things like Ubuntu 22.04.
 
-## High performance mode
-
-When sanctum is built with the CIPHER=intel-aes-gcm and HPERF=1,
-high performance mode is enabled.
-
-In this mode, sanctum is able to reach 10gbps speeds on certain platforms
-and depending on what hardware is used.
-
 ## Configuring
 
 Sanctum uses a configuration file. Find an example of

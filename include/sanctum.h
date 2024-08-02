@@ -310,7 +310,7 @@ struct sanctum_ipsec_tail {
 /*
  * Maximum packet sizes we can receive from the interfaces.
  */
-#if defined(SANCTUM_HIGH_PERFORMANCE)
+#if defined(SANCTUM_JUMBO_FRAMES)
 #define SANCTUM_PACKET_DATA_LEN		9000
 #else
 #define SANCTUM_PACKET_DATA_LEN		1500
