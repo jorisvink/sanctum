@@ -361,9 +361,7 @@ chapel_cathedral_notify(u_int64_t now)
 	}
 
 	/* Encrypt the offer packet. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */
@@ -706,9 +704,7 @@ chapel_offer_encrypt(u_int64_t now)
 	}
 
 	/* Encrypt the offer packet. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */

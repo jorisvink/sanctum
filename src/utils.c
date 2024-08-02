@@ -431,6 +431,21 @@ sanctum_cipher_kdf(const char *path, const char *label,
 }
 
 /*
+ * Encrypt and authenticate a sanctum_offer data structure.
+ * Note: does not zeroize the cipher, this is the caller its responsibility.
+ */
+void
+sanctum_offer_encrypt(struct nyfe_agelas *cipher, struct sanctum_offer *op)
+{
+	PRECOND(cipher != NULL);
+	PRECOND(op != NULL);
+
+	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_encrypt(cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(cipher, op->tag, sizeof(op->tag));
+}
+
+/*
  * Verify and decrypt a sanctum_offer packet.
  * Note: does not zeroize the cipher, this is the caller its responsibility.
  */

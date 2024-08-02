@@ -440,9 +440,7 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 	op->data.id = htobe64(op->data.id);
 
 	/* Encrypt and authenticate entire message. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it to each federated cathedral. */
@@ -542,9 +540,7 @@ cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
 	}
 
 	/* Encrypt and authenticate entire message. */
-	nyfe_agelas_aad(&cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_encrypt(&cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(&cipher, op->tag, sizeof(op->tag));
+	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	/* Submit it into purgatory. */
