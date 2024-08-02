@@ -193,6 +193,13 @@ sanctum_config_load(const char *file)
 				fatal("cathedral given but no secret set");
 			if (sanctum->cathedral_id == 0)
 				fatal("cathedral given but no id set");
+
+			if (sanctum->peer_ip == 0) {
+				sanctum_atomic_write(&sanctum->peer_port,
+				    sanctum->cathedral.sin_port);
+				sanctum_atomic_write(&sanctum->peer_ip,
+				    sanctum->cathedral.sin_addr.s_addr);
+			}
 		}
 		break;
 	default:
@@ -353,6 +360,8 @@ config_parse_mode(char *mode)
 static void
 config_parse_peer(char *peer)
 {
+	struct sockaddr_in	addr;
+
 	PRECOND(peer != NULL);
 
 	if (!strcmp(peer, "auto")) {
@@ -362,9 +371,9 @@ config_parse_peer(char *peer)
 
 	peer_set++;
 
-	config_parse_ip_port(peer, &sanctum->peer);
-	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
+	config_parse_ip_port(peer, &addr);
+	sanctum_atomic_write(&sanctum->peer_port, addr.sin_port);
+	sanctum_atomic_write(&sanctum->peer_ip, addr.sin_addr.s_addr);
 }
 
 /*
@@ -579,9 +588,7 @@ config_parse_cathedral(char *cathedral)
 	peer_set++;
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
 
-	config_parse_ip_port(cathedral, &sanctum->peer);
-	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
+	config_parse_ip_port(cathedral, &sanctum->cathedral);
 }
 
 /*

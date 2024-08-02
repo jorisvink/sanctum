@@ -218,6 +218,7 @@ pilgrim_offer_encrypt(u_int64_t now)
 	struct timespec			ts;
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
+	struct sanctum_key_offer	*key;
 	struct nyfe_agelas		cipher;
 
 	PRECOND(offer != NULL);
@@ -238,9 +239,13 @@ pilgrim_offer_encrypt(u_int64_t now)
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
-	op->data.salt = offer->salt;
-	op->data.id = htobe64(local_id);
-	nyfe_memcpy(op->data.key, offer->key, sizeof(offer->key));
+	/* Fill in the key offer now. */
+	op->data.type = SANCTUM_OFFER_TYPE_KEY;
+	key = &op->data.offer.key;
+
+	key->salt = offer->salt;
+	key->id = htobe64(local_id);
+	nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
 
 	/* Derive the key to be used. */
 	nyfe_zeroize_register(&cipher, sizeof(cipher));

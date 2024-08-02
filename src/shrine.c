@@ -132,6 +132,7 @@ static void
 shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
 	struct sanctum_offer		*op;
+	struct sanctum_key_offer	*key;
 	struct nyfe_agelas		cipher;
 
 	PRECOND(pkt != NULL);
@@ -158,6 +159,10 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
+	/* Verify that this is a key offer. */
+	if (op->data.type != SANCTUM_OFFER_TYPE_KEY)
+		return;
+
 	/* If we have seen this offer recently, ignore it. */
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi == last_spi)
@@ -167,8 +172,9 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	sanctum_peer_update(pkt);
 
 	/* Install received key as the RX key. */
+	key = &op->data.offer.key;
 	shrine_install(io->rx, op->hdr.spi,
-	    op->data.salt, op->data.key, sizeof(op->data.key));
+	    key->salt, key->key, sizeof(key->key));
 
 	last_spi = op->hdr.spi;
 

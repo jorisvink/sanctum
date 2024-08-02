@@ -75,6 +75,7 @@ struct ambry {
 };
 
 static void	cathedral_ambries_clear(void);
+static void	cathedral_secret_path(char *, size_t, u_int32_t);
 
 static void	cathedral_settings_reload(void);
 static void	cathedral_settings_allow(const char *);
@@ -85,6 +86,7 @@ static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_federate(struct sanctum_packet *);
+static void	cathedral_tunnel_ipinfo(struct sockaddr_in *, u_int32_t);
 static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
 		    u_int64_t, int);
@@ -253,9 +255,9 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 static void
 cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 {
-	int				len;
 	u_int32_t			spi;
 	struct sanctum_offer		*op;
+	struct sanctum_info_offer	*info;
 	struct nyfe_agelas		cipher;
 	struct ambry			*ambry;
 	const char			*label;
@@ -279,11 +281,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 		secret = sanctum->secret;
 		label = CATHEDRAL_CATACOMB_LABEL;
 	} else {
-		/* Get path to the key for the sender. */
-		len = snprintf(path, sizeof(path), "%s/0x%x.key",
-		    sanctum->secretdir, spi);
-		if (len == -1 || (size_t)len >= sizeof(path))
-			fatal("failed to construct path to secret");
+		cathedral_secret_path(path, sizeof(path), spi);
 		secret = path;
 		label = SANCTUM_CATHEDRAL_KDF_LABEL;
 	}
@@ -304,39 +302,45 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	/* The tunnel is is carried in the encrypted payload. */
-	op->data.id = be64toh(op->data.id);
+	/* Verify the type of offer we received. */
+	if (op->data.type != SANCTUM_OFFER_TYPE_INFO)
+		return;
 
-	/* The ambry generation is carried in the salt field. */
-	op->data.salt = be32toh(op->data.salt);
+	info = &op->data.offer.info;
+	info->tunnel = be16toh(info->tunnel);
+	info->ambry_generation = be32toh(info->ambry_generation);
 
 	/* Verify that this key is allowed to update this entry. */
 	LIST_FOREACH(allow, &allowlist, list) {
-		if (allow->spi == (op->data.id >> 8))
+		if (allow->id == spi && (allow->spi == info->tunnel >> 8))
 			break;
 	}
 
 	if (allow == NULL) {
-		sanctum_log(LOG_NOTICE, "0x%x tried updating id 0x%" PRIx64,
-		    spi, op->data.id >> 8);
+		sanctum_log(LOG_NOTICE, "0x%x tried updating id 0x%x (%d)",
+		    spi, info->tunnel >> 8, catacomb);
 		return;
 	}
 
 	/* Check if we can and should send an ambry. */
-	if (catacomb == 0 && op->data.salt != ambry_generation) {
+	if (catacomb == 0 && info->ambry_generation != ambry_generation) {
 		LIST_FOREACH(ambry, &ambries, list) {
-			if (op->data.id == ambry->entry.tunnel) {
+			if (info->tunnel == ambry->entry.tunnel) {
 				cathedral_tunnel_ambry(&pkt->addr, ambry, spi);
 				break;
 			}
 		}
 	}
 
+	/* Let the endpoint know its public ip:port that is in use. */
+	if (catacomb == 0)
+		cathedral_tunnel_ipinfo(&pkt->addr, spi);
+
 	/*
 	 * Check if the tunnel exists, if it does we update the endpoint.
 	 */
 	LIST_FOREACH(tunnel, &tunnels, list) {
-		if (tunnel->id == op->data.id) {
+		if (tunnel->id == info->tunnel) {
 			tunnel->age = now;
 			tunnel->port = pkt->addr.sin_port;
 			tunnel->ip = pkt->addr.sin_addr.s_addr;
@@ -351,7 +355,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 		fatal("calloc failed");
 
 	tunnel->age = now;
-	tunnel->id = op->data.id;
+	tunnel->id = info->tunnel;
 	tunnel->port = pkt->addr.sin_port;
 	tunnel->ip = pkt->addr.sin_addr.s_addr;
 
@@ -409,6 +413,7 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	u_int8_t			*ptr;
+	struct sanctum_info_offer	*info;
 	struct nyfe_agelas		cipher;
 	struct tunnel			*tunnel;
 
@@ -423,6 +428,14 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 	op->hdr.magic = htobe64(CATHEDRAL_CATACOMB_MAGIC);
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
+	/* Update in the current timestamp. */
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	/* Make sure we revert the tunnel back. */
+	info = &op->data.offer.info;
+	info->tunnel = htobe16(info->tunnel);
+
 	/* Derive the key we should use. */
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
@@ -430,14 +443,6 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}
-
-	/* Update in the current timestamp. */
-	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
-
-	/* Make sure we revert the data.id back. */
-	op->data.salt = 0;
-	op->data.id = htobe64(op->data.id);
 
 	/* Encrypt and authenticate entire message. */
 	sanctum_offer_encrypt(&cipher, op);
@@ -472,35 +477,25 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 }
 
 /*
- * Send an endpoint its wrapped ambry so it can use it for
- * session establishment with its peer.
- *
- * We encrypt the ambry entry with the key we share with the endpoint.
+ * Send an endpoint its public ip:port mapping its using to talk to us.
  */
 static void
-cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
+cathedral_tunnel_ipinfo(struct sockaddr_in *s, u_int32_t id)
 {
-	struct timespec		ts;
-	int			len;
-	struct sanctum_offer	*op;
-	struct sanctum_packet	*pkt;
-	struct nyfe_agelas	cipher;
-	char			path[1024];
+	struct timespec			ts;
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	struct sanctum_info_offer	*info;
+	struct nyfe_agelas		cipher;
+	char				path[1024];
 
 	PRECOND(s != NULL);
-	PRECOND(ambry != NULL);
 
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
-	sanctum_log(LOG_INFO,
-	    "ambry update for tunnel 0x%04x (0x%x)", ambry->entry.tunnel, id);
-
-	/* Get path to the shared secret. */
-	len = snprintf(path, sizeof(path), "%s/0x%x.key",
-	    sanctum->secretdir, id);
-	if (len == -1 || (size_t)len >= sizeof(path))
-		fatal("failed to construct path to secret");
+	/* Get path to the cathedral secret for the client. */
+	cathedral_secret_path(path, sizeof(path), id);
 
 	/* We send the ambry with the magic set to KATEDRAL. */
 	op = sanctum_packet_head(pkt);
@@ -508,24 +503,12 @@ cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
 	op->hdr.magic = htobe64(SANCTUM_CATHEDRAL_MAGIC);
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
-	/* Belts and suspenders. */
-	VERIFY(sizeof(op->data.key) == sizeof(ambry->entry.key));
-	VERIFY(sizeof(op->data.tag) == sizeof(ambry->entry.tag));
-	VERIFY(sizeof(op->data.seed) == sizeof(ambry->entry.seed));
+	/* Fill in the peer its public ip and port. */
+	op->data.type = SANCTUM_OFFER_TYPE_INFO;
 
-	/*
-	 * Most fields we carry are taken from the ambry, except time.
-	 *	The offer key = ambry->entry.key
-	 *	The offer seed = ambry->entry.seed
-	 *	The offer id = ambry->entry.tunnel
-	 *	The offer ambry tag = ambry->entry.tag
-	 */
-	op->data.id = ambry->entry.tunnel;
-	op->data.id = htobe64(op->data.id);
-	op->data.salt = htobe32(ambry_generation);
-	nyfe_memcpy(op->data.key, ambry->entry.key, sizeof(op->data.key));
-	nyfe_memcpy(op->data.tag, ambry->entry.tag, sizeof(op->data.tag));
-	nyfe_memcpy(op->data.seed, ambry->entry.seed, sizeof(op->data.seed));
+	info = &op->data.offer.info;
+	info->ip = s->sin_addr.s_addr;
+	info->port = s->sin_port;
 
 	/* Update in the current timestamp. */
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
@@ -552,10 +535,90 @@ cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
 	pkt->addr.sin_port = s->sin_port;
 	pkt->addr.sin_addr.s_addr = s->sin_addr.s_addr;
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
-	else
+	} else {
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+	}
+}
+
+/*
+ * Send an endpoint its wrapped ambry so it can use it for
+ * session establishment with its peer.
+ *
+ * We encrypt the ambry entry with the key we share with the endpoint.
+ */
+static void
+cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
+{
+	struct timespec			ts;
+	struct sanctum_offer		*op;
+	struct sanctum_offer_data	*data;
+	struct sanctum_packet		*pkt;
+	struct nyfe_agelas		cipher;
+	char				path[1024];
+
+	PRECOND(s != NULL);
+	PRECOND(ambry != NULL);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	/* Get path to the cathedral secret for the client. */
+	cathedral_secret_path(path, sizeof(path), id);
+
+	/* We send the ambry with the magic set to KATEDRAL. */
+	op = sanctum_packet_head(pkt);
+	op->hdr.spi = htobe32(id);
+	op->hdr.magic = htobe64(SANCTUM_CATHEDRAL_MAGIC);
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+
+	/* Copy the ambry information. */
+	data = &op->data;
+	data->type = SANCTUM_OFFER_TYPE_AMBRY;
+
+	data->offer.ambry.tunnel = htobe16(ambry->entry.tunnel);
+	data->offer.ambry.generation = htobe32(ambry_generation);
+
+	nyfe_memcpy(data->offer.ambry.key,
+	    ambry->entry.key, sizeof(data->offer.ambry.key));
+	nyfe_memcpy(data->offer.ambry.tag,
+	    ambry->entry.tag, sizeof(data->offer.ambry.tag));
+	nyfe_memcpy(data->offer.ambry.seed,
+	    ambry->entry.seed, sizeof(data->offer.ambry.seed));
+
+	/* Add in the current timestamp. */
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	/* Derive the key we should use. */
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(path, SANCTUM_CATHEDRAL_KDF_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		sanctum_packet_release(pkt);
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
+	/* Encrypt and authenticate entire message. */
+	sanctum_offer_encrypt(&cipher, op);
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	/* Submit it into purgatory. */
+	pkt->length = sizeof(*op);
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	pkt->addr.sin_family = AF_INET;
+	pkt->addr.sin_port = s->sin_port;
+	pkt->addr.sin_addr.s_addr = s->sin_addr.s_addr;
+
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
+		sanctum_packet_release(pkt);
+	} else {
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+		sanctum_log(LOG_INFO, "ambry update for tunnel 0x%04x (0x%x)",
+		    ambry->entry.tunnel, id);
+	}
 }
 
 /*
@@ -574,6 +637,22 @@ cathedral_tunnel_expire(u_int64_t now)
 			free(tunnel);
 		}
 	}
+}
+
+/*
+ * Create the path to a cathedral secret for the given id.
+ */
+static void
+cathedral_secret_path(char *buf, size_t buflen, u_int32_t id)
+{
+	int		len;
+
+	PRECOND(buf != NULL);
+	PRECOND(buflen > 0);
+
+	len = snprintf(buf, buflen, "%s/0x%x.key", sanctum->secretdir, id);
+	if (len == -1 || (size_t)len >= buflen)
+		fatal("failed to construct path to secret");
 }
 
 /*

@@ -171,20 +171,54 @@ extern int daemon(int, int);
  *
  * Note that the internal seed and tag in sanctum_offer_data is only
  * populated when the cathedral sends an ambry.
+ *
+ * An offer can either be:
+ *	1) A key offering (between peers)
+ *	2) An ambry offering (from cathedral to us)
+ *	3) An info offering (from us to cathedral, or cathedral to us)
  */
+
+#define SANCTUM_OFFER_TYPE_KEY		1
+#define SANCTUM_OFFER_TYPE_AMBRY	2
+#define SANCTUM_OFFER_TYPE_INFO		3
+
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
 	u_int32_t		spi;
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
 
-struct sanctum_offer_data {
+struct sanctum_key_offer {
 	u_int64_t		id;
 	u_int32_t		salt;
-	u_int64_t		timestamp;
-	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
-	u_int8_t		tag[32];
+} __attribute__((packed));
+
+struct sanctum_ambry_offer {
+	u_int16_t		tunnel;
+	u_int32_t		generation;
+	u_int8_t		seed[SANCTUM_AMBRY_SEED_LEN];
+	u_int8_t		key[SANCTUM_AMBRY_KEY_LEN];
+	u_int8_t		tag[SANCTUM_AMBRY_TAG_LEN];
+} __attribute__((packed));
+
+struct sanctum_info_offer {
+	u_int32_t		id;
+	u_int32_t		ip;
+	u_int16_t		port;
+	u_int16_t		tunnel;
+	u_int32_t		ambry_generation;
+} __attribute__((packed));
+
+struct sanctum_offer_data {
+	u_int8_t		type;
+	u_int64_t		timestamp;
+
+	union {
+		struct sanctum_key_offer	key;
+		struct sanctum_info_offer	info;
+		struct sanctum_ambry_offer	ambry;
+	} offer;
 } __attribute__((packed));
 
 struct sanctum_offer {
@@ -385,11 +419,13 @@ struct sanctum_state {
 	/* Time maintained by overwatch. */
 	volatile u_int64_t	uptime;
 
-	/* Local and remote addresses. */
-	struct sockaddr_in	peer;
+	/* The local address from the configuration. */
 	struct sockaddr_in	local;
 
-	/* The actual peer ip and port. */
+	/* The cathedral remote address (tunnel mode only). */
+	struct sockaddr_in	cathedral;
+
+	/* The peer ip and port we send encrypted traffic too. */
 	volatile u_int32_t	peer_ip;
 	volatile u_int16_t	peer_port;
 
@@ -399,9 +435,6 @@ struct sanctum_state {
 	u_int16_t		tun_mtu;
 	u_int16_t		tun_spi;
 
-	/* The ID to use when talking to a cathedral. */
-	u_int32_t		cathedral_id;
-
 	/* The path to the pidfile. */
 	char			*pidfile;
 
@@ -410,6 +443,9 @@ struct sanctum_state {
 
 	/* The path to the kek, if any (tunnel mode only). */
 	char			*kek;
+
+	/* The ID to use when talking to a cathedral (tunnel mode only). */
+	u_int32_t		cathedral_id;
 
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
