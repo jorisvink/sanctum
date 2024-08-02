@@ -505,8 +505,8 @@ cathedral_tunnel_ipinfo(struct sockaddr_in *s, u_int32_t id)
 
 	/* Fill in the peer its public ip and port. */
 	op->data.type = SANCTUM_OFFER_TYPE_INFO;
-
 	info = &op->data.offer.info;
+
 	info->ip = s->sin_addr.s_addr;
 	info->port = s->sin_port;
 
