@@ -111,9 +111,6 @@ static const struct {
 static LIST_HEAD(, route)	routes;
 static LIST_HEAD(, route)	routable;
 
-/* The peer can only be set once, either via peer or cathedral. */
-static int	peer_set = 0;
-
 /*
  * Setup the default configuration options.
  */
@@ -171,9 +168,6 @@ sanctum_config_load(const char *file)
 
 	if (sanctum->instance[0] == '\0')
 		fatal("no instance name has been set");
-
-	if (peer_set > 1)
-		fatal("peer and cathedral are mutually exclusive options");
 
 	if (sanctum->secret == NULL)
 		fatal("no traffic secret has been set");
@@ -368,8 +362,6 @@ config_parse_peer(char *peer)
 		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
 		return;
 	}
-
-	peer_set++;
 
 	config_parse_ip_port(peer, &addr);
 	sanctum_atomic_write(&sanctum->peer_port, addr.sin_port);
@@ -585,9 +577,7 @@ config_parse_cathedral(char *cathedral)
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
-	peer_set++;
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
-
 	config_parse_ip_port(cathedral, &sanctum->cathedral);
 }
 
