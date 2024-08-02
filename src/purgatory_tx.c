@@ -122,7 +122,7 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_PURGATORY_TX);
 	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
 
-	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+	if (pkt->addr.sin_family == 0) {
 		peer.sin_family = AF_INET;
 		peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
 		peer.sin_addr.s_addr = sanctum_atomic_read(&sanctum->peer_ip);

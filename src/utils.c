@@ -88,18 +88,17 @@ sanctum_logv(int prio, const char *fmt, va_list args)
  * This MUST ONLY be called AFTER integrity has been verified.
  */
 void
-sanctum_peer_update(struct sanctum_packet *pkt)
+sanctum_peer_update(u_int32_t ip, u_int16_t port)
 {
-	PRECOND(pkt != NULL);
+	struct in_addr		in;
 
-	if (pkt->addr.sin_addr.s_addr != sanctum->peer_ip ||
-	    pkt->addr.sin_port != sanctum->peer_port) {
+	if (ip != sanctum->peer_ip || port != sanctum->peer_port) {
+		in.s_addr = ip;
 		sanctum_log(LOG_NOTICE, "peer address change (new=%s:%u)",
-		    inet_ntoa(pkt->addr.sin_addr), ntohs(pkt->addr.sin_port));
+		    inet_ntoa(in), ntohs(port));
 
-		sanctum_atomic_write(&sanctum->peer_ip,
-		    pkt->addr.sin_addr.s_addr);
-		sanctum_atomic_write(&sanctum->peer_port, pkt->addr.sin_port);
+		sanctum_atomic_write(&sanctum->peer_ip, ip);
+		sanctum_atomic_write(&sanctum->peer_port, port);
 	}
 }
 

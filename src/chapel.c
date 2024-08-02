@@ -50,6 +50,7 @@ struct rx_offer {
 static void	chapel_peer_check(u_int64_t);
 static void	chapel_cathedral_notify(u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
+static void	chapel_cathedral_ipinfo(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_packet(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
@@ -254,6 +255,12 @@ chapel_peer_check(u_int64_t now)
 		offer_next = 0;
 		sanctum_atomic_write(&sanctum->peer_ip, 0);
 		sanctum_atomic_write(&sanctum->peer_port, 0);
+	} else if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+		offer_next = now;
+		sanctum_atomic_write(&sanctum->peer_ip,
+		    sanctum->cathedral.sin_addr.s_addr);
+		sanctum_atomic_write(&sanctum->peer_port,
+		    sanctum->cathedral.sin_port);
 	} else {
 		offer_next = now;
 	}
@@ -368,6 +375,10 @@ chapel_cathedral_notify(u_int64_t now)
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
+	pkt->addr.sin_family = AF_INET;
+	pkt->addr.sin_port = sanctum->cathedral.sin_port;
+	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
+
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
@@ -417,12 +428,28 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 		chapel_cathedral_ambry(op, now);
 		break;
 	case SANCTUM_OFFER_TYPE_INFO:
+		chapel_cathedral_ipinfo(op, now);
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "bad offer type from cathedral (%u)",
 		    op->data.type);
 		break;
 	}
+}
+
+/*
+ * An info packet from the cathedral that will contain our public ip:port
+ * information arrived, we save it so that the bless process can include
+ * this in its heartbeat information.
+ */
+static void
+chapel_cathedral_ipinfo(struct sanctum_offer *op, u_int64_t now)
+{
+	PRECOND(op != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO);
+
+	sanctum_atomic_write(&sanctum->local_ip, op->data.offer.info.ip);
+	sanctum_atomic_write(&sanctum->local_port, op->data.offer.info.port);
 }
 
 /*
@@ -814,7 +841,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	}
 
 	/* Everything checks out, update the peer address if needed. */
-	sanctum_peer_update(pkt);
+	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
 	/* Install received key as the TX key. */
 	chapel_install(io->tx, op->hdr.spi,

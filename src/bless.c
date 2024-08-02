@@ -148,6 +148,7 @@ bless_drop_access(void)
 static void
 bless_packet_heartbeat(void)
 {
+	struct sanctum_heartbeat	*hb;
 	struct sanctum_packet		*pkt;
 
 	if (state.cipher == NULL)
@@ -156,7 +157,12 @@ bless_packet_heartbeat(void)
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
-	pkt->length = 0;
+	/* Note that ip and port may be 0 if no cathedral is in use. */
+	hb = sanctum_packet_data(pkt);
+	hb->ip = sanctum_atomic_read(&sanctum->local_ip);
+	hb->port = sanctum_atomic_read(&sanctum->local_port);
+
+	pkt->length = sizeof(*hb);
 	pkt->target = SANCTUM_PROC_BLESS;
 	pkt->next = SANCTUM_PACKET_HEARTBEAT;
 

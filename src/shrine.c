@@ -169,7 +169,7 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	/* Everything checks out, update the peer address if needed. */
-	sanctum_peer_update(pkt);
+	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
 	/* Install received key as the RX key. */
 	key = &op->data.offer.key;

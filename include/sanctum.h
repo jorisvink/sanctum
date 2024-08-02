@@ -167,6 +167,21 @@ extern int daemon(int, int);
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
 
 /*
+ * The heartbeat packet that is sent every SANCTUM_HEARTBEAT_INTERVAL
+ * seconds.
+ *
+ * For now, it carries our public ip:port combination when we are using
+ * a cathedral so we can inform the other side about how to reach us
+ * without the cathedral.
+ *
+ * In all other cases these will be 0.
+ */
+struct sanctum_heartbeat {
+	u_int32_t		ip;
+	u_int16_t		port;
+} __attribute__((packed));
+
+/*
  * Packets used when doing key offering or cathedral forward registration.
  *
  * Note that the internal seed and tag in sanctum_offer_data is only
@@ -429,6 +444,10 @@ struct sanctum_state {
 	volatile u_int32_t	peer_ip;
 	volatile u_int16_t	peer_port;
 
+	/* Our local ip and port we are sending from. */
+	volatile u_int32_t	local_ip;
+	volatile u_int16_t	local_port;
+
 	/* The tunnel configuration. */
 	struct sockaddr_in	tun_ip;
 	struct sockaddr_in	tun_mask;
@@ -558,9 +577,9 @@ void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
+void	sanctum_peer_update(u_int32_t, u_int16_t);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
-void	sanctum_peer_update(struct sanctum_packet *);
 char	*sanctum_config_read(FILE *, char *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
