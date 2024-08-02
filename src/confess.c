@@ -17,9 +17,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-/* XXX */
-#include <arpa/inet.h>
-
 #include <netinet/in.h>
 #include <netinet/ip.h>
 
