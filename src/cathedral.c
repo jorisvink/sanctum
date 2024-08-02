@@ -504,6 +504,7 @@ cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
 
 	/* We send the ambry with the magic set to KATEDRAL. */
 	op = sanctum_packet_head(pkt);
+	op->hdr.spi = htobe32(id);
 	op->hdr.magic = htobe64(SANCTUM_CATHEDRAL_MAGIC);
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 

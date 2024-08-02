@@ -419,9 +419,12 @@ chapel_cathedral_ambry(struct sanctum_packet *pkt, u_int64_t now)
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	/* Quick sanity check on the tunnel. */
+	/* Quick sanity check on the spi and tunnel. */
+	op->hdr.spi = be32toh(op->hdr.spi);
 	op->data.id = be64toh(op->data.id);
-	if (op->data.id != sanctum->tun_spi) {
+
+	if (op->hdr.spi != sanctum->cathedral_id ||
+	    op->data.id != sanctum->tun_spi) {
 		sanctum_log(LOG_NOTICE,
 		    "got an ambry not ment for us (0x%" PRIx64 ")",
 		    op->data.id);
