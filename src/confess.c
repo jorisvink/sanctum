@@ -193,7 +193,8 @@ confess_packet_heartbeat(struct sanctum_packet *pkt)
 
 	PRECOND(pkt != NULL);
 
-	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
+	    pkt->length == sizeof(*hb)) {
 		hb = sanctum_packet_data(pkt);
 		if (hb->ip != 0 && hb->port != 0)
 			sanctum_peer_update(hb->ip, hb->port);

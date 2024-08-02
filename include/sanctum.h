@@ -179,6 +179,7 @@ extern int daemon(int, int);
 struct sanctum_heartbeat {
 	u_int32_t		ip;
 	u_int16_t		port;
+	u_int8_t		padding[250];
 } __attribute__((packed));
 
 /*
