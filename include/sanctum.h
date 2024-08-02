@@ -160,7 +160,7 @@ extern int daemon(int, int);
 /* The length of the seed in a key offer packet. */
 #define SANCTUM_KEY_OFFER_SALT_LEN	64
 
-/* The magic for a registration request (KATEDRAL). */
+/* The magic for cathedral messages (KATEDRAL). */
 #define SANCTUM_CATHEDRAL_MAGIC		0x4b4154454452414c
 
 /* The KDF label. */
