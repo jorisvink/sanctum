@@ -146,6 +146,9 @@ control_status_request(int fd, struct sockaddr_un *peer)
 	resp.rx.last = sanctum_atomic_read(&sanctum->rx.last);
 	resp.rx.bytes = sanctum_atomic_read(&sanctum->rx.bytes);
 
+	resp.ip = sanctum_atomic_read(&sanctum->peer_ip);
+	resp.port = sanctum_atomic_read(&sanctum->peer_port);
+
 	if (sendto(fd, &resp, sizeof(resp), 0,
 	    (const struct sockaddr *)peer, sizeof(*peer)) == -1) {
 		sanctum_log(LOG_NOTICE,

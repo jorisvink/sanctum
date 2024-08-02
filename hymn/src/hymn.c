@@ -562,10 +562,13 @@ hymn_up(int argc, char *argv[])
 static int
 hymn_status(int argc, char *argv[])
 {
-	struct addr		*net;
-	struct config		config;
-	u_int8_t		src, dst;
-	char			path[PATH_MAX];
+	struct in_addr				in;
+	struct addr				*net;
+	struct sanctum_ctl_status_response	resp;
+	struct config				config;
+	const char				*status;
+	u_int8_t				src, dst;
+	char					path[PATH_MAX];
 
 	if (argc != 1)
 		usage_simple("status");
@@ -577,6 +580,17 @@ hymn_status(int argc, char *argv[])
 
 	hymn_config_init(&config);
 	hymn_config_load(path, &config);
+
+	hymn_pid_path(path, sizeof(path), src, dst);
+	if (access(path, R_OK) == -1)
+		status = "  not active";
+	else
+		status = NULL;
+
+	if (status == NULL) {
+		hymn_control_path(path, sizeof(path), src, dst);
+		hymn_ctl_status(path, &resp);
+	}
 
 	printf("hymn-%02x-%02x:\n", src, dst);
 	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
@@ -590,6 +604,12 @@ hymn_status(int argc, char *argv[])
 	}
 
 	printf("%s\n", hymn_ip_port_str(&config.peer));
+
+	if (status == NULL) {
+		in.s_addr = resp.ip;
+		printf("  connection\t%s:%u\n",
+		    inet_ntoa(in), ntohs(resp.port));
+	}
 
 	printf("\n");
 	printf("  routes\n");
@@ -610,16 +630,12 @@ hymn_status(int argc, char *argv[])
 	}
 
 	printf("\n");
-	hymn_pid_path(path, sizeof(path), src, dst);
 
-	if (access(path, R_OK) == -1) {
-		if (errno == ENOENT)
-			printf("  not active\n");
-		else
-			fatal("failed to access %s: %s\n", path, errno_s);
+	if (status != NULL) {
+		printf("%s\n", status);
 	} else {
-		hymn_control_path(path, sizeof(path), src, dst);
-		hymn_ctl_status(path, NULL);
+		hymn_dump_ifstat("tx", &resp.tx);
+		hymn_dump_ifstat("rx", &resp.rx);
 	}
 
 	return (0);
@@ -1260,10 +1276,9 @@ hymn_unix_socket(struct sockaddr_un *sun, const char *path)
 static void
 hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 {
-	int					fd;
-	struct sockaddr_un			sun;
-	struct sanctum_ctl			ctl;
-	struct sanctum_ctl_status_response	resp;
+	int				fd;
+	struct sockaddr_un		sun;
+	struct sanctum_ctl		ctl;
 
 	if ((fd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
@@ -1281,14 +1296,7 @@ hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 	ctl.cmd = SANCTUM_CTL_STATUS;
 
 	hymn_ctl_request(fd, path, &ctl, sizeof(ctl));
-	hymn_ctl_response(fd, &resp, sizeof(resp));
-
-	if (out == NULL) {
-		hymn_dump_ifstat("tx", &resp.tx);
-		hymn_dump_ifstat("rx", &resp.rx);
-	} else {
-		memcpy(out, &resp, sizeof(resp));
-	}
+	hymn_ctl_response(fd, out, sizeof(*out));
 }
 
 static void
