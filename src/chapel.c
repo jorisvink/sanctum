@@ -344,8 +344,8 @@ chapel_cathedral_notify(u_int64_t now)
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
 
 	/* Add the relevant pieces of data we will encrypt. */
-	info = &op->data.offer.info;
 	op->data.type = SANCTUM_OFFER_TYPE_INFO;
+	info = &op->data.offer.info;
 
 	info->tunnel = htobe16(sanctum->tun_spi);
 	info->ambry_generation = htobe32(ambry_generation);

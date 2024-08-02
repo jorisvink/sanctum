@@ -553,8 +553,8 @@ cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
 {
 	struct timespec			ts;
 	struct sanctum_offer		*op;
-	struct sanctum_offer_data	*data;
 	struct sanctum_packet		*pkt;
+	struct sanctum_ambry_offer	*offer;
 	struct nyfe_agelas		cipher;
 	char				path[1024];
 
@@ -574,18 +574,15 @@ cathedral_tunnel_ambry(struct sockaddr_in *s, struct ambry *ambry, u_int32_t id)
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
 	/* Copy the ambry information. */
-	data = &op->data;
-	data->type = SANCTUM_OFFER_TYPE_AMBRY;
+	op->data.type = SANCTUM_OFFER_TYPE_AMBRY;
+	offer = &op->data.offer.ambry;
 
-	data->offer.ambry.tunnel = htobe16(ambry->entry.tunnel);
-	data->offer.ambry.generation = htobe32(ambry_generation);
+	offer->tunnel = htobe16(ambry->entry.tunnel);
+	offer->generation = htobe32(ambry_generation);
 
-	nyfe_memcpy(data->offer.ambry.key,
-	    ambry->entry.key, sizeof(data->offer.ambry.key));
-	nyfe_memcpy(data->offer.ambry.tag,
-	    ambry->entry.tag, sizeof(data->offer.ambry.tag));
-	nyfe_memcpy(data->offer.ambry.seed,
-	    ambry->entry.seed, sizeof(data->offer.ambry.seed));
+	nyfe_memcpy(offer->key, ambry->entry.key, sizeof(offer->key));
+	nyfe_memcpy(offer->tag, ambry->entry.tag, sizeof(offer->tag));
+	nyfe_memcpy(offer->seed, ambry->entry.seed, sizeof(offer->seed));
 
 	/* Add in the current timestamp. */
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
