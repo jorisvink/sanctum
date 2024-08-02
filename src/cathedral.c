@@ -338,9 +338,10 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 	/* Let the endpoint know its peer its public ip:port, if we have it. */
 	if (catacomb == 0) {
 		tun = (info->tunnel & 0x00ff) << 8 | (info->tunnel >> 8);
-		LIST_FOREACH(tunnel, &tunnels, list)
+		LIST_FOREACH(tunnel, &tunnels, list) {
 			if (tunnel->id == tun)
 				break;
+		}
 
 		cathedral_tunnel_p2p(&pkt->addr, tunnel, spi);
 	}
