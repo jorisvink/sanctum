@@ -605,7 +605,7 @@ hymn_status(int argc, char *argv[])
 
 	printf("%s", hymn_ip_port_str(&config.peer));
 
-	if (status == NULL) {
+	if (status == NULL && resp.ip != config.peer.ip) {
 		in.s_addr = resp.ip;
 		printf(" (%s:%u)",
 		    inet_ntoa(in), ntohs(resp.port));

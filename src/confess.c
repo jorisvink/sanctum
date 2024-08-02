@@ -33,7 +33,6 @@ static void	confess_clear_state(void);
 static void	confess_drop_access(void);
 static void	confess_key_management(void);
 static void	confess_packet_process(struct sanctum_packet *);
-static void	confess_packet_heartbeat(struct sanctum_packet *);
 static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
 static int	confess_arwin_check(struct sanctum_sa *,
@@ -181,31 +180,6 @@ confess_key_management(void)
 }
 
 /*
- * Handle a received heartbeat packet.
- *
- * It may contain information about the our peer its public ip:port
- * in the cases we are using a cathedral.
- */
-static void
-confess_packet_heartbeat(struct sanctum_packet *pkt)
-{
-	struct sanctum_heartbeat	*hb;
-
-	PRECOND(pkt != NULL);
-
-	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
-	    pkt->length == sizeof(*hb)) {
-		hb = sanctum_packet_data(pkt);
-		if (hb->ip != 0 && hb->port != 0)
-			sanctum_peer_update(hb->ip, hb->port);
-	}
-
-	sanctum_packet_release(pkt);
-	sanctum_atomic_add(&sanctum->rx.pkt, 1);
-	sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
-}
-
-/*
  * Decrypt and verify a single packet under the current RX key, or if
  * that fails and there is a pending key, under the pending RX key.
  *
@@ -316,7 +290,9 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	sanctum_atomic_write(&sanctum->heartbeat, now);
 
 	if (tail->next == SANCTUM_PACKET_HEARTBEAT) {
-		confess_packet_heartbeat(pkt);
+		sanctum_packet_release(pkt);
+		sanctum_atomic_add(&sanctum->rx.pkt, 1);
+		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
 		return (0);
 	}
 

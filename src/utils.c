@@ -85,6 +85,9 @@ sanctum_logv(int prio, const char *fmt, va_list args)
  * Update the address of the peer if it does not match with the
  * one from the packet.
  *
+ * If we're using a cathedral, do not allow a swap back to the cathedral
+ * until a the required time has passed.
+ *
  * This MUST ONLY be called AFTER integrity has been verified.
  */
 void
@@ -92,10 +95,24 @@ sanctum_peer_update(u_int32_t ip, u_int16_t port)
 {
 	struct in_addr		in;
 	u_int32_t		local;
+	u_int64_t		now, next;
 
 	local = sanctum_atomic_read(&sanctum->local_ip);
 	if (local == ip)
 		return;
+
+	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+		now = sanctum_atomic_read(&sanctum->uptime);
+		next = sanctum_atomic_read(&sanctum->peer_update);
+
+		if (ip == sanctum->cathedral.sin_addr.s_addr) {
+			if (next != 0 && now < next)
+				return;
+			sanctum_atomic_write(&sanctum->peer_update, 0);
+		} else {
+			sanctum_atomic_write(&sanctum->peer_update, now + 10);
+		}
+	}
 
 	if (ip != sanctum->peer_ip || port != sanctum->peer_port) {
 		in.s_addr = ip;

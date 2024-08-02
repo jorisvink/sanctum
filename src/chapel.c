@@ -50,8 +50,8 @@ struct rx_offer {
 
 static void	chapel_peer_check(u_int64_t);
 static void	chapel_cathedral_notify(u_int64_t);
+static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
-static void	chapel_cathedral_ipinfo(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_packet(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
@@ -247,7 +247,7 @@ chapel_peer_check(u_int64_t now)
 	if ((hbeat = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
 		return;
 
-	if ((now - hbeat) < SANCTUM_HEARTBEAT_INTERVAL * 4)
+	if ((now - hbeat) < SANCTUM_HEARTBEAT_INTERVAL * 8)
 		return;
 
 	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
@@ -429,7 +429,7 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 		chapel_cathedral_ambry(op, now);
 		break;
 	case SANCTUM_OFFER_TYPE_INFO:
-		chapel_cathedral_ipinfo(op, now);
+		chapel_cathedral_p2p(op, now);
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "bad offer type from cathedral (%u)",
@@ -439,18 +439,39 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 }
 
 /*
- * An info packet from the cathedral that will contain our public ip:port
- * information arrived, we save it so that the bless process can include
- * this in its heartbeat information.
+ * We received a p2p information packet from the cathedral. This contains
+ * connection information about ourselves and our peer.
+ *
+ * On the first swap to the peer its public ip:port we will ask bless
+ * to start heartbeating faster so the hole punching will have effect.
  */
 static void
-chapel_cathedral_ipinfo(struct sanctum_offer *op, u_int64_t now)
+chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 {
+	struct sanctum_info_offer	*info;
+	u_int32_t			old_ip;
+	u_int16_t			old_port;
+
 	PRECOND(op != NULL);
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO);
 
-	sanctum_atomic_write(&sanctum->local_ip, op->data.offer.info.ip);
-	sanctum_atomic_write(&sanctum->local_port, op->data.offer.info.port);
+	info = &op->data.offer.info;
+	old_ip = sanctum_atomic_read(&sanctum->peer_ip);
+	old_port = sanctum_atomic_read(&sanctum->peer_port);
+
+	sanctum_atomic_write(&sanctum->local_ip, info->local_ip);
+	sanctum_atomic_write(&sanctum->local_port, info->local_port);
+
+	if (info->peer_ip != 0 && info->peer_port != 0)  {
+		sanctum_peer_update(info->peer_ip, info->peer_port);
+
+		if (info->peer_ip != info->local_ip &&
+		    (old_ip != info->peer_ip || old_port != info->peer_port) &&
+		    info->peer_ip != sanctum->cathedral.sin_addr.s_addr) {
+			sanctum_atomic_write(&sanctum->holepunch, 1);
+			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+		}
+	}
 }
 
 /*

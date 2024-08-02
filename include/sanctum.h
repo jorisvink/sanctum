@@ -167,22 +167,6 @@ extern int daemon(int, int);
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
 
 /*
- * The heartbeat packet that is sent every SANCTUM_HEARTBEAT_INTERVAL
- * seconds.
- *
- * For now, it carries our public ip:port combination when we are using
- * a cathedral so we can inform the other side about how to reach us
- * without the cathedral.
- *
- * In all other cases these will be 0.
- */
-struct sanctum_heartbeat {
-	u_int32_t		ip;
-	u_int16_t		port;
-	u_int8_t		padding[250];
-} __attribute__((packed));
-
-/*
  * Packets used when doing key offering or cathedral forward registration.
  *
  * Note that the internal seed and tag in sanctum_offer_data is only
@@ -220,8 +204,13 @@ struct sanctum_ambry_offer {
 
 struct sanctum_info_offer {
 	u_int32_t		id;
-	u_int32_t		ip;
-	u_int16_t		port;
+
+	u_int32_t		peer_ip;
+	u_int16_t		peer_port;
+
+	u_int32_t		local_ip;
+	u_int16_t		local_port;
+
 	u_int16_t		tunnel;
 	u_int32_t		ambry_generation;
 } __attribute__((packed));
@@ -441,13 +430,16 @@ struct sanctum_state {
 	/* The cathedral remote address (tunnel mode only). */
 	struct sockaddr_in	cathedral;
 
+	/* Our own public ip:port (when cathedral is in use only). */
+	volatile u_int32_t	local_ip;
+	volatile u_int16_t	local_port;
+
 	/* The peer ip and port we send encrypted traffic too. */
 	volatile u_int32_t	peer_ip;
 	volatile u_int16_t	peer_port;
 
-	/* Our local ip and port we are sending from. */
-	volatile u_int32_t	local_ip;
-	volatile u_int16_t	local_port;
+	/* Next time we can update the peer (when cathedral is in use only) */
+	volatile u_int64_t	peer_update;
 
 	/* The tunnel configuration. */
 	struct sockaddr_in	tun_ip;
@@ -503,6 +495,9 @@ struct sanctum_state {
 
 	/* The last heartbeat received from the peer. */
 	volatile u_int64_t	heartbeat;
+
+	/* Do hole punching (by sending many heartbeats for a bit). */
+	volatile u_int64_t	holepunch;
 
 	/* Process wakeup states. */
 	u_int32_t		wstate[SANCTUM_PROC_MAX];

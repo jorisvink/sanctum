@@ -86,8 +86,10 @@ static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_federate(struct sanctum_packet *);
-static void	cathedral_tunnel_ipinfo(struct sockaddr_in *, u_int32_t);
 static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
+
+static void	cathedral_tunnel_p2p(struct sockaddr_in *,
+		    struct tunnel *, u_int32_t);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
 		    u_int64_t, int);
 static void	cathedral_tunnel_ambry(struct sockaddr_in *, struct ambry *,
@@ -257,6 +259,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 {
 	u_int32_t			spi;
 	struct sanctum_offer		*op;
+	u_int16_t			tun;
 	struct sanctum_info_offer	*info;
 	struct nyfe_agelas		cipher;
 	struct ambry			*ambry;
@@ -332,13 +335,17 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 		}
 	}
 
-	/* Let the endpoint know its public ip:port that is in use. */
-	if (catacomb == 0)
-		cathedral_tunnel_ipinfo(&pkt->addr, spi);
+	/* Let the endpoint know its peer its public ip:port, if we have it. */
+	if (catacomb == 0) {
+		tun = (info->tunnel & 0x00ff) << 8 | (info->tunnel >> 8);
+		LIST_FOREACH(tunnel, &tunnels, list)
+			if (tunnel->id == tun)
+				break;
 
-	/*
-	 * Check if the tunnel exists, if it does we update the endpoint.
-	 */
+		cathedral_tunnel_p2p(&pkt->addr, tunnel, spi);
+	}
+
+	/* Check if the tunnel exists, if it does we update the endpoint. */
 	LIST_FOREACH(tunnel, &tunnels, list) {
 		if (tunnel->id == info->tunnel) {
 			tunnel->age = now;
@@ -477,10 +484,11 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
 }
 
 /*
- * Send an endpoint its public ip:port mapping its using to talk to us.
+ * Send connection information to the endpoint, if peer is NULL we do not
+ * know yet where its peer is located.
  */
 static void
-cathedral_tunnel_ipinfo(struct sockaddr_in *s, u_int32_t id)
+cathedral_tunnel_p2p(struct sockaddr_in *sin, struct tunnel *peer, u_int32_t id)
 {
 	struct timespec			ts;
 	struct sanctum_offer		*op;
@@ -489,7 +497,8 @@ cathedral_tunnel_ipinfo(struct sockaddr_in *s, u_int32_t id)
 	struct nyfe_agelas		cipher;
 	char				path[1024];
 
-	PRECOND(s != NULL);
+	PRECOND(sin != NULL);
+	/* peer may be NULL. */
 
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
@@ -503,12 +512,20 @@ cathedral_tunnel_ipinfo(struct sockaddr_in *s, u_int32_t id)
 	op->hdr.magic = htobe64(SANCTUM_CATHEDRAL_MAGIC);
 	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
-	/* Fill in the peer its public ip and port. */
+	/*
+	 * Add both the local and remote connection information.
+	 * We may not have the remote yet however.
+	 */
 	op->data.type = SANCTUM_OFFER_TYPE_INFO;
 	info = &op->data.offer.info;
 
-	info->ip = s->sin_addr.s_addr;
-	info->port = s->sin_port;
+	info->local_port = sin->sin_port;
+	info->local_ip = sin->sin_addr.s_addr;
+
+	if (peer != NULL) {
+		info->peer_ip = peer->ip;
+		info->peer_port = peer->port;
+	}
 
 	/* Update in the current timestamp. */
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
@@ -532,8 +549,8 @@ cathedral_tunnel_ipinfo(struct sockaddr_in *s, u_int32_t id)
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_port = s->sin_port;
-	pkt->addr.sin_addr.s_addr = s->sin_addr.s_addr;
+	pkt->addr.sin_port = sin->sin_port;
+	pkt->addr.sin_addr.s_addr = sin->sin_addr.s_addr;
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);

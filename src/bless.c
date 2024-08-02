@@ -36,11 +36,13 @@ static struct sanctum_proc_io	*io = NULL;
 static struct sanctum_sa	state;
 
 /* Local timekeeping for heartbeats. */
-static u_int64_t		now = 0;
-static u_int64_t		next_heartbeat = 0;
+static u_int64_t	now = 0;
+static u_int64_t	heartbeat_next = 0;
+static u_int64_t	heartbeat_reset = 0;
+static u_int64_t	heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
 
 /* If we should wakeup SANCTUM_PROC_PURGATORY_TX. */
-static int			tx_wakeup = 0;
+static int		tx_wakeup = 0;
 
 /*
  * Bless - The process responsible for the blessing of packets coming
@@ -72,7 +74,7 @@ sanctum_bless(struct sanctum_proc *proc)
 	sanctum_platform_sandbox(proc);
 
 	now = sanctum_atomic_read(&sanctum->uptime);
-	next_heartbeat = now + SANCTUM_HEARTBEAT_INTERVAL;
+	heartbeat_next = now + heartbeat_interval;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -87,21 +89,30 @@ sanctum_bless(struct sanctum_proc *proc)
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if (sanctum_ring_pending(io->bless) == 0)
-			sanctum_proc_suspend(next_heartbeat - now);
+			sanctum_proc_suspend(heartbeat_next - now);
 
 		now = sanctum_atomic_read(&sanctum->uptime);
+
+		if (sanctum_atomic_cas_simple(&sanctum->holepunch, 1, 0)) {
+			heartbeat_next = now;
+			heartbeat_interval = 1;
+			heartbeat_reset = now + SANCTUM_HEARTBEAT_INTERVAL;
+		} else if (heartbeat_reset != 0 && now >= heartbeat_reset) {
+			heartbeat_reset = 0;
+			heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
+		}
 
 		if (sanctum_key_erase("TX", io->tx, &state) != -1)
 			sanctum_stat_clear(&sanctum->tx);
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
 			state.seqnr = 1;
-			next_heartbeat = now;
+			heartbeat_next = now;
 			sanctum_atomic_write(&sanctum->tx.age, now);
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		}
 
-		if (next_heartbeat != 0 && now >= next_heartbeat)
+		if (heartbeat_next != 0 && now >= heartbeat_next)
 			bless_packet_heartbeat();
 
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
@@ -148,7 +159,6 @@ bless_drop_access(void)
 static void
 bless_packet_heartbeat(void)
 {
-	struct sanctum_heartbeat	*hb;
 	struct sanctum_packet		*pkt;
 
 	if (state.cipher == NULL)
@@ -157,17 +167,12 @@ bless_packet_heartbeat(void)
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
-	/* Note that ip and port may be 0 if no cathedral is in use. */
-	hb = sanctum_packet_data(pkt);
-	hb->ip = sanctum_atomic_read(&sanctum->local_ip);
-	hb->port = sanctum_atomic_read(&sanctum->local_port);
-
-	pkt->length = sizeof(*hb);
+	pkt->length = 0;
 	pkt->target = SANCTUM_PROC_BLESS;
 	pkt->next = SANCTUM_PACKET_HEARTBEAT;
 
 	bless_packet_process(pkt);
-	next_heartbeat = now + SANCTUM_HEARTBEAT_INTERVAL;
+	heartbeat_next = now + heartbeat_interval;
 }
 
 /*
