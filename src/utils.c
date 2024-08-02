@@ -91,6 +91,11 @@ void
 sanctum_peer_update(u_int32_t ip, u_int16_t port)
 {
 	struct in_addr		in;
+	u_int32_t		local;
+
+	local = sanctum_atomic_read(&sanctum->local_ip);
+	if (local == ip)
+		return;
 
 	if (ip != sanctum->peer_ip || port != sanctum->peer_port) {
 		in.s_addr = ip;
