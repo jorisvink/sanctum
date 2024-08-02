@@ -603,15 +603,15 @@ hymn_status(int argc, char *argv[])
 		printf("  peer\t\t");
 	}
 
-	printf("%s\n", hymn_ip_port_str(&config.peer));
+	printf("%s", hymn_ip_port_str(&config.peer));
 
 	if (status == NULL) {
 		in.s_addr = resp.ip;
-		printf("  connection\t%s:%u\n",
+		printf(" (%s:%u)",
 		    inet_ntoa(in), ntohs(resp.port));
 	}
 
-	printf("\n");
+	printf("\n\n");
 	printf("  routes\n");
 	if (LIST_EMPTY(&config.routes)) {
 		printf("    none\n");
