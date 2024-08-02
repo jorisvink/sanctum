@@ -53,6 +53,7 @@ struct tunnel {
 	u_int64_t		age;
 	u_int16_t		port;
 	u_int64_t		pkts;
+	int			federated;
 	LIST_ENTRY(tunnel)	list;
 };
 
@@ -343,6 +344,10 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 				break;
 		}
 
+		/* Do not send peer info if its federated for now. */
+		if (tunnel != NULL && tunnel->federated)
+			tunnel = NULL;
+
 		cathedral_tunnel_p2p(&pkt->addr, tunnel, spi);
 	}
 
@@ -354,6 +359,8 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 			tunnel->ip = pkt->addr.sin_addr.s_addr;
 			if (catacomb == 0)
 				cathedral_tunnel_federate(pkt);
+			else
+				tunnel->federated = 1;
 			return;
 		}
 	}
@@ -372,6 +379,8 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 
 	if (catacomb == 0)
 		cathedral_tunnel_federate(pkt);
+	else
+		tunnel->federated = 1;
 }
 
 /*
