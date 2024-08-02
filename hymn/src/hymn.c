@@ -51,6 +51,7 @@
 #define HYMN_PEER		(1 << 2)
 #define HYMN_SECRET		(1 << 3)
 #define HYMN_KEK		(1 << 4)
+#define HYMN_CATHEDRAL		(1 << 5)
 #define HYMN_REQUIRED		(HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
 
 struct addr {
@@ -71,6 +72,7 @@ struct config {
 
 	struct addr		peer;
 	struct addr		local;
+	struct addr		cathedral;
 
 	u_int32_t		cathedral_id;
 	int			peer_cathedral;
@@ -270,7 +272,7 @@ usage_add(void)
 	fprintf(stderr,
 	    "usage: hymn add <src>-<dst> tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
-	    "[peer | cathedral] <ip:port> \\\n");
+	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
 	fprintf(stderr, "    [kek <path>] [descr <description>] ");
 	fprintf(stderr, "[identity <0xabcdef>]\n");
 
@@ -333,8 +335,8 @@ hymn_add(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "local")) {
 			hymn_ip_port_parse(&config.local, argv[i + 1]);
 		} else if (!strcmp(argv[i], "cathedral")) {
-			which |= HYMN_PEER;
-			hymn_ip_port_parse(&config.peer, argv[i + 1]);
+			which |= HYMN_CATHEDRAL;
+			hymn_ip_port_parse(&config.cathedral, argv[i + 1]);
 			config.peer_cathedral = 1;
 		} else if (!strcmp(argv[i], "identity")) {
 			if (config.peer_cathedral == 0)
@@ -346,7 +348,7 @@ hymn_add(int argc, char *argv[])
 
 	if (which & HYMN_KEK) {
 		if (config.peer_cathedral == 0)
-			fatal("kek is relevant with a cathedral");
+			fatal("kek is only relevant with a cathedral");
 
 		if (which & HYMN_SECRET)
 			fatal("no need to specify a secret when using a kek");
@@ -361,6 +363,9 @@ hymn_add(int argc, char *argv[])
 
 		which |= HYMN_SECRET;
 	}
+
+	if (!(which & HYMN_PEER) && (which & HYMN_CATHEDRAL))
+		which |= HYMN_PEER;
 
 	if (!(which & HYMN_TUNNEL))
 		printf("missing tunnel\n");
@@ -1062,12 +1067,16 @@ hymn_config_save(const char *path, struct config *cfg)
 		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-0x%x\n",
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral ");
-	} else {
-		hymn_config_write(fd, "peer ");
+		hymn_config_write(fd, "%s\n",
+		    hymn_ip_port_str(&cfg->cathedral));
+		hymn_config_write(fd, "\n");
 	}
 
-	hymn_config_write(fd, "%s\n", hymn_ip_port_str(&cfg->peer));
-	hymn_config_write(fd, "\n");
+	if (cfg->peer.ip != 0) {
+		hymn_config_write(fd, "peer ");
+		hymn_config_write(fd, "%s\n", hymn_ip_port_str(&cfg->peer));
+		hymn_config_write(fd, "\n");
+	}
 
 	LIST_FOREACH(net, &cfg->routes, list)
 		hymn_config_write(fd, "route %s\n", hymn_ip_mask_str(net));
@@ -1199,7 +1208,7 @@ hymn_config_parse_secret(struct config *cfg, char *secret)
 static void
 hymn_config_parse_cathedral(struct config *cfg, char *cathedral)
 {
-	hymn_ip_port_parse(&cfg->peer, cathedral);
+	hymn_ip_port_parse(&cfg->cathedral, cathedral);
 	cfg->peer_cathedral = 1;
 }
 
