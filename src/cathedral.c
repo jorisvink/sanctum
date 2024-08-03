@@ -102,7 +102,7 @@ static int	cathedral_tunnel_update_valid(struct sanctum_offer *,
 static int	cathedral_tunnel_update_allowed(struct sanctum_info_offer *,
 		    u_int32_t);
 
-static struct tunnel	*cathedral_peer_matching(struct sanctum_info_offer *);
+static struct tunnel	*cathedral_tunnel_lookup(u_int16_t, int);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -297,29 +297,20 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 		cathedral_peer_info_send(info, &pkt->addr, id);
 	}
 
-	LIST_FOREACH(tunnel, &tunnels, list) {
-		if (tunnel->id == info->tunnel) {
-			tunnel->age = now;
-			tunnel->port = pkt->addr.sin_port;
-			tunnel->ip = pkt->addr.sin_addr.s_addr;
-			if (catacomb == 0)
-				cathedral_tunnel_federate(pkt);
-			else
-				tunnel->federated = 1;
-			return;
-		}
-	}
+	if ((tunnel = cathedral_tunnel_lookup(info->tunnel, 0)) == NULL) {
+		if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
+			fatal("calloc failed");
 
-	if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
-		fatal("calloc failed");
+		LIST_INSERT_HEAD(&tunnels, tunnel, list);
+
+		sanctum_log(LOG_INFO,
+		    "new tunnel 0x%04x discovered", info->tunnel);
+	}
 
 	tunnel->age = now;
 	tunnel->id = info->tunnel;
 	tunnel->port = pkt->addr.sin_port;
 	tunnel->ip = pkt->addr.sin_addr.s_addr;
-
-	LIST_INSERT_HEAD(&tunnels, tunnel, list);
-	sanctum_log(LOG_INFO, "new tunnel 0x%04x discovered", tunnel->id);
 
 	if (catacomb == 0)
 		cathedral_tunnel_federate(pkt);
@@ -496,21 +487,16 @@ cathedral_tunnel_federate(struct sanctum_packet *update)
  * See if we have peer information for the other end of the tunnel given.
  */
 static struct tunnel *
-cathedral_peer_matching(struct sanctum_info_offer *info)
+cathedral_tunnel_lookup(u_int16_t spi, int skip_federated)
 {
-	u_int16_t		tun;
 	struct tunnel		*tunnel;
 
-	PRECOND(info != NULL);
-
-	tun = (info->tunnel & 0x00ff) << 8 | (info->tunnel >> 8);
-
 	LIST_FOREACH(tunnel, &tunnels, list) {
-		if (tunnel->id == tun)
+		if (tunnel->id == spi)
 			break;
 	}
 
-	if (tunnel != NULL && tunnel->federated)
+	if (skip_federated && tunnel != NULL && tunnel->federated)
 		tunnel = NULL;
 
 	return (tunnel);
@@ -527,12 +513,15 @@ cathedral_peer_info_send(struct sanctum_info_offer *info,
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct tunnel			*peer;
+	u_int16_t			tunnel;
 	char				secret[1024];
 
 	PRECOND(info != NULL);
 	PRECOND(sin != NULL);
 
-	if ((peer = cathedral_peer_matching(info)) == NULL)
+	tunnel = htobe16(info->tunnel);
+
+	if ((peer = cathedral_tunnel_lookup(tunnel, 1)) == NULL)
 		return;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
