@@ -645,6 +645,8 @@ cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
+	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+
 	return (0);
 }
 
