@@ -165,12 +165,20 @@ sanctum_key_erase(const char *s, struct sanctum_key *key, struct sanctum_sa *sa)
 /*
  * Install the key pending under the given `key` data structure into
  * the SA context `sa`.
+ *
+ * This is called from the bless or confess processes only.
  */
 int
 sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 {
+	struct sanctum_proc	*proc;
+
 	PRECOND(key != NULL);
 	PRECOND(sa != NULL);
+
+	proc = sanctum_process();
+	VERIFY(proc->type == SANCTUM_PROC_BLESS ||
+	    proc->type == SANCTUM_PROC_CONFESS);
 
 	if (sanctum_atomic_read(&key->state) != SANCTUM_KEY_PENDING)
 		return (-1);
@@ -452,6 +460,36 @@ sanctum_cipher_kdf(const char *path, const char *label,
 }
 
 /*
+ * Set the initial information for a sanctum_offer inside of the
+ * given sanctum packet.
+ */
+struct sanctum_offer *
+sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
+    u_int64_t magic, u_int8_t type)
+{
+	struct timespec		ts;
+	struct sanctum_offer	*op;
+
+	PRECOND(pkt != NULL);
+	PRECOND(type == SANCTUM_OFFER_TYPE_KEY ||
+	    type == SANCTUM_OFFER_TYPE_AMBRY ||
+	    type == SANCTUM_OFFER_TYPE_INFO);
+
+	op = sanctum_packet_head(pkt);
+
+	op->data.type = type;
+	op->hdr.spi = htobe32(spi);
+	op->hdr.magic = htobe64(magic);
+
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	return (op);
+}
+
+/*
  * Encrypt and authenticate a sanctum_offer data structure.
  * Note: does not zeroize the cipher, this is the caller its responsibility.
  */
@@ -481,7 +519,6 @@ sanctum_offer_decrypt(struct nyfe_agelas *cipher,
 	PRECOND(op != NULL);
 	PRECOND(valid > 0);
 
-	/* Decrypt and verify the integrity of the offer first. */
 	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
 	nyfe_agelas_decrypt(cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(cipher, tag, sizeof(tag));
@@ -489,7 +526,6 @@ sanctum_offer_decrypt(struct nyfe_agelas *cipher,
 	if (memcmp(op->tag, tag, sizeof(op->tag)))
 		return (-1);
 
-	/* Make sure the offer isn't too old. */
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = be64toh(op->data.timestamp);
 
@@ -498,6 +534,52 @@ sanctum_offer_decrypt(struct nyfe_agelas *cipher,
 		return (-1);
 
 	return (0);
+}
+
+/*
+ * Install the given key offer to into the given state.
+ */
+void
+sanctum_offer_install(struct sanctum_key *state, struct sanctum_offer *op)
+{
+	struct sanctum_key_offer	*key;
+
+	PRECOND(state != NULL);
+	PRECOND(op != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_KEY);
+
+	key = &op->data.offer.key;
+
+	sanctum_install_key_material(state, op->hdr.spi, key->salt,
+	    key->key, sizeof(key->key));
+}
+
+/*
+ * Install the given spi, salt and key into the given state.
+ */
+void
+sanctum_install_key_material(struct sanctum_key *state, u_int32_t spi,
+    u_int32_t salt, const void *key, size_t len)
+{
+	PRECOND(state != NULL);
+	PRECOND(spi > 0);
+	PRECOND(key != NULL);
+	PRECOND(len == SANCTUM_KEY_LENGTH);
+
+	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
+		sanctum_cpu_pause();
+
+	if (!sanctum_atomic_cas_simple(&state->state,
+	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
+		fatal("failed to swap key state to generating");
+
+	nyfe_memcpy(state->key, key, len);
+	sanctum_atomic_write(&state->spi, spi);
+	sanctum_atomic_write(&state->salt, salt);
+
+	if (!sanctum_atomic_cas_simple(&state->state,
+	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
+		fatal("failed to swap key state to pending");
 }
 
 /*

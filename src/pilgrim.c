@@ -44,13 +44,11 @@ struct key_offer {
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
 };
 
+static void	pilgrim_drop_access(void);
+
 static void	pilgrim_offer_clear(void);
 static void	pilgrim_offer_check(u_int64_t);
 static void	pilgrim_offer_encrypt(u_int64_t);
-
-static void	pilgrim_drop_access(void);
-static void	pilgrim_install(struct sanctum_key *,
-		    u_int32_t, u_int32_t, void *, size_t);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -194,7 +192,7 @@ pilgrim_offer_check(u_int64_t now)
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
 	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
-	pilgrim_install(io->tx, offer->spi,
+	sanctum_install_key_material(io->tx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));
 
 	sanctum_log(LOG_INFO, "sending fresh key (%s) "
@@ -202,8 +200,6 @@ pilgrim_offer_check(u_int64_t now)
 	    reason, offer->spi, offer_ttl, offer_next_send);
 
 	offer_next = now + SANCTUM_SA_LIFETIME_SOFT;
-
-	/* Wakeup bless so it can setup the TX SA. */
 	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 }
 
@@ -214,7 +210,6 @@ pilgrim_offer_check(u_int64_t now)
 static void
 pilgrim_offer_encrypt(u_int64_t now)
 {
-	struct timespec			ts;
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct sanctum_key_offer	*key;
@@ -228,25 +223,14 @@ pilgrim_offer_encrypt(u_int64_t now)
 	if ((pkt = sanctum_packet_get()) == NULL)
 		goto cleanup;
 
-	op = sanctum_packet_head(pkt);
+	op = sanctum_offer_init(pkt, offer->spi,
+	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
-	/* Construct the header and data. */
-	op->hdr.spi = htobe32(offer->spi);
-	op->hdr.magic = htobe64(SANCTUM_KEY_OFFER_MAGIC);
-	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
-
-	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
-
-	/* Fill in the key offer now. */
-	op->data.type = SANCTUM_OFFER_TYPE_KEY;
 	key = &op->data.offer.key;
-
 	key->salt = offer->salt;
 	key->id = htobe64(local_id);
 	nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
 
-	/* Derive the key to be used. */
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
@@ -255,11 +239,9 @@ pilgrim_offer_encrypt(u_int64_t now)
 		return;
 	}
 
-	/* Encrypt the offer packet. */
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	/* Submit it into purgatory. */
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
@@ -284,32 +266,4 @@ pilgrim_offer_clear(void)
 	sanctum_mem_zero(offer, sizeof(*offer));
 	free(offer);
 	offer = NULL;
-}
-
-/*
- * Install the given key into shared memory so that RX/TX can pick these up.
- */
-static void
-pilgrim_install(struct sanctum_key *state, u_int32_t spi, u_int32_t salt,
-    void *key, size_t len)
-{
-	PRECOND(state != NULL);
-	PRECOND(spi > 0);
-	PRECOND(key != NULL);
-	PRECOND(len == SANCTUM_KEY_LENGTH);
-
-	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
-		sanctum_cpu_pause();
-
-	if (!sanctum_atomic_cas_simple(&state->state,
-	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
-		fatal("failed to swap key state to generating");
-
-	nyfe_memcpy(state->key, key, len);
-	sanctum_atomic_write(&state->spi, spi);
-	sanctum_atomic_write(&state->salt, salt);
-
-	if (!sanctum_atomic_cas_simple(&state->state,
-	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
-		fatal("failed to swap key state to pending");
 }

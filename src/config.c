@@ -366,6 +366,8 @@ config_parse_peer(char *peer)
 	config_parse_ip_port(peer, &addr);
 	sanctum_atomic_write(&sanctum->peer_port, addr.sin_port);
 	sanctum_atomic_write(&sanctum->peer_ip, addr.sin_addr.s_addr);
+
+	sanctum->flags |= SANCTUM_FLAG_PEER_CONFIGURED;
 }
 
 /*

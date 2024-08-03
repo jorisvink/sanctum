@@ -398,6 +398,9 @@ struct sanctum_sun {
 /* If Traffic Flow Condidentiality is enabled (TFC) */
 #define SANCTUM_FLAG_TFC_ENABLED	(1 << 3)
 
+/* Set if a peer was configured manually in the configuration. */
+#define SANCTUM_FLAG_PEER_CONFIGURED	(1 << 4)
+
 /*
  * The modes in which sanctum can run.
  *
@@ -583,8 +586,14 @@ int	sanctum_key_erase(const char *, struct sanctum_key *,
 int	sanctum_cipher_kdf(const char *, const char *,
 	    struct nyfe_agelas *cipher, void *, size_t);
 void	sanctum_offer_encrypt(struct nyfe_agelas *, struct sanctum_offer *);
+void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
 int	sanctum_offer_decrypt(struct nyfe_agelas *,
 	    struct sanctum_offer *, int);
+void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
+	    u_int32_t, const void *, size_t);
+
+struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
+			    u_int32_t, u_int64_t, u_int8_t);
 
 /* platform bits. */
 void	sanctum_platform_init(void);

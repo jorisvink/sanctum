@@ -603,12 +603,10 @@ hymn_status(int argc, char *argv[])
 	    config.tun_mtu);
 
 	if (config.peer_cathedral) {
-		printf("  cathedral\t");
+		printf("  cathedral\t%s", hymn_ip_port_str(&config.cathedral));
 	} else {
-		printf("  peer\t\t");
+		printf("  peer\t\t%s", hymn_ip_port_str(&config.peer));
 	}
-
-	printf("%s", hymn_ip_port_str(&config.peer));
 
 	if (status == NULL && resp.ip != config.peer.ip) {
 		in.s_addr = resp.ip;

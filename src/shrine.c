@@ -35,11 +35,8 @@
 /* The half-time window in which offers are valid. */
 #define SHRINE_OFFER_VALID		(SANCTUM_SA_LIFETIME_SOFT / 2)
 
-static void	shrine_offer_decrypt(struct sanctum_packet *, u_int64_t);
-
 static void	shrine_drop_access(void);
-static void	shrine_install(struct sanctum_key *,
-		    u_int32_t, u_int32_t, void *, size_t);
+static void	shrine_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -132,7 +129,6 @@ static void
 shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
 	struct sanctum_offer		*op;
-	struct sanctum_key_offer	*key;
 	struct nyfe_agelas		cipher;
 
 	PRECOND(pkt != NULL);
@@ -142,70 +138,31 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	op = sanctum_packet_head(pkt);
-
-	/* Derive the key we will use. */
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_cipher_kdf(sanctum->secret, SHRINE_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}
 
-	/* Verify and decrypt the offer. */
 	if (sanctum_offer_decrypt(&cipher, op, SHRINE_OFFER_VALID) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
-
-	/* Verify that this is a key offer. */
 	if (op->data.type != SANCTUM_OFFER_TYPE_KEY)
 		return;
 
-	/* If we have seen this offer recently, ignore it. */
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi == last_spi)
 		return;
 
-	/* Everything checks out, update the peer address if needed. */
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
-	/* Install received key as the RX key. */
-	key = &op->data.offer.key;
-	shrine_install(io->rx, op->hdr.spi,
-	    key->salt, key->key, sizeof(key->key));
+	sanctum_offer_install(io->rx, op);
+	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
 	last_spi = op->hdr.spi;
-
-	/* Wakeup confess so it can setup the RX SA. */
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-}
-
-/*
- * Install the given key into shared memory so that RX/TX can pick these up.
- */
-static void
-shrine_install(struct sanctum_key *state, u_int32_t spi, u_int32_t salt,
-    void *key, size_t len)
-{
-	PRECOND(state != NULL);
-	PRECOND(spi > 0);
-	PRECOND(key != NULL);
-	PRECOND(len == SANCTUM_KEY_LENGTH);
-
-	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
-		sanctum_cpu_pause();
-
-	if (!sanctum_atomic_cas_simple(&state->state,
-	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
-		fatal("failed to swap key state to generating");
-
-	nyfe_memcpy(state->key, key, len);
-	sanctum_atomic_write(&state->spi, spi);
-	sanctum_atomic_write(&state->salt, salt);
-
-	if (!sanctum_atomic_cas_simple(&state->state,
-	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
-		fatal("failed to swap key state to pending");
 }
