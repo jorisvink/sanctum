@@ -84,22 +84,21 @@ static void	cathedral_settings_reload(void);
 static void	cathedral_settings_allow(const char *);
 static void	cathedral_settings_ambry(const char *);
 static void	cathedral_settings_federate_to(const char *);
-
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
-static void	cathedral_peer_info_send(struct sanctum_info_offer *,
-		    struct sockaddr_in *, u_int32_t);
 static void	cathedral_ambry_send(struct sanctum_info_offer *,
+		    struct sockaddr_in *, u_int32_t);
+static void	cathedral_peer_info_send(struct sanctum_info_offer *,
 		    struct sockaddr_in *, u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_federate(struct sanctum_packet *);
 static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
 
-static int	cathedral_tunnel_update_valid(struct sanctum_offer *,
-		    u_int32_t, int);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
 		    u_int64_t, int);
+static int	cathedral_tunnel_update_valid(struct sanctum_offer *,
+		    u_int32_t, int);
 static int	cathedral_tunnel_update_allowed(struct sanctum_info_offer *,
 		    u_int32_t);
 
