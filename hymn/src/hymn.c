@@ -52,6 +52,7 @@
 #define HYMN_SECRET		(1 << 3)
 #define HYMN_KEK		(1 << 4)
 #define HYMN_CATHEDRAL		(1 << 5)
+#define HYMN_IDENTITY		(1 << 6)
 #define HYMN_REQUIRED		(HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
 
 struct addr {
@@ -75,6 +76,7 @@ struct config {
 	struct addr		cathedral;
 
 	u_int32_t		cathedral_id;
+	u_int64_t		cathedral_flock;
 	int			peer_cathedral;
 
 	char			*kek;
@@ -133,6 +135,7 @@ static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
+static void	hymn_config_parse_cathedral_flock(struct config *, char *);
 
 static void	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
@@ -186,6 +189,7 @@ static const struct {
 	{ "secret",		hymn_config_parse_secret },
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
+	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
 	{ NULL,			NULL },
 };
 
@@ -274,7 +278,8 @@ usage_add(void)
 	fprintf(stderr, "    local <ip:port> secret <path> "
 	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
 	fprintf(stderr, "    [kek <path>] [descr <description>] ");
-	fprintf(stderr, "[identity <0xabcdef>]\n");
+	fprintf(stderr, "[identity <32-bit hexint>]\n");
+	fprintf(stderr, "    [flock <64-bit hexint]>\n");
 
 	exit(1);
 }
@@ -341,8 +346,14 @@ hymn_add(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "identity")) {
 			if (config.peer_cathedral == 0)
 				fatal("identity only relevant for cathedral");
+			which |= HYMN_IDENTITY;
 			config.cathedral_id = hymn_number(argv[i + 1], 16,
 			    0, UINT_MAX);
+		} else if (!strcmp(argv[i], "flock")) {
+			if (config.peer_cathedral == 0)
+				fatal("flock only relevant for cathedral");
+			config.cathedral_flock = hymn_number(argv[i + 1], 16,
+			    0, UINT64_MAX);
 		}
 	}
 
@@ -369,10 +380,19 @@ hymn_add(int argc, char *argv[])
 
 	if (!(which & HYMN_TUNNEL))
 		printf("missing tunnel\n");
-	if (!(which & HYMN_SECRET))
-		printf("missing secret\n");
-	if (!(which & HYMN_PEER))
-		printf("missing peer\n");
+
+	if (which & HYMN_CATHEDRAL) {
+		if (!(which & HYMN_IDENTITY))
+			fatal("no cathedral identity given");
+
+		if (!(which & HYMN_KEK) && !(which & HYMN_SECRET))
+			printf("cathedral configured but no kek / secret\n");
+	} else {
+		if (!(which & HYMN_SECRET))
+			printf("missing secret\n");
+		if (!(which & HYMN_PEER))
+			printf("missing peer\n");
+	}
 
 	if ((which & HYMN_REQUIRED) != HYMN_REQUIRED)
 		usage_add();
@@ -614,7 +634,14 @@ hymn_status(int argc, char *argv[])
 		    inet_ntoa(in), ntohs(resp.port));
 	}
 
-	printf("\n\n");
+	printf("\n");
+
+	if (config.peer_cathedral) {
+		printf("    flock\t%" PRIx64 "\n", config.cathedral_flock);
+		printf("    identity\t%" PRIx32 "\n", config.cathedral_id);
+	}
+
+	printf("\n");
 	printf("  routes\n");
 	if (LIST_EMPTY(&config.routes)) {
 		printf("    none\n");
@@ -1062,6 +1089,8 @@ hymn_config_save(const char *path, struct config *cfg)
 	if (cfg->peer_cathedral) {
 		hymn_config_write(fd, "cathedral_id 0x%x\n",
 		    cfg->cathedral_id);
+		hymn_config_write(fd, "cathedral_flock 0x%" PRIx64 "\n",
+		    cfg->cathedral_flock);
 		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-0x%x\n",
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral ");
@@ -1214,6 +1243,12 @@ static void
 hymn_config_parse_cathedral_id(struct config *cfg, char *id)
 {
 	cfg->cathedral_id = hymn_number(id, 16, 0, UINT_MAX);
+}
+
+static void
+hymn_config_parse_cathedral_flock(struct config *cfg, char *flock)
+{
+	cfg->cathedral_flock = hymn_number(flock, 16, 0, UINT64_MAX);
 }
 
 static void

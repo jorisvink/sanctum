@@ -21,6 +21,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,6 +54,7 @@ static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
 static void	config_parse_cathedral_id(char *);
+static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
@@ -85,6 +87,7 @@ static const struct {
 	{ "secretdir",		config_parse_secretdir },
 	{ "settings",		config_parse_settings },
 	{ "cathedral_id",	config_parse_cathedral_id },
+	{ "cathedral_flock",	config_parse_cathedral_flock },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
 	{ NULL,			NULL },
 };
@@ -306,7 +309,7 @@ config_parse_spi(char *opt)
 	PRECOND(opt != NULL);
 
 	if (sscanf(opt, "0x%hx", &spi) != 1)
-		fatal("spi <0xffff>");
+		fatal("spi <16-bit hex value>");
 
 	sanctum->tun_spi = spi;
 }
@@ -595,7 +598,19 @@ config_parse_cathedral_id(char *opt)
 		fatal("no spi prefix has been configured");
 
 	if (sscanf(opt, "0x%08x", &sanctum->cathedral_id) != 1)
-		fatal("cathedral_id <0xffffffff>");
+		fatal("cathedral_id <32-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_flock configuration option.
+ */
+static void
+config_parse_cathedral_flock(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "0x%" PRIx64, &sanctum->cathedral_flock) != 1)
+		fatal("cathedral_flock <64-bit hex value>");
 }
 
 /*

@@ -340,6 +340,7 @@ chapel_cathedral_notify(u_int64_t now)
 
 	op = sanctum_offer_init(pkt, sanctum->cathedral_id,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_INFO);
+	op->hdr.flock = htobe64(sanctum->cathedral_flock);
 
 	info = &op->data.offer.info;
 	info->tunnel = htobe16(sanctum->tun_spi);
@@ -483,7 +484,7 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 	if (op->hdr.spi != sanctum->cathedral_id ||
 	    data->offer.ambry.tunnel != sanctum->tun_spi) {
 		sanctum_log(LOG_NOTICE,
-		    "got an ambry not ment for us (0x%04x)",
+		    "got an ambry not ment for us (%04x)",
 		    data->offer.ambry.tunnel);
 		return;
 	}
@@ -586,7 +587,7 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 		}
 	} else {
 		ambry_generation = be32toh(ambry->generation);
-		sanctum_log(LOG_INFO, "ambry generation 0x%08x active",
+		sanctum_log(LOG_INFO, "ambry generation %08x active",
 		    ambry_generation);
 
 		if (offer != NULL)

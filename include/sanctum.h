@@ -184,6 +184,7 @@ extern int daemon(int, int);
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
+	u_int64_t		flock;
 	u_int32_t		spi;
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
@@ -461,6 +462,9 @@ struct sanctum_state {
 
 	/* The ID to use when talking to a cathedral (tunnel mode only). */
 	u_int32_t		cathedral_id;
+
+	/* The flock we are part of for a cathedral (tunnel mode only). */
+	u_int64_t		cathedral_flock;
 
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
