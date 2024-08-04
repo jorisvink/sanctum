@@ -1068,7 +1068,7 @@ hymn_config_save(const char *path, struct config *cfg)
 		fatal("failed to open '%s': %s", tmp, errno_s);
 
 	hymn_config_write(fd, "# auto generated, do not edit\n");
-	hymn_config_write(fd, "spi 0x%02x%02x\n", cfg->src, cfg->dst);
+	hymn_config_write(fd, "spi %02x%02x\n", cfg->src, cfg->dst);
 	hymn_config_write(fd, "instance hymn-%02x-%02x\n", cfg->src, cfg->dst);
 	hymn_config_write(fd, "pidfile %s/hymn-%02x-%02x.pid\n",
 	    HYMN_RUN_PATH, cfg->src, cfg->dst);
@@ -1087,11 +1087,11 @@ hymn_config_save(const char *path, struct config *cfg)
 	hymn_config_write(fd, "local %s\n", hymn_ip_port_str(&cfg->local));
 
 	if (cfg->peer_cathedral) {
-		hymn_config_write(fd, "cathedral_id 0x%x\n",
+		hymn_config_write(fd, "cathedral_id %x\n",
 		    cfg->cathedral_id);
-		hymn_config_write(fd, "cathedral_flock 0x%" PRIx64 "\n",
+		hymn_config_write(fd, "cathedral_flock %" PRIx64 "\n",
 		    cfg->cathedral_flock);
-		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-0x%x\n",
+		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-%x\n",
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral ");
 		hymn_config_write(fd, "%s\n",
@@ -1395,7 +1395,7 @@ hymn_dump_ifstat(const char *name, struct sanctum_ifstat *st)
 	if (st->spi == 0) {
 		printf("    spi            none\n");
 	} else {
-		printf("    spi            0x%08x (age: %" PRIu64 " seconds)\n",
+		printf("    spi            %08x (age: %" PRIu64 " seconds)\n",
 		    st->spi, ts.tv_sec - st->age);
 	}
 

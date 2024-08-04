@@ -308,7 +308,7 @@ config_parse_spi(char *opt)
 
 	PRECOND(opt != NULL);
 
-	if (sscanf(opt, "0x%hx", &spi) != 1)
+	if (sscanf(opt, "%hx", &spi) != 1)
 		fatal("spi <16-bit hex value>");
 
 	sanctum->tun_spi = spi;
@@ -597,7 +597,7 @@ config_parse_cathedral_id(char *opt)
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
-	if (sscanf(opt, "0x%08x", &sanctum->cathedral_id) != 1)
+	if (sscanf(opt, "%x", &sanctum->cathedral_id) != 1)
 		fatal("cathedral_id <32-bit hex value>");
 }
 
@@ -609,7 +609,7 @@ config_parse_cathedral_flock(char *opt)
 {
 	PRECOND(opt != NULL);
 
-	if (sscanf(opt, "0x%" PRIx64, &sanctum->cathedral_flock) != 1)
+	if (sscanf(opt, "%" PRIx64, &sanctum->cathedral_flock) != 1)
 		fatal("cathedral_flock <64-bit hex value>");
 }
 
