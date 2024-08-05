@@ -587,17 +587,18 @@ sanctum_install_key_material(struct sanctum_key *state, u_int32_t spi,
  * Bind a socket to our configured local address and return it.
  */
 int
-sanctum_bind_local(void)
+sanctum_bind_local(struct sockaddr_in *sin)
 {
 	int		fd, val;
+
+	PRECOND(sin != NULL);
 
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("%s: socket: %s", __func__, errno_s);
 
-	sanctum->local.sin_family = AF_INET;
+	sin->sin_family = AF_INET;
 
-	if (bind(fd, (struct sockaddr *)&sanctum->local,
-	    sizeof(sanctum->local)) == -1)
+	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1)
 		fatal("%s: connect: %s", __func__, errno_s);
 
 	if ((val = fcntl(fd, F_GETFL, 0)) == -1)

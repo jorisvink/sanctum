@@ -56,6 +56,7 @@ static void	config_parse_settings(char *);
 static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
+static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
@@ -89,6 +90,7 @@ static const struct {
 	{ "cathedral_id",	config_parse_cathedral_id },
 	{ "cathedral_flock",	config_parse_cathedral_flock },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
+	{ "cathedral_nat_port",	config_parse_cathedral_nat_port },
 	{ NULL,			NULL },
 };
 
@@ -304,14 +306,10 @@ config_parse_kek(char *path)
 static void
 config_parse_spi(char *opt)
 {
-	u_int16_t	spi;
-
 	PRECOND(opt != NULL);
 
-	if (sscanf(opt, "%hx", &spi) != 1)
+	if (sscanf(opt, "%hx", &sanctum->tun_spi) != 1)
 		fatal("spi <16-bit hex value>");
-
-	sanctum->tun_spi = spi;
 }
 
 /*
@@ -382,6 +380,10 @@ config_parse_local(char *local)
 	PRECOND(local != NULL);
 
 	config_parse_ip_port(local, &sanctum->local);
+
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL &&
+	    sanctum->local.sin_addr.s_addr == 0)
+		fatal("cathedrals require a non-null ipv4 address in local");
 }
 
 /*
@@ -599,6 +601,18 @@ config_parse_cathedral_id(char *opt)
 
 	if (sscanf(opt, "%x", &sanctum->cathedral_id) != 1)
 		fatal("cathedral_id <32-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_nat_port configuration option.
+ */
+static void
+config_parse_cathedral_nat_port(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "%hu", &sanctum->cathedral_nat_port) != 1)
+		fatal("spi <16-bit hex value>");
 }
 
 /*

@@ -262,8 +262,11 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	memcpy(&aad[sizeof(sa->spi)], &hdr->pn, sizeof(hdr->pn));
 
 	if (sanctum_cipher_decrypt(sa->cipher, nonce, sizeof(nonce),
-	    aad, sizeof(aad), pkt) == -1)
+	    aad, sizeof(aad), pkt) == -1) {
+		sanctum_log(LOG_INFO, "pkt of %zu failed to decrypt",
+		    pkt->length);
 		return (-1);
+	}
 
 	if (sa->pending) {
 		sa->pending = 0;
@@ -283,8 +286,10 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	pkt->length -= sanctum_cipher_overhead();
 
 	tail = sanctum_packet_tail(pkt);
-	if (tail->pad != 0)
+	if (tail->pad != 0) {
+		sanctum_log(LOG_INFO, "pad is not 0");
 		return (-1);
+	}
 
 	now = sanctum_atomic_read(&sanctum->uptime);
 	sanctum_atomic_write(&sanctum->heartbeat, now);

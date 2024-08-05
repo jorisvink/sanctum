@@ -163,6 +163,9 @@ extern int daemon(int, int);
 /* The magic for cathedral messages (KATEDRAL). */
 #define SANCTUM_CATHEDRAL_MAGIC		0x4b4154454452414c
 
+/* The magic for NAT detection messages (NATDETEK). */
+#define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4e4154444554454b
+
 /* The KDF label. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
 
@@ -286,6 +289,7 @@ struct sanctum_proc {
  * do not need themselves.
  */
 struct sanctum_proc_io {
+	int			nat;
 	int			clear;
 	int			crypto;
 
@@ -469,6 +473,9 @@ struct sanctum_state {
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
 
+	/* The cathedral nat discovery port (tunnel and cathedral only). */
+	u_int16_t		cathedral_nat_port;
+
 	/* The path to the secredir directory (cathedral mode only). */
 	char			*secretdir;
 
@@ -569,7 +576,6 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
-int	sanctum_bind_local(void);
 int	sanctum_file_open(const char *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
@@ -580,6 +586,7 @@ void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
+int	sanctum_bind_local(struct sockaddr_in *);
 void	sanctum_peer_update(u_int32_t, u_int16_t);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);

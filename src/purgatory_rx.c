@@ -46,8 +46,8 @@ static struct sanctum_proc_io	*io = NULL;
 void
 sanctum_purgatory_rx(struct sanctum_proc *proc)
 {
-	struct pollfd		pfd;
-	int			sig, running;
+	struct pollfd		pfd[2];
+	int			sig, running, count;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -64,10 +64,17 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
-	pfd.fd = io->crypto;
+	count = 1;
+	pfd[0].revents = 0;
+	pfd[0].events = POLLIN;
+	pfd[0].fd = io->crypto;
 
-	pfd.revents = 0;
-	pfd.events = POLLIN;
+	if (io->nat != -1) {
+		count = 2;
+		pfd[1].revents = 0;
+		pfd[1].fd = io->nat;
+		pfd[1].events = POLLIN;
+	}
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -79,13 +86,17 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 			}
 		}
 
-		if (poll(&pfd, 1, -1) == -1) {
+		if (poll(pfd, count, -1) == -1) {
 			if (errno == EINTR)
 				continue;
 			fatal("poll: %s", errno_s);
 		}
 
-		purgatory_rx_recv_packets(io->crypto);
+		if (pfd[0].revents & POLLIN)
+			purgatory_rx_recv_packets(io->crypto);
+
+		if (count == 2 && (pfd[1].revents & POLLIN))
+			purgatory_rx_recv_packets(io->nat);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");

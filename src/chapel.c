@@ -50,6 +50,8 @@ struct rx_offer {
 
 static void	chapel_peer_check(u_int64_t);
 static void	chapel_cathedral_notify(u_int64_t);
+static void	chapel_cathedral_send_info(u_int64_t);
+
 static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_packet(struct sanctum_packet *, u_int64_t);
@@ -324,22 +326,41 @@ chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 static void
 chapel_cathedral_notify(u_int64_t now)
 {
-	struct sanctum_offer		*op;
-	struct sanctum_packet		*pkt;
-	struct sanctum_info_offer	*info;
-	struct nyfe_agelas		cipher;
-
 	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
 	PRECOND(sanctum->cathedral_secret != NULL);
 
 	if (now < cathedral_next)
 		return;
 
+	chapel_cathedral_send_info(SANCTUM_CATHEDRAL_MAGIC);
+
+	if (sanctum->cathedral_nat_port != 0)
+		chapel_cathedral_send_info(SANCTUM_CATHEDRAL_NAT_MAGIC);
+
+	cathedral_next = now + 5;
+}
+
+/*
+ * Send an info message to the cathedral, this is either a normal cathedral
+ * notification message or a NAT detection message.
+ */
+static void
+chapel_cathedral_send_info(u_int64_t magic)
+{
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	struct sanctum_info_offer	*info;
+	struct nyfe_agelas		cipher;
+
+	PRECOND(magic == SANCTUM_CATHEDRAL_MAGIC ||
+	    (magic == SANCTUM_CATHEDRAL_NAT_MAGIC &&
+	    sanctum->cathedral_nat_port != 0));
+
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
-	op = sanctum_offer_init(pkt, sanctum->cathedral_id,
-	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_INFO);
+	op = sanctum_offer_init(pkt,
+	    sanctum->cathedral_id, magic, SANCTUM_OFFER_TYPE_INFO);
 	op->hdr.flock = htobe64(sanctum->cathedral_flock);
 
 	info = &op->data.offer.info;
@@ -362,15 +383,17 @@ chapel_cathedral_notify(u_int64_t now)
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_port = sanctum->cathedral.sin_port;
 	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
+
+	if (magic == SANCTUM_CATHEDRAL_MAGIC)
+		pkt->addr.sin_port = sanctum->cathedral.sin_port;
+	else
+		pkt->addr.sin_port = htobe16(sanctum->cathedral_nat_port);
 
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
-
-	cathedral_next = now + 5;
 }
 
 /*
@@ -446,7 +469,7 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 
 	/* We do not update the peer if it was configured by user. */
 	if (!(sanctum->flags & SANCTUM_FLAG_PEER_CONFIGURED) &&
-	    info->peer_ip != 0 && info->peer_port != 0)  {
+	    info->peer_ip != 0 && info->peer_port != 0) {
 		sanctum_peer_update(info->peer_ip, info->peer_port);
 
 		if (info->peer_ip != info->local_ip &&

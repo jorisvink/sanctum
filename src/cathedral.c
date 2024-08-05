@@ -53,6 +53,8 @@ struct tunnel {
 	u_int64_t		age;
 	u_int16_t		port;
 	u_int64_t		pkts;
+	int			natseen;
+	int			peerinfo;
 	int			federated;
 	LIST_ENTRY(tunnel)	list;
 };
@@ -89,9 +91,12 @@ struct flock {
 };
 
 static struct flock	*cathedral_flock_lookup(u_int64_t);
-static void		cathedral_flock_allows_clear(struct flock *);
-static void		cathedral_flock_tunnels_clear(struct flock *);
-static void		cathedral_flock_ambries_clear(struct flock *);
+static struct tunnel	*cathedral_tunnel_lookup(struct flock *, u_int16_t);
+
+static void	cathedral_flock_allows_clear(struct flock *);
+static void	cathedral_flock_tunnels_clear(struct flock *);
+static void	cathedral_flock_ambries_clear(struct flock *);
+static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
 static int	cathedral_offer_send(const char *, struct sanctum_packet *,
@@ -103,8 +108,6 @@ static void	cathedral_settings_allow(const char *, struct flock *);
 static void	cathedral_settings_ambry(const char *, struct flock *);
 static void	cathedral_settings_flock(const char *, struct flock **);
 
-static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
-
 static void	cathedral_ambry_send(struct flock *,
 		    struct sanctum_info_offer *, struct sockaddr_in *,
 		    u_int32_t);
@@ -115,17 +118,14 @@ static void	cathedral_info_send(struct flock *,
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_federate(struct flock *,
 		    struct sanctum_packet *);
-static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
 
+static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
-		    u_int64_t, int);
+		    u_int64_t, int, int);
 static int	cathedral_tunnel_update_valid(struct flock *,
 		    struct sanctum_offer *, u_int32_t, int);
 static int	cathedral_tunnel_update_allowed(struct flock *,
 		    struct sanctum_info_offer *, u_int32_t);
-
-static struct tunnel	*cathedral_tunnel_lookup(struct flock *,
-			    u_int16_t, int);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -144,6 +144,9 @@ static LIST_HEAD(, flock)	flocks;
  * of the esp header and forward the packet to the correct endpoint.
  *
  * The cathedral can also send the endpoint its ambry for the tunnel.
+ *
+ * Note that the cathedral will use 2 listening sockets, io->crypto and
+ * the io->cathedral one. This is done for NAT detection.
  */
 void
 sanctum_cathedral(struct sanctum_proc *proc)
@@ -226,7 +229,11 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 
 	if ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
-		cathedral_tunnel_update(pkt, now, 0);
+		cathedral_tunnel_update(pkt, now, 0, 0);
+		sanctum_packet_release(pkt);
+	} else if ((spi == (SANCTUM_CATHEDRAL_NAT_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_CATHEDRAL_NAT_MAGIC & 0xffffffff))) {
+		cathedral_tunnel_update(pkt, now, 1, 0);
 		sanctum_packet_release(pkt);
 	} else if ((spi == (CATHEDRAL_CATACOMB_MAGIC >> 32)) &&
 	    (seq == (CATHEDRAL_CATACOMB_MAGIC & 0xffffffff))) {
@@ -245,7 +252,7 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 			return;
 		}
 
-		cathedral_tunnel_update(pkt, now, 1);
+		cathedral_tunnel_update(pkt, now, 0, 1);
 		sanctum_packet_release(pkt);
 	} else {
 		if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
@@ -276,7 +283,8 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
  * create a new tunnel entry or update an existing one.
  */
 static void
-cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
+cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
+    int nat, int catacomb)
 {
 	u_int32_t			id;
 	u_int64_t			fid;
@@ -307,27 +315,42 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now, int catacomb)
 	if (cathedral_tunnel_update_allowed(flock, info, id)== -1)
 		return;
 
-	if (catacomb == 0) {
-		cathedral_ambry_send(flock, info, &pkt->addr, id);
-		cathedral_info_send(flock, info, &pkt->addr, id);
-	}
-
-	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel, 0)) == NULL) {
+	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
 		if ((tun = calloc(1, sizeof(*tun))) == NULL)
 			fatal("calloc failed");
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
 	}
 
-	tun->age = now;
-	tun->id = info->tunnel;
-	tun->port = pkt->addr.sin_port;
-	tun->ip = pkt->addr.sin_addr.s_addr;
+	if (catacomb == 0 && nat == 0) {
+		cathedral_ambry_send(flock, info, &pkt->addr, id);
+		if (tun->peerinfo)
+			cathedral_info_send(flock, info, &pkt->addr, id);
+	}
 
-	if (catacomb == 0)
-		cathedral_tunnel_federate(flock, pkt);
-	else
-		tun->federated = 1;
+	if (tun->natseen) {
+		if ((tun->ip == pkt->addr.sin_addr.s_addr &&
+		    tun->port != pkt->addr.sin_port) ||
+		    tun->ip != pkt->addr.sin_addr.s_addr) {
+			tun->peerinfo = 0;
+		} else {
+			tun->peerinfo = 1;
+		}
+	}
+
+	if (nat) {
+		tun->natseen = 1;
+	} else {
+		tun->age = now;
+		tun->id = info->tunnel;
+		tun->port = pkt->addr.sin_port;
+		tun->ip = pkt->addr.sin_addr.s_addr;
+
+		if (catacomb == 0)
+			cathedral_tunnel_federate(flock, pkt);
+		else
+			tun->federated = 1;
+	}
 }
 
 /*
@@ -525,7 +548,7 @@ cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
  * See if we have peer information for the other end of the tunnel given.
  */
 static struct tunnel *
-cathedral_tunnel_lookup(struct flock *flock, u_int16_t spi, int skip_federated)
+cathedral_tunnel_lookup(struct flock *flock, u_int16_t spi)
 {
 	struct tunnel		*tunnel;
 
@@ -535,9 +558,6 @@ cathedral_tunnel_lookup(struct flock *flock, u_int16_t spi, int skip_federated)
 		if (tunnel->id == spi)
 			break;
 	}
-
-	if (skip_federated && tunnel != NULL && tunnel->federated)
-		tunnel = NULL;
 
 	return (tunnel);
 }
@@ -562,7 +582,10 @@ cathedral_info_send(struct flock *flock, struct sanctum_info_offer *info,
 
 	tunnel = htobe16(info->tunnel);
 
-	if ((peer = cathedral_tunnel_lookup(flock, tunnel, 1)) == NULL)
+	if ((peer = cathedral_tunnel_lookup(flock, tunnel)) == NULL)
+		return;
+
+	if (peer->federated == 1)
 		return;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
@@ -575,9 +598,12 @@ cathedral_info_send(struct flock *flock, struct sanctum_info_offer *info,
 	info->local_port = sin->sin_port;
 	info->local_ip = sin->sin_addr.s_addr;
 
-	if (peer != NULL) {
+	if (peer->peerinfo) {
 		info->peer_ip = peer->ip;
 		info->peer_port = peer->port;
+	} else {
+		info->peer_port = sanctum->local.sin_port;
+		info->peer_ip = sanctum->local.sin_addr.s_addr;
 	}
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);

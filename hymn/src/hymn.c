@@ -77,6 +77,8 @@ struct config {
 
 	u_int32_t		cathedral_id;
 	u_int64_t		cathedral_flock;
+	u_int16_t		cathedral_nat_port;
+
 	int			peer_cathedral;
 
 	char			*kek;
@@ -136,6 +138,7 @@ static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
+static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
 
 static void	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
@@ -190,6 +193,7 @@ static const struct {
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
+	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
 	{ NULL,			NULL },
 };
 
@@ -276,10 +280,10 @@ usage_add(void)
 	fprintf(stderr,
 	    "usage: hymn add <src>-<dst> tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
-	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
+	    "[peer <ip:port>] [cathedral] <ip:port>\\\n");
 	fprintf(stderr, "    [kek <path>] [descr <description>] ");
 	fprintf(stderr, "[identity <32-bit hexint>]\n");
-	fprintf(stderr, "    [flock <64-bit hexint]>\n");
+	fprintf(stderr, "    [flock <64-bit hexint]> [natport <port>]\n");
 
 	exit(1);
 }
@@ -343,6 +347,11 @@ hymn_add(int argc, char *argv[])
 			which |= HYMN_CATHEDRAL;
 			hymn_ip_port_parse(&config.cathedral, argv[i + 1]);
 			config.peer_cathedral = 1;
+		} else if (!strcmp(argv[i], "natport")) {
+			if (config.peer_cathedral == 0)
+				fatal("natport only relevant for cathedral");
+			config.cathedral_nat_port = hymn_number(argv[i + 1],
+			    10, 0, USHRT_MAX);
 		} else if (!strcmp(argv[i], "identity")) {
 			if (config.peer_cathedral == 0)
 				fatal("identity only relevant for cathedral");
@@ -1097,6 +1106,8 @@ hymn_config_save(const char *path, struct config *cfg)
 		    cfg->cathedral_flock);
 		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-%x\n",
 		    cfg->cathedral_id);
+		hymn_config_write(fd, "cathedral_nat_port %u\n",
+		    cfg->cathedral_nat_port);
 		hymn_config_write(fd, "cathedral ");
 		hymn_config_write(fd, "%s\n",
 		    hymn_ip_port_str(&cfg->cathedral));
@@ -1253,6 +1264,12 @@ static void
 hymn_config_parse_cathedral_flock(struct config *cfg, char *flock)
 {
 	cfg->cathedral_flock = hymn_number(flock, 16, 0, UINT64_MAX);
+}
+
+static void
+hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
+{
+	cfg->cathedral_nat_port = hymn_number(natport, 10, 0, USHRT_MAX);
 }
 
 static void
