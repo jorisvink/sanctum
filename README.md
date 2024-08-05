@@ -122,6 +122,20 @@ This allows one-way traffic to flow from a pilgrim to the shrine
 with a strong guarantee that the shrine cannot send data back
 (there are no keys).
 
+## Cathedrals
+
+A cathedral is a sanctum mode that can run on a machine somewhere
+and will relay packets between tunnel end-points without being able
+to read, inject or modify packets.
+
+Peers can use a cathedral to move to a peer-to-peer end-to-end encrypted
+connection if both peers are behind a not too restrictive NAT.
+
+A cathedral may also be used as an Ambry distribution point for
+shared secret rollover.
+
+Please read docs/cathedral.md for more.
+
 ## Building
 
 ```
