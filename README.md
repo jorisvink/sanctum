@@ -113,10 +113,10 @@ Sanctum supports unidirectional tunnels, this is called the pilgrim
 or shrine mode.
 
 In pilgrim mode, sanctum will be able to send encrypted traffic to its
-shrine peer. It will however never send an **RX* key to its peer (a shrine).
+shrine peer. It will however never send an **RX** key to its peer (a shrine).
 
 In shrine mode, sanctum will be able to verify and decrypt the arriving traffic
-but will never receive a **TX* key from its peer.
+but will never receive a **TX** key from its peer.
 
 This allows one-way traffic to flow from a pilgrim to the shrine
 with a strong guarantee that the shrine cannot send data back
