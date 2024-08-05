@@ -618,6 +618,10 @@ hymn_status(int argc, char *argv[])
 	}
 
 	printf("hymn-%02x-%02x:\n", src, dst);
+
+	if (config.descr != NULL)
+		printf("  name\t\t%s\n", config.descr);
+
 	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
 	    config.tun_mtu);
