@@ -1,13 +1,16 @@
 # Agelas
 
-Agelas is an AEAD based on Keccak-f[1600,24] providing at least 256-bit
-of security for confidentiality and integrity.
+Agelas is an AEAD based on Keccak-f[1600,24] in duplex mode, providing at
+least 256-bit of security for confidentiality and integrity.
 
 The underlying keccak state is initialized with a capacity of 512-bits.
 This puts the rate at 136 bytes.
 
 Agelas operates on 128 byte blocks as it retains 8 bytes per block for a
 56-bit state counter and a single domain seperation byte.
+
+As long as Keccak-f[1600,24] its security guarantees hold, Agelas is
+safe to use.
 
 ```
 init(key):
