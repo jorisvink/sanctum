@@ -81,11 +81,9 @@ authenticate(tag, taglen):
 
 ## Caveats
 
-Agelas does not include a nonce of sorts, making it more difficult
-to use when trying to encrypt multiple messages under the same key.
-
 Be extremely careful to not use the same key to encrypt different
-plaintexts as that will lead to the loss of confidentiality, big time.
+plaintexts as that will lead to the loss of confidentiality for the
+entire first 128-byte block.
 
 You are warned.
 
