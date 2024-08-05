@@ -44,8 +44,9 @@ decryption(ct):
 		State <- Keccak1600.squeeze(136)
 ```
 
-Additional Authenticated Data may be added at any time as long as this
-matches in both the encryption and decryption process.
+Additional Authenticated Data may be added at any time as long as it is
+done at the same position in the stream in both the encryption and
+decryption process.
 
 Each AAD call must fit in a single agelas_bytepad() block.
 
