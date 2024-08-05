@@ -163,8 +163,8 @@ extern int daemon(int, int);
 /* The magic for cathedral messages (KATEDRAL). */
 #define SANCTUM_CATHEDRAL_MAGIC		0x4b4154454452414c
 
-/* The magic for NAT detection messages (NATDETEK). */
-#define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4e4154444554454b
+/* The magic for NAT detection messages (CIBORIUM). */
+#define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4349424f5249554d
 
 /* The KDF label. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
