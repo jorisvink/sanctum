@@ -65,8 +65,10 @@ heaven-rx (red) -> bless (encrypt) -> purgatory-tx (black)
 ```
 
 When the processes start they will remove any of the queues they do not
-need for operating. Because of this, it is impossible for a packet that
-arrives on the plaintext interface to be moved to the ciphertext
+need for operating.
+
+As an example of why this is important, it is impossible for a packet
+that arrives on the plaintext interface to be moved to the ciphertext
 interface without passing the encryption process.
 
 ## Key Exchange
