@@ -89,8 +89,8 @@ plaintexts as that will lead to the loss of confidentiality, big time.
 
 You are warned.
 
-A nonce-like construct may be used by encrypting an 128-byte block that
-contains the nonce, this will effectively make the rest of keystream
+A nonce-like construct may be used by first encrypting an 128-byte block
+that contains the nonce, this will effectively make the rest of keystream
 depend on it.
 
 Not fully formally reviewed.
