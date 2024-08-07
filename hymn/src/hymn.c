@@ -738,16 +738,20 @@ hymn_list(int argc, char *argv[])
 	int					normal_tunnels;
 	char					path[PATH_MAX];
 
-	if (argc != 0)
-		fatal("Usage: hymn list");
+	if (argc > 1)
+		fatal("Usage: hymn list [flock]");
 
 	normal_tunnels = hymn_tunnel_list(&list);
 
-	if (normal_tunnels)
+	if (argc == 0 && normal_tunnels)
 		printf("normal tunnels:\n");
 
 	while ((tun = TAILQ_FIRST(&list)) != NULL) {
+		/* Yes we are leaking and thats fine, we are dead soon. */
 		TAILQ_REMOVE(&list, tun, list);
+
+		if (argc == 1 && strcmp(tun->config.flock, argv[0]))
+			continue;
 
 		if (strcmp(tun->config.flock, "hymn") && normal_tunnels) {
 			normal_tunnels = 0;
