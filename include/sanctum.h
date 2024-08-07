@@ -492,7 +492,7 @@ struct sanctum_state {
 	struct sanctum_sun	control;
 
 	/* The sanctum instance name. */
-	char			instance[16];	/* XXX */
+	char			instance[32];	/* XXX */
 
 	/* The sanctum instance description. */
 	char			descr[32];	/* XXX */
