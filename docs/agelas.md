@@ -1,7 +1,7 @@
 # Agelas
 
-Agelas is an AEAD based on Keccak-f[1600,24] in duplex mode, providing at
-least 256-bit of security for confidentiality and integrity.
+Agelas is an AEAD stream cipher based on Keccak-f[1600,24] in duplex mode,
+providing at least 256-bit of security for confidentiality and integrity.
 
 The underlying keccak state is initialized with a capacity of 512-bits.
 This puts the rate at 136 bytes.
