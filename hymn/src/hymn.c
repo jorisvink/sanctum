@@ -1158,6 +1158,8 @@ hymn_tunnel_list(struct tunnels *list)
 			TAILQ_INSERT_HEAD(list, tun, list);
 		} else {
 			TAILQ_FOREACH(entry, list, list) {
+				if (entry->config.cathedral_flock == 0)
+					continue;
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
 				    entry->config.src > src) {
