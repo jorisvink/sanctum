@@ -17,7 +17,9 @@
 	(syscall-number SYS_openat))
 
 ;; Allow access to the secret, most likely under /etc.
-;; The file-write-* on all here isn't ideal.
+;;
+;; The file-write-* on all here isn't ideal and we should
+;; restrict it in the future.
 (allow file-read* file-write* file-test-existence
 	(subpath "/etc")
 	(subpath "/var")
@@ -27,3 +29,9 @@
 	(subpath "/private/var/db/timezone")
 	(path (param "KEY_PATH"))
 	(path (param "KEY_PATH_NEW")))
+
+(if (param "KEK_PATH")
+	(allow file-read* file-test-existence (path (param "KEK_PATH"))))
+
+(if (param "CATHEDRAL_SECRET")
+	(allow file-read* file-test-existence (path (param "CATHEDRAL_SECRET"))))
