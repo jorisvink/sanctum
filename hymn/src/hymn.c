@@ -1265,10 +1265,18 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	if ((fd = open(tmp, O_CREAT | O_TRUNC | O_WRONLY, 0700)) == -1)
 		fatal("failed to open '%s': %s", tmp, errno_s);
 
+	if (!strcmp(flock, "hymn")) {
+		len = 4;
+	} else if (strlen(flock) >= 8) {
+		len = 8;
+	} else {
+		fatal("flock has a bad format");
+	}
+
 	hymn_config_write(fd, "# auto generated, do not edit\n");
 	hymn_config_write(fd, "spi %02x%02x\n", cfg->src, cfg->dst);
-	hymn_config_write(fd, "instance %s-%02x-%02x\n",
-	    flock, cfg->src, cfg->dst);
+	hymn_config_write(fd, "instance %.*s-%02x-%02x\n",
+	    len, flock, cfg->src, cfg->dst);
 	hymn_config_write(fd, "pidfile %s/%s-%02x-%02x.pid\n",
 	    HYMN_RUN_PATH, flock, cfg->src, cfg->dst);
 	hymn_config_write(fd, "tunnel %s %u\n",

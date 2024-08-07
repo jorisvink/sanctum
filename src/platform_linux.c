@@ -179,7 +179,7 @@ sanctum_platform_init(void)
 }
 
 /*
- * Linux tunnel device creation. The sanctum.clr device is created and a
+ * Linux tunnel device creation. The device is created and a
  * file descriptor for it is returned to the caller.
  *
  * XXX - permissions on tunnel device.
@@ -196,7 +196,7 @@ sanctum_platform_tundev_create(void)
 		fatal("failed to open /dev/net/tun: %s", errno_s);
 
 	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name),
-	    "%s.clr", sanctum->instance);
+	    "%s", sanctum->instance);
 	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("sanctum.clr interface name too large");
 
