@@ -86,6 +86,7 @@ struct config {
 	char			*kek;
 	char			*descr;
 	char			*secret;
+	char			*identity_path;
 
 	struct addrlist		routes;
 	struct addrlist		accepts;
@@ -302,7 +303,7 @@ usage_add(void)
 	fprintf(stderr, "    local <ip:port> secret <path> "
 	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
 	fprintf(stderr, "    [kek <path>] [descr <description>] ");
-	fprintf(stderr, "[identity <32-bit hexint>]\n");
+	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
 	fprintf(stderr, "    [natport <port>]\n");
 
 	exit(1);
@@ -311,6 +312,7 @@ usage_add(void)
 static int
 hymn_add(int argc, char *argv[])
 {
+	char			*p;
 	u_int32_t		which;
 	struct config		config;
 	int			i, len;
@@ -349,7 +351,7 @@ hymn_add(int argc, char *argv[])
 			which |= HYMN_KEK;
 			if (config.kek != NULL)
 				fatal("duplicate kek");
-			if ((config.kek= strdup(argv[i + 1])) == NULL)
+			if ((config.kek = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
 		} else if (!strcmp(argv[i], "descr")) {
 			hymn_config_set_descr(&config, argv[i + 1]);
@@ -372,6 +374,11 @@ hymn_add(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "identity")) {
 			if (config.peer_cathedral == 0)
 				fatal("identity only relevant for cathedral");
+			if ((p = strchr(argv[i + 1], ':')) != NULL) {
+				*(p)++ = '\0';
+				if ((config.identity_path = strdup(p)) == NULL)
+					fatal("strdup");
+			}
 			which |= HYMN_IDENTITY;
 			config.cathedral_id = hymn_number(argv[i + 1], 16,
 			    0, UINT_MAX);
@@ -1279,8 +1286,14 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral_flock %" PRIx64 "\n",
 		    cfg->cathedral_flock);
-		hymn_config_write(fd, "cathedral_secret /etc/hymn/id-%x\n",
-		    cfg->cathedral_id);
+		if (cfg->identity_path != NULL) {
+			hymn_config_write(fd,
+			    "cathedral_secret %s\n", cfg->identity_path);
+		} else {
+			hymn_config_write(fd,
+			    "cathedral_secret /etc/hymn/id-%x\n",
+			    cfg->cathedral_id);
+		}
 		hymn_config_write(fd, "cathedral_nat_port %u\n",
 		    cfg->cathedral_nat_port);
 		hymn_config_write(fd, "cathedral ");
