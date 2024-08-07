@@ -226,6 +226,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 	state.active.salt = state.pending.salt;
 	state.active.seqnr = state.pending.seqnr;
 	state.active.cipher = state.pending.cipher;
+	state.active.pending = state.pending.pending;
 
 	sanctum_mem_zero(&state.pending, sizeof(state.pending));
 }
