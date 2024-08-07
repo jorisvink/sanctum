@@ -808,7 +808,7 @@ cathedral_secret_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
 	PRECOND(buf != NULL);
 	PRECOND(buflen > 0);
 
-	len = snprintf(buf, buflen, "%s/flock-%" PRIx64 "/%x.key",
+	len = snprintf(buf, buflen, "%s/flock-%" PRIx64 "/%08x.key",
 	    sanctum->secretdir, flock, id);
 	if (len == -1 || (size_t)len >= buflen)
 		fatal("failed to construct path to secret");
