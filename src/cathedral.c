@@ -44,6 +44,9 @@
 /* The KDF label for the tunnel sync. */
 #define CATHEDRAL_CATACOMB_LABEL	"SANCTUM.CATHEDRAL.CATACOMB"
 
+/* The length of an ambry bundle. */
+#define CATHEDRAL_AMBRY_BUNDLE_LEN	8486416
+
 /*
  * A known tunnel and its endpoint, or a federated cathedral.
  */
@@ -83,6 +86,8 @@ struct ambry {
  */
 struct flock {
 	u_int64_t		id;
+	int			retain;
+	time_t			ambry_mtime;
 	u_int32_t		ambry_generation;
 	LIST_HEAD(, allow)	allows;
 	LIST_HEAD(, tunnel)	tunnels;
@@ -116,6 +121,7 @@ static void	cathedral_info_send(struct flock *,
 		    u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
+static void	cathedral_tunnel_prune(struct flock *);
 static void	cathedral_tunnel_federate(struct flock *,
 		    struct sanctum_packet *);
 
@@ -320,6 +326,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 			fatal("calloc failed");
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
+		sanctum_log(LOG_INFO, "tunnel 0x%04x discovered", info->tunnel);
 	}
 
 	if (catacomb == 0 && nat == 0) {
@@ -560,6 +567,37 @@ cathedral_tunnel_lookup(struct flock *flock, u_int16_t spi)
 	}
 
 	return (tunnel);
+}
+
+/*
+ * Remove tunnels from the flock that are no longer configured.
+ */
+static void
+cathedral_tunnel_prune(struct flock *flock)
+{
+	struct allow		*allow;
+	struct tunnel		*tun, *next;
+
+	PRECOND(flock != NULL);
+
+	for (tun = LIST_FIRST(&flock->tunnels); tun != NULL; tun = next) {
+		next = LIST_NEXT(tun, list);
+
+		LIST_FOREACH(allow, &flock->allows, list) {
+			if (allow->spi == tun->id >> 8)
+				break;
+		}
+
+		if (allow == NULL) {
+			sanctum_log(LOG_INFO, "peer 0x%02x must be deleted",
+			    tun->id >> 8);
+			LIST_REMOVE(tun, list);
+			free(tun);
+		} else {
+			sanctum_log(LOG_INFO, "peer 0x%02x retained",
+			    tun->id >> 8);
+		}
+	}
 }
 
 /*
@@ -821,8 +859,8 @@ static void
 cathedral_settings_reload(void)
 {
 	FILE			*fp;
-	struct flock		*flock;
 	struct tunnel		*entry;
+	struct flock		*flock, *next;
 	char			buf[256], *kw, *option;
 
 	if (sanctum->settings == NULL)
@@ -834,14 +872,8 @@ cathedral_settings_reload(void)
 		return;
 	}
 
-	while ((flock = LIST_FIRST(&flocks)) != NULL) {
-		cathedral_flock_allows_clear(flock);
-		cathedral_flock_ambries_clear(flock);
-		cathedral_flock_tunnels_clear(flock);
-
-		LIST_REMOVE(flock, list);
-		free(flock);
-	}
+	LIST_FOREACH(flock, &flocks, list)
+		flock->retain = 0;
 
 	while ((entry = LIST_FIRST(&federations)) != NULL) {
 		LIST_REMOVE(entry, list);
@@ -885,6 +917,27 @@ cathedral_settings_reload(void)
 			sanctum_log(LOG_NOTICE,
 			    "unknown keyword '%s' in settings", kw);
 		}
+	}
+
+	for (flock = LIST_FIRST(&flocks); flock != NULL; flock = next) {
+		next = LIST_NEXT(flock, list);
+
+		if (flock->retain) {
+			sanctum_log(LOG_INFO, "flock %" PRIx64 " retained",
+			    flock->id);
+			cathedral_tunnel_prune(flock);
+			continue;
+		}
+
+		sanctum_log(LOG_INFO, "flock %" PRIx64 " is gone", flock->id);
+
+		LIST_REMOVE(flock, list);
+
+		cathedral_flock_allows_clear(flock);
+		cathedral_flock_ambries_clear(flock);
+		cathedral_flock_tunnels_clear(flock);
+
+		free(flock);
 	}
 
 	sanctum_log(LOG_INFO, "settings reloaded");
@@ -949,15 +1002,22 @@ cathedral_settings_flock(const char *option, struct flock **out)
 		return;
 	}
 
-	if ((flock = calloc(1, sizeof(*flock))) == NULL)
-		fatal("calloc: failed");
+	if ((flock = cathedral_flock_lookup(id)) != NULL) {
+		flock->retain = 1;
+		cathedral_flock_allows_clear(flock);
+		cathedral_flock_ambries_clear(flock);
+	} else {
+		if ((flock = calloc(1, sizeof(*flock))) == NULL)
+			fatal("calloc: failed");
 
-	flock->id = id;
+		flock->id = id;
+		flock->retain = 1;
 
-	LIST_INIT(&flock->allows);
-	LIST_INIT(&flock->ambries);
-	LIST_INIT(&flock->tunnels);
-	LIST_INSERT_HEAD(&flocks, flock, list);
+		LIST_INIT(&flock->allows);
+		LIST_INIT(&flock->ambries);
+		LIST_INIT(&flock->tunnels);
+		LIST_INSERT_HEAD(&flocks, flock, list);
+	}
 
 	*out = flock;
 }
@@ -995,6 +1055,9 @@ cathedral_settings_allow(const char *option, struct flock *flock)
 
 /*
  * Load the ambry file containing wrapped secrets for clients.
+ *
+ * We check if the ambry has been modified since last time and do not
+ * reload it if it should still be the same.
  */
 static void
 cathedral_settings_ambry(const char *option, struct flock *flock)
@@ -1023,24 +1086,30 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 	}
 
 	len = st.st_size;
-
-	if (len < sizeof(hdr)) {
-		sanctum_log(LOG_NOTICE, "ambry file has an abnormal size");
+	if (len != CATHEDRAL_AMBRY_BUNDLE_LEN) {
+		sanctum_log(LOG_NOTICE,
+		    "ambry file '%s' has an abnormal size", option);
 		goto out;
 	}
+
+	if (st.st_mtime == flock->ambry_mtime)
+		goto out;
 
 	if (nyfe_file_read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
-		sanctum_log(LOG_NOTICE, "failed to read ambry header");
+		sanctum_log(LOG_NOTICE,
+		    "ambry file '%s' failed to read header", option);
 		goto out;
 	}
 
-	flock->ambry_generation = be32toh(hdr.generation);
+	hdr.generation = be32toh(hdr.generation);
+	if (hdr.generation == flock->ambry_generation)
+		goto out;
+
+	sanctum_log(LOG_INFO,
+	    "reloading ambry file for flock %" PRIx64, flock->id);
+
 	len -= sizeof(hdr);
-
-	if ((len % sizeof(entry)) != 0) {
-		sanctum_log(LOG_NOTICE, "ambry file has an abnormal size");
-		goto out;
-	}
+	cathedral_flock_ambries_clear(flock);
 
 	for (;;) {
 		if ((ambry = calloc(1, sizeof(*ambry))) == NULL)
@@ -1056,11 +1125,15 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 
 		if (ret != sizeof(entry)) {
 			sanctum_log(LOG_NOTICE,
-			    "ambry file had partial entries, ignoring file");
+			    "ambry file '%s' had partial entries, ignoring",
+			    option);
 			cathedral_flock_ambries_clear(flock);
 			break;
 		}
 	}
+
+	flock->ambry_mtime = st.st_mtime;
+	flock->ambry_generation = hdr.generation;
 
 out:
 	(void)close(fd);
