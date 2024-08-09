@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -255,8 +255,8 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 {
 	struct stat	st;
 	size_t		flen;
-	int		fd, len;
-	const char	*params[8];
+	const char	*params[16];
+	int		fd, len, idx;
 	char		*profile, *errmsg, path[1024];
 
 	PRECOND(proc != NULL);
@@ -279,10 +279,32 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		break;
 	}
 
-	/* Construct all parameters that the profiles can use. */
-	params[0] = "KEY_PATH";
-	params[1] = sanctum->secret;
-	params[2] = NULL;
+	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to construct new path");
+
+	/*
+	 * Construct all parameters that the profiles can use.
+	 * Note that it doesn't mean they will, for example only
+	 * chapel will ues KEY_PATH, KEK_PATH or CATHEDRAL_SECRET.
+	 */
+	idx = 0;
+	params[idx++] = "KEY_PATH";
+	params[idx++] = sanctum->secret;
+	params[idx++] = "KEY_PATH_NEW";
+	params[idx++] = path;
+
+	if (sanctum->cathedral_secret != NULL) {
+		params[idx++] = "CATHEDRAL_SECRET";
+		params[idx++] = sanctum->cathedral_secret;
+	}
+
+	if (sanctum->kek != NULL) {
+		params[idx++] = "KEK_PATH";
+		params[idx++] = sanctum->kek;
+	}
+
+	params[idx] = NULL;
 
 	/* Open the profile from disk. */
 	len = snprintf(path, sizeof(path), "%s/%s.sb",

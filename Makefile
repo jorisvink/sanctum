@@ -47,8 +47,8 @@ endif
 
 LDFLAGS+=$(LIBNYFE)
 
-ifeq ("$(HPERF)", "1")
-	CFLAGS+=-DSANCTUM_HIGH_PERFORMANCE=1
+ifeq ("$(JUMBO_FRAMES)", "1")
+	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
 endif
 
 ifeq ("$(CIPHER)", "openssl-aes-gcm")
@@ -86,6 +86,7 @@ OBJS+=	$(OBJDIR)/version.o
 
 all: $(BIN)
 	$(MAKE) -C hymn
+	$(MAKE) -C ambry
 	$(MAKE) -C pontifex
 
 $(BIN): $(OBJDIR) $(LIBNYFE) $(OBJS) $(VERSION)
@@ -114,6 +115,7 @@ install-bin: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 	$(MAKE) -C hymn install
+	$(MAKE) -C ambry install
 	$(MAKE) -C pontifex install
 
 install-darwin-sb:
@@ -135,6 +137,7 @@ clean:
 	rm -f $(VERSION)
 	$(MAKE) -C nyfe clean
 	$(MAKE) -C hymn clean
+	$(MAKE) -C ambry clean
 	$(MAKE) -C pontifex clean
 	rm -rf $(OBJDIR) $(BIN)
 

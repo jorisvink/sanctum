@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -46,8 +46,8 @@ static struct sanctum_proc_io	*io = NULL;
 void
 sanctum_purgatory_rx(struct sanctum_proc *proc)
 {
-	struct pollfd		pfd;
-	int			sig, running;
+	struct pollfd		pfd[2];
+	int			sig, running, count;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -64,10 +64,17 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
-	pfd.fd = io->crypto;
+	count = 1;
+	pfd[0].revents = 0;
+	pfd[0].events = POLLIN;
+	pfd[0].fd = io->crypto;
 
-	pfd.revents = 0;
-	pfd.events = POLLIN;
+	if (io->nat != -1) {
+		count = 2;
+		pfd[1].revents = 0;
+		pfd[1].fd = io->nat;
+		pfd[1].events = POLLIN;
+	}
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -79,13 +86,17 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 			}
 		}
 
-		if (poll(&pfd, 1, -1) == -1) {
+		if (poll(pfd, count, -1) == -1) {
 			if (errno == EINTR)
 				continue;
 			fatal("poll: %s", errno_s);
 		}
 
-		purgatory_rx_recv_packets(io->crypto);
+		if (pfd[0].revents & POLLIN)
+			purgatory_rx_recv_packets(io->crypto);
+
+		if (count == 2 && (pfd[1].revents & POLLIN))
+			purgatory_rx_recv_packets(io->nat);
 	}
 
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -257,6 +268,18 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 			pkt->target = SANCTUM_PROC_SHRINE;
 		else
 			pkt->target = SANCTUM_PROC_CHAPEL;
+		return (0);
+	}
+
+	/*
+	 * Cathedral responses go to the chapel if we're in tunnel mode
+	 * and have a cathedral configured.
+	 */
+	if (sanctum->mode == SANCTUM_MODE_TUNNEL &&
+	    (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
+	    ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff)))) {
+		pkt->target = SANCTUM_PROC_CHAPEL;
 		return (0);
 	}
 

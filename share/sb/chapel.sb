@@ -9,16 +9,29 @@
 (allow syscall-unix
 	(syscall-number SYS_open)
 	(syscall-number SYS_read)
+	(syscall-number SYS_write)
+	(syscall-number SYS_unlink)
+	(syscall-number SYS_rename)
 	(syscall-number SYS_access)
 	(syscall-number SYS_fstat64)
 	(syscall-number SYS_openat))
 
 ;; Allow access to the secret, most likely under /etc.
-(allow file-read* file-test-existence
+;;
+;; The file-write-* on all here isn't ideal and we should
+;; restrict it in the future.
+(allow file-read* file-write* file-test-existence
 	(subpath "/etc")
 	(subpath "/var")
 	(subpath "/usr/local/bin")
 	(subpath "/private/etc")
 	(subpath "/private/var")
 	(subpath "/private/var/db/timezone")
-	(path (param "KEY_PATH")))
+	(path (param "KEY_PATH"))
+	(path (param "KEY_PATH_NEW")))
+
+(if (param "KEK_PATH")
+	(allow file-read* file-test-existence (path (param "KEK_PATH"))))
+
+(if (param "CATHEDRAL_SECRET")
+	(allow file-read* file-test-existence (path (param "CATHEDRAL_SECRET"))))

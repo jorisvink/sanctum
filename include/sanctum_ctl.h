@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -45,6 +45,8 @@ struct sanctum_ctl {
 struct sanctum_ctl_status_response {
 	struct sanctum_ifstat	tx;
 	struct sanctum_ifstat	rx;
+	u_int32_t		ip;
+	u_int16_t		port;
 };
 
 #endif

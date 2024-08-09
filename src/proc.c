@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -94,10 +94,19 @@ void
 sanctum_proc_start(void)
 {
 	struct sanctum_proc_io		io;
+	struct sockaddr_in		nat;
 
 	sanctum_proc_create(SANCTUM_PROC_CONTROL, sanctum_control, NULL);
 
-	io.crypto = sanctum_bind_local();
+	io.crypto = sanctum_bind_local(&sanctum->local);
+
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
+		memcpy(&nat, &sanctum->local, sizeof(nat));
+		nat.sin_port = htobe16(sanctum->cathedral_nat_port);
+		io.nat = sanctum_bind_local(&nat);
+	} else {
+		io.nat = -1;
+	}
 
 	io.purgatory = sanctum_ring_alloc(1024);
 

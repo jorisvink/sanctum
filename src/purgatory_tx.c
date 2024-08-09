@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -114,7 +114,6 @@ purgatory_tx_drop_access(void)
 static void
 purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 {
-	ssize_t			ret;
 	struct sockaddr_in	peer;
 	u_int8_t		*data;
 
@@ -122,7 +121,7 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_PURGATORY_TX);
 	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
 
-	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+	if (pkt->addr.sin_family == 0) {
 		peer.sin_family = AF_INET;
 		peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
 		peer.sin_addr.s_addr = sanctum_atomic_read(&sanctum->peer_ip);
@@ -138,8 +137,8 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	for (;;) {
 		data = sanctum_packet_head(pkt);
 
-		if ((ret = sendto(fd, data, pkt->length, 0,
-		    (struct sockaddr *)&peer, sizeof(peer))) == -1) {
+		if (sendto(fd, data, pkt->length, 0,
+		    (struct sockaddr *)&peer, sizeof(peer)) == -1) {
 			if (errno == EINTR)
 				continue;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)

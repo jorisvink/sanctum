@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 
 #include <netinet/in.h>
+#include <netinet/ip.h>
 
 #include <poll.h>
 #include <inttypes.h>
@@ -203,7 +204,6 @@ confess_packet_process(struct sanctum_packet *pkt)
 	hdr = sanctum_packet_head(pkt);
 	hdr->esp.spi = be32toh(hdr->esp.spi);
 	hdr->esp.seq = be32toh(hdr->esp.seq);
-	hdr->pn = be64toh(hdr->pn);
 
 	if (confess_with_slot(&state.active, pkt) != -1)
 		return;
@@ -225,6 +225,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 	state.active.salt = state.pending.salt;
 	state.active.seqnr = state.pending.seqnr;
 	state.active.cipher = state.pending.cipher;
+	state.active.pending = state.pending.pending;
 
 	sanctum_mem_zero(&state.pending, sizeof(state.pending));
 }
@@ -235,7 +236,9 @@ confess_packet_process(struct sanctum_packet *pkt)
 static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
+	u_int32_t			spi;
 	u_int64_t			now;
+	struct ip			*ip;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
 	u_int8_t			nonce[12], aad[12];
@@ -256,12 +259,15 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
 	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
 
-	memcpy(aad, &sa->spi, sizeof(sa->spi));
-	memcpy(&aad[sizeof(sa->spi)], &hdr->pn, sizeof(hdr->pn));
+	spi = htobe32(sa->spi);
+	memcpy(aad, &spi, sizeof(spi));
+	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
 
 	if (sanctum_cipher_decrypt(sa->cipher, nonce, sizeof(nonce),
 	    aad, sizeof(aad), pkt) == -1)
 		return (-1);
+
+	hdr->pn = be64toh(hdr->pn);
 
 	if (sa->pending) {
 		sa->pending = 0;
@@ -273,7 +279,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	}
 
 	confess_arwin_update(sa, pkt, hdr);
-	sanctum_peer_update(pkt);
+	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
 	/* The length was checked earlier by the caller. */
 	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
@@ -297,6 +303,12 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->next != IPPROTO_IP)
 		return (-1);
 
+	/* Remove the TFC padding if enabled. */
+	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
+		ip = sanctum_packet_data(pkt);
+		pkt->length = be16toh(ip->ip_len);
+	}
+
 	/* The packet checks out, it is bound for heaven. */
 	pkt->target = SANCTUM_PROC_HEAVEN_TX;
 
@@ -315,30 +327,31 @@ static int
 confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
     struct sanctum_ipsec_hdr *hdr)
 {
-	u_int64_t	bit;
+	u_int64_t	bit, pn;
 
 	PRECOND(sa != NULL);
 	PRECOND(pkt != NULL);
 	PRECOND(hdr != NULL);
 
-	if ((hdr->pn & 0xffffffff) != hdr->esp.seq)
+	pn = be64toh(hdr->pn);
+
+	if ((pn & 0xffffffff) != hdr->esp.seq)
 		return (-1);
 
-	if (hdr->pn > sa->seqnr)
+	if (pn > sa->seqnr)
 		return (0);
 
-	if (hdr->pn > 0 && SANCTUM_ARWIN_SIZE > sa->seqnr - hdr->pn) {
-		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - hdr->pn);
+	if (pn > 0 && SANCTUM_ARWIN_SIZE > sa->seqnr - pn) {
+		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - pn);
 		if (sa->bitmap & ((u_int64_t)1 << bit)) {
 			sanctum_log(LOG_INFO,
-			    "packet seq=0x%" PRIx64 " already seen", hdr->pn);
+			    "packet seq=0x%" PRIx64 " already seen", pn);
 			return (-1);
 		}
 		return (0);
 	}
 
-	sanctum_log(LOG_INFO,
-	    "packet seq=0x%" PRIx64 " too old", hdr->pn);
+	sanctum_log(LOG_INFO, "packet seq=0x%" PRIx64 " too old", pn);
 
 	return (-1);
 }

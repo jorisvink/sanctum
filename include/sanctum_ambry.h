@@ -1,0 +1,57 @@
+/*
+ * Copyright (c) 2024 Joris Vink <joris@sanctorum.se>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#ifndef __H_SANCTUM_AMBRY_H
+#define __H_SANCTUM_AMBRY_H
+
+/* The label for KMAC256. */
+#define SANCTUM_AMBRY_KDF		"SANCTUM.AMBRY.KDF"
+
+/* Length of a seed using for deriving Ambry wrapping keys. */
+#define SANCTUM_AMBRY_SEED_LEN		64
+
+/* Length of a KEK used for an Ambry. */
+#define SANCTUM_AMBRY_KEK_LEN		32
+
+/* Length of the key carried in an Ambry. */
+#define SANCTUM_AMBRY_KEY_LEN		32
+
+/* Length of OKM to generate. */
+#define SANCTUM_AMBRY_OKM_LEN		64
+
+/* Length of an authentication tag for an Ambry. */
+#define SANCTUM_AMBRY_TAG_LEN		32
+
+/*
+ * The ambry header, just 4 bytes that denotes the generation.
+ */
+struct sanctum_ambry_head {
+	u_int32_t	generation;
+	u_int8_t	reserved[12];
+} __attribute__((packed));
+
+/* 
+ * An ambry entry, consisting of the tunnel ID, the seed used for wrapping,
+ * the wrapped key and the authentication tag.
+ */
+struct sanctum_ambry_entry {
+	u_int16_t	tunnel;
+	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
+	u_int8_t	key[SANCTUM_AMBRY_KEY_LEN];
+	u_int8_t	tag[SANCTUM_AMBRY_TAG_LEN];
+} __attribute__((packed));
+
+#endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -92,6 +92,7 @@ static struct sock_filter filter_epilogue[] = {
 };
 
 static struct sock_filter common_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(brk),
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),
@@ -132,7 +133,15 @@ static struct sock_filter purgatory_tx_seccomp_filter[] = {
 
 static struct sock_filter keying_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(fstat),
+#if defined(SYS_unlink)
+	KORE_SYSCALL_ALLOW(unlink),
+#endif
+#if defined(SYS_rename)
+	KORE_SYSCALL_ALLOW(rename),
+#endif
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(getrandom),
 	KORE_SYSCALL_ALLOW(newfstatat),
@@ -170,7 +179,7 @@ sanctum_platform_init(void)
 }
 
 /*
- * Linux tunnel device creation. The sanctum.clr device is created and a
+ * Linux tunnel device creation. The device is created and a
  * file descriptor for it is returned to the caller.
  *
  * XXX - permissions on tunnel device.
@@ -187,7 +196,7 @@ sanctum_platform_tundev_create(void)
 		fatal("failed to open /dev/net/tun: %s", errno_s);
 
 	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name),
-	    "%s.clr", sanctum->instance);
+	    "%s", sanctum->instance);
 	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("sanctum.clr interface name too large");
 
@@ -396,7 +405,6 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 void
 sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 {
-	long			ret;
 	struct timespec		tv, *tptr;
 
 	PRECOND(addr != NULL);
@@ -412,8 +420,7 @@ sanctum_platform_suspend(u_int32_t *addr, int64_t sleep)
 	else
 		tptr = &tv;
 
-	if ((ret = syscall(SYS_futex,
-	    addr, FUTEX_WAIT, 0, tptr, NULL, 0)) == -1) {
+	if (syscall(SYS_futex, addr, FUTEX_WAIT, 0, tptr, NULL, 0) == -1) {
 		if (errno != EINTR && errno != ETIMEDOUT && errno != EAGAIN)
 			sanctum_log(LOG_NOTICE, "futex wait: %s", errno_s);
 	}

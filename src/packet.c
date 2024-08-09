@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -50,13 +50,7 @@ sanctum_packet_get(void)
 	if ((pkt = sanctum_pool_get(pktpool)) == NULL)
 		return (NULL);
 
-#if defined(SANCTUM_HIGH_PERFORMANCE)
-	pkt->length = 0;
-	pkt->target = 0;
-	pkt->next = IPPROTO_IP;
-#else
 	sanctum_mem_zero(pkt, sizeof(*pkt));
-#endif
 
 	return (pkt);
 }

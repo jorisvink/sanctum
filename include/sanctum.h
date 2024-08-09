@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -55,6 +55,7 @@ extern int daemon(int, int);
 #define be64toh(x)		OSSwapBigToHostInt64(x)
 #endif
 
+#include "sanctum_ambry.h"
 #include "sanctum_ctl.h"
 #include "libnyfe.h"
 
@@ -150,32 +151,83 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_CATHEDRAL		11
 #define SANCTUM_PROC_MAX		12
 
+/* The half-time window in which offers are valid. */
+#define SANCTUM_OFFER_VALID		5
+
 /* The magic for a key offer packet (SACRAMNT). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x53414352414D4E54
 
 /* The length of the seed in a key offer packet. */
 #define SANCTUM_KEY_OFFER_SALT_LEN	64
 
-/* The magic for a registration request (KATEDRAL). */
+/* The magic for cathedral messages (KATEDRAL). */
 #define SANCTUM_CATHEDRAL_MAGIC		0x4b4154454452414c
+
+/* The magic for NAT detection messages (CIBORIUM). */
+#define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4349424f5249554d
 
 /* The KDF label. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
 
 /*
  * Packets used when doing key offering or cathedral forward registration.
+ *
+ * Note that the internal seed and tag in sanctum_offer_data is only
+ * populated when the cathedral sends an ambry.
+ *
+ * An offer can either be:
+ *	1) A key offering (between peers)
+ *	2) An ambry offering (from cathedral to us)
+ *	3) An info offering (from us to cathedral, or cathedral to us)
  */
+
+#define SANCTUM_OFFER_TYPE_KEY		1
+#define SANCTUM_OFFER_TYPE_AMBRY	2
+#define SANCTUM_OFFER_TYPE_INFO		3
+
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
+	u_int64_t		flock;
 	u_int32_t		spi;
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
 
-struct sanctum_offer_data {
+struct sanctum_key_offer {
 	u_int64_t		id;
 	u_int32_t		salt;
-	u_int64_t		timestamp;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
+} __attribute__((packed));
+
+struct sanctum_ambry_offer {
+	u_int16_t		tunnel;
+	u_int32_t		generation;
+	u_int8_t		seed[SANCTUM_AMBRY_SEED_LEN];
+	u_int8_t		key[SANCTUM_AMBRY_KEY_LEN];
+	u_int8_t		tag[SANCTUM_AMBRY_TAG_LEN];
+} __attribute__((packed));
+
+struct sanctum_info_offer {
+	u_int32_t		id;
+
+	u_int32_t		peer_ip;
+	u_int16_t		peer_port;
+
+	u_int32_t		local_ip;
+	u_int16_t		local_port;
+
+	u_int16_t		tunnel;
+	u_int32_t		ambry_generation;
+} __attribute__((packed));
+
+struct sanctum_offer_data {
+	u_int8_t		type;
+	u_int64_t		timestamp;
+
+	union {
+		struct sanctum_key_offer	key;
+		struct sanctum_info_offer	info;
+		struct sanctum_ambry_offer	ambry;
+	} offer;
 } __attribute__((packed));
 
 struct sanctum_offer {
@@ -237,6 +289,7 @@ struct sanctum_proc {
  * do not need themselves.
  */
 struct sanctum_proc_io {
+	int			nat;
 	int			clear;
 	int			crypto;
 
@@ -301,7 +354,7 @@ struct sanctum_ipsec_tail {
 /*
  * Maximum packet sizes we can receive from the interfaces.
  */
-#if defined(SANCTUM_HIGH_PERFORMANCE)
+#if defined(SANCTUM_JUMBO_FRAMES)
 #define SANCTUM_PACKET_DATA_LEN		9000
 #else
 #define SANCTUM_PACKET_DATA_LEN		1500
@@ -347,6 +400,12 @@ struct sanctum_sun {
 /* A cathedral was configured. */
 #define SANCTUM_FLAG_CATHEDRAL_ACTIVE	(1 << 2)
 
+/* If Traffic Flow Condidentiality is enabled (TFC) */
+#define SANCTUM_FLAG_TFC_ENABLED	(1 << 3)
+
+/* Set if a peer was configured manually in the configuration. */
+#define SANCTUM_FLAG_PEER_CONFIGURED	(1 << 4)
+
 /*
  * The modes in which sanctum can run.
  *
@@ -373,13 +432,22 @@ struct sanctum_state {
 	/* Time maintained by overwatch. */
 	volatile u_int64_t	uptime;
 
-	/* Local and remote addresses. */
-	struct sockaddr_in	peer;
+	/* The local address from the configuration. */
 	struct sockaddr_in	local;
 
-	/* The actual peer ip and port. */
+	/* The cathedral remote address (tunnel mode only). */
+	struct sockaddr_in	cathedral;
+
+	/* Our own public ip:port (when cathedral is in use only). */
+	volatile u_int32_t	local_ip;
+	volatile u_int16_t	local_port;
+
+	/* The peer ip and port we send encrypted traffic too. */
 	volatile u_int32_t	peer_ip;
 	volatile u_int16_t	peer_port;
+
+	/* Next time we can update the peer (when cathedral is in use only) */
+	volatile u_int64_t	peer_update;
 
 	/* The tunnel configuration. */
 	struct sockaddr_in	tun_ip;
@@ -387,23 +455,32 @@ struct sanctum_state {
 	u_int16_t		tun_mtu;
 	u_int16_t		tun_spi;
 
-	/* The ID to use when talking to a cathedral. */
-	u_int32_t		cathedral_id;
-
 	/* The path to the pidfile. */
 	char			*pidfile;
 
 	/* The path to the traffic secret. */
 	char			*secret;
 
+	/* The path to the kek, if any (tunnel mode only). */
+	char			*kek;
+
+	/* The ID to use when talking to a cathedral (tunnel mode only). */
+	u_int32_t		cathedral_id;
+
+	/* The flock we are part of for a cathedral (tunnel mode only). */
+	u_int64_t		cathedral_flock;
+
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
+
+	/* The cathedral nat discovery port (tunnel and cathedral only). */
+	u_int16_t		cathedral_nat_port;
 
 	/* The path to the secredir directory (cathedral mode only). */
 	char			*secretdir;
 
-	/* The path to the federation config (cathedral mode only). */
-	char			*federation;
+	/* The path to the cathedral settings (cathedral mode only). */
+	char			*settings;
 
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
@@ -415,7 +492,7 @@ struct sanctum_state {
 	struct sanctum_sun	control;
 
 	/* The sanctum instance name. */
-	char			instance[16];	/* XXX */
+	char			instance[32];	/* XXX */
 
 	/* The sanctum instance description. */
 	char			descr[32];	/* XXX */
@@ -432,6 +509,9 @@ struct sanctum_state {
 
 	/* The last heartbeat received from the peer. */
 	volatile u_int64_t	heartbeat;
+
+	/* Do hole punching (by sending many heartbeats for a bit). */
+	volatile u_int64_t	holepunch;
 
 	/* Process wakeup states. */
 	u_int32_t		wstate[SANCTUM_PROC_MAX];
@@ -496,7 +576,6 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
-int	sanctum_bind_local(void);
 int	sanctum_file_open(const char *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
@@ -507,15 +586,25 @@ void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
+int	sanctum_bind_local(struct sockaddr_in *);
+void	sanctum_peer_update(u_int32_t, u_int16_t);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
-void	sanctum_peer_update(struct sanctum_packet *);
 char	*sanctum_config_read(FILE *, char *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
 int	sanctum_cipher_kdf(const char *, const char *,
 	    struct nyfe_agelas *cipher, void *, size_t);
+void	sanctum_offer_encrypt(struct nyfe_agelas *, struct sanctum_offer *);
+void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
+int	sanctum_offer_decrypt(struct nyfe_agelas *,
+	    struct sanctum_offer *, int);
+void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
+	    u_int32_t, const void *, size_t);
+
+struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
+			    u_int32_t, u_int64_t, u_int8_t);
 
 /* platform bits. */
 void	sanctum_platform_init(void);

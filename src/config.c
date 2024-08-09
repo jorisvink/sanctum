@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,6 +21,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +35,9 @@ struct route {
 	LIST_ENTRY(route)	list;
 };
 
+static void	config_parse_kek(char *);
 static void	config_parse_spi(char *);
+static void	config_parse_tfc(char *);
 static void	config_parse_mode(char *);
 static void	config_parse_peer(char *);
 static void	config_parse_local(char *);
@@ -47,11 +50,13 @@ static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
 static void	config_parse_pidfile(char *);
 static void	config_parse_instance(char *);
-static void	config_parse_cathedral(char *);
 static void	config_parse_secretdir(char *);
-static void	config_parse_federation(char *);
+static void	config_parse_cathedral(char *);
+static void	config_parse_settings(char *);
 static void	config_parse_cathedral_id(char *);
+static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
+static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
@@ -64,7 +69,9 @@ static const struct {
 	const char		*option;
 	void			(*cb)(char *);
 } keywords[] = {
+	{ "kek",		config_parse_kek },
 	{ "spi",		config_parse_spi },
+	{ "tfc",		config_parse_tfc },
 	{ "mode",		config_parse_mode },
 	{ "peer",		config_parse_peer },
 	{ "local",		config_parse_local },
@@ -79,9 +86,11 @@ static const struct {
 	{ "instance",		config_parse_instance },
 	{ "cathedral",		config_parse_cathedral },
 	{ "secretdir",		config_parse_secretdir },
-	{ "federation",		config_parse_federation },
+	{ "settings",		config_parse_settings },
 	{ "cathedral_id",	config_parse_cathedral_id },
+	{ "cathedral_flock",	config_parse_cathedral_flock },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
+	{ "cathedral_nat_port",	config_parse_cathedral_nat_port },
 	{ NULL,			NULL },
 };
 
@@ -106,9 +115,6 @@ static const struct {
 /* List of routes and routable networks. */
 static LIST_HEAD(, route)	routes;
 static LIST_HEAD(, route)	routable;
-
-/* The peer can only be set once, either via peer or cathedral. */
-static int	peer_set = 0;
 
 /*
  * Setup the default configuration options.
@@ -168,9 +174,6 @@ sanctum_config_load(const char *file)
 	if (sanctum->instance[0] == '\0')
 		fatal("no instance name has been set");
 
-	if (peer_set > 1)
-		fatal("peer and cathedral are mutually exclusive options");
-
 	if (sanctum->secret == NULL)
 		fatal("no traffic secret has been set");
 
@@ -179,14 +182,32 @@ sanctum_config_load(const char *file)
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		break;
-	default:
+	case SANCTUM_MODE_TUNNEL:
+		if (sanctum->kek != NULL &&
+		    !(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE))
+			fatal("kek configured but no cathedral set");
+
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
 			if (sanctum->cathedral_secret == NULL)
 				fatal("cathedral given but no secret set");
 			if (sanctum->cathedral_id == 0)
 				fatal("cathedral given but no id set");
+
+			if (sanctum->peer_ip == 0) {
+				sanctum_atomic_write(&sanctum->peer_port,
+				    sanctum->cathedral.sin_port);
+				sanctum_atomic_write(&sanctum->peer_ip,
+				    sanctum->cathedral.sin_addr.s_addr);
+			}
 		}
 		break;
+	default:
+		break;
+	}
+
+	if (sanctum->mode != SANCTUM_MODE_TUNNEL) {
+		if (sanctum->kek != NULL)
+			fatal("kek is only used in tunnel mode");
 	}
 
 	if (sanctum->peer_ip == 0)
@@ -262,19 +283,48 @@ sanctum_config_read(FILE *fp, char *in, size_t len)
 }
 
 /*
+ * Parse the kek configuration option.
+ */
+static void
+config_parse_kek(char *path)
+{
+	PRECOND(path != NULL);
+
+	if (sanctum->kek != NULL)
+		fatal("kek already specified");
+
+	if (access(path, R_OK) == -1)
+		fatal("kek at path '%s' not readable (%s)", path, errno_s);
+
+	if ((sanctum->kek = strdup(path)) == NULL)
+		fatal("strdup failed");
+}
+
+/*
  * Parse the spi configuration option.
  */
 static void
 config_parse_spi(char *opt)
 {
-	u_int16_t	spi;
-
 	PRECOND(opt != NULL);
 
-	if (sscanf(opt, "0x%hx", &spi) != 1)
-		fatal("spi <0xffff>");
+	if (sscanf(opt, "%hx", &sanctum->tun_spi) != 1)
+		fatal("spi <16-bit hex value>");
+}
 
-	sanctum->tun_spi = spi;
+/*
+ * Parse the tfc configuration option.
+ */
+static void
+config_parse_tfc(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "on")) {
+		sanctum->flags |= SANCTUM_FLAG_TFC_ENABLED;
+	} else if (strcmp(opt, "off")) {
+		fatal("unknown tfc option '%s'", opt);
+	}
 }
 
 /*
@@ -305,6 +355,8 @@ config_parse_mode(char *mode)
 static void
 config_parse_peer(char *peer)
 {
+	struct sockaddr_in	addr;
+
 	PRECOND(peer != NULL);
 
 	if (!strcmp(peer, "auto")) {
@@ -312,11 +364,11 @@ config_parse_peer(char *peer)
 		return;
 	}
 
-	peer_set++;
+	config_parse_ip_port(peer, &addr);
+	sanctum_atomic_write(&sanctum->peer_port, addr.sin_port);
+	sanctum_atomic_write(&sanctum->peer_ip, addr.sin_addr.s_addr);
 
-	config_parse_ip_port(peer, &sanctum->peer);
-	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
+	sanctum->flags |= SANCTUM_FLAG_PEER_CONFIGURED;
 }
 
 /*
@@ -328,6 +380,10 @@ config_parse_local(char *local)
 	PRECOND(local != NULL);
 
 	config_parse_ip_port(local, &sanctum->local);
+
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL &&
+	    sanctum->local.sin_addr.s_addr == 0)
+		fatal("cathedrals require a non-null ipv4 address in local");
 }
 
 /*
@@ -479,11 +535,17 @@ config_parse_pidfile(char *path)
 static void
 config_parse_secret(char *path)
 {
+	PRECOND(path != NULL);
+
 	if (sanctum->secret != NULL)
 		fatal("secret already specified");
 
-	if (access(path, R_OK) == -1)
-		fatal("secret at path '%s' not readable (%s)", path, errno_s);
+	if (sanctum->kek == NULL) {
+		if (access(path, R_OK) == -1) {
+			fatal("secret at path '%s' not readable (%s)",
+			    path, errno_s);
+		}
+	}
 
 	if ((sanctum->secret = strdup(path)) == NULL)
 		fatal("strdup failed");
@@ -522,12 +584,8 @@ config_parse_cathedral(char *cathedral)
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
-	peer_set++;
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
-
-	config_parse_ip_port(cathedral, &sanctum->peer);
-	sanctum_atomic_write(&sanctum->peer_port, sanctum->peer.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, sanctum->peer.sin_addr.s_addr);
+	config_parse_ip_port(cathedral, &sanctum->cathedral);
 }
 
 /*
@@ -541,8 +599,32 @@ config_parse_cathedral_id(char *opt)
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
-	if (sscanf(opt, "0x%08x", &sanctum->cathedral_id) != 1)
-		fatal("cathedral_id <0xffffffff>");
+	if (sscanf(opt, "%x", &sanctum->cathedral_id) != 1)
+		fatal("cathedral_id <32-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_nat_port configuration option.
+ */
+static void
+config_parse_cathedral_nat_port(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "%hu", &sanctum->cathedral_nat_port) != 1)
+		fatal("spi <16-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_flock configuration option.
+ */
+static void
+config_parse_cathedral_flock(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "%" PRIx64, &sanctum->cathedral_flock) != 1)
+		fatal("cathedral_flock <64-bit hex value>");
 }
 
 /*
@@ -587,23 +669,23 @@ config_parse_secretdir(char *opt)
 }
 
 /*
- * Parse the federation configuration option.
+ * Parse the settings option.
  */
 static void
-config_parse_federation(char *opt)
+config_parse_settings(char *opt)
 {
 	PRECOND(opt != NULL);
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
-		fatal("federation is only for cathedral mode");
+		fatal("settings is only for cathedral mode");
 
-	if (sanctum->federation != NULL)
-		fatal("federation already specified");
+	if (sanctum->settings != NULL)
+		fatal("setttings already specified");
 
 	if (access(opt, R_OK) == -1)
-		fatal("federation '%s' not readable (%s)", opt, errno_s);
+		fatal("file '%s' not readable (%s)", opt, errno_s);
 
-	if ((sanctum->federation = strdup(opt)) == NULL)
+	if ((sanctum->settings = strdup(opt)) == NULL)
 		fatal("strdup failed");
 }
 

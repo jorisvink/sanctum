@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -85,21 +85,42 @@ sanctum_logv(int prio, const char *fmt, va_list args)
  * Update the address of the peer if it does not match with the
  * one from the packet.
  *
+ * If we're using a cathedral, do not allow a swap back to the cathedral
+ * until a the required time has passed.
+ *
  * This MUST ONLY be called AFTER integrity has been verified.
  */
 void
-sanctum_peer_update(struct sanctum_packet *pkt)
+sanctum_peer_update(u_int32_t ip, u_int16_t port)
 {
-	PRECOND(pkt != NULL);
+	struct in_addr		in;
+	u_int32_t		local;
+	u_int64_t		now, next;
 
-	if (pkt->addr.sin_addr.s_addr != sanctum->peer_ip ||
-	    pkt->addr.sin_port != sanctum->peer_port) {
+	local = sanctum_atomic_read(&sanctum->local_ip);
+	if (local == ip)
+		return;
+
+	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+		now = sanctum_atomic_read(&sanctum->uptime);
+		next = sanctum_atomic_read(&sanctum->peer_update);
+
+		if (ip == sanctum->cathedral.sin_addr.s_addr) {
+			if (next != 0 && now < next)
+				return;
+			sanctum_atomic_write(&sanctum->peer_update, 0);
+		} else {
+			sanctum_atomic_write(&sanctum->peer_update, now + 10);
+		}
+	}
+
+	if (ip != sanctum->peer_ip || port != sanctum->peer_port) {
+		in.s_addr = ip;
 		sanctum_log(LOG_NOTICE, "peer address change (new=%s:%u)",
-		    inet_ntoa(pkt->addr.sin_addr), ntohs(pkt->addr.sin_port));
+		    inet_ntoa(in), ntohs(port));
 
-		sanctum_atomic_write(&sanctum->peer_ip,
-		    pkt->addr.sin_addr.s_addr);
-		sanctum_atomic_write(&sanctum->peer_port, pkt->addr.sin_port);
+		sanctum_atomic_write(&sanctum->peer_ip, ip);
+		sanctum_atomic_write(&sanctum->peer_port, port);
 	}
 }
 
@@ -144,12 +165,20 @@ sanctum_key_erase(const char *s, struct sanctum_key *key, struct sanctum_sa *sa)
 /*
  * Install the key pending under the given `key` data structure into
  * the SA context `sa`.
+ *
+ * This is called from the bless or confess processes only.
  */
 int
 sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 {
+	struct sanctum_proc	*proc;
+
 	PRECOND(key != NULL);
 	PRECOND(sa != NULL);
+
+	proc = sanctum_process();
+	VERIFY(proc->type == SANCTUM_PROC_BLESS ||
+	    proc->type == SANCTUM_PROC_CONFESS);
 
 	if (sanctum_atomic_read(&key->state) != SANCTUM_KEY_PENDING)
 		return (-1);
@@ -431,20 +460,145 @@ sanctum_cipher_kdf(const char *path, const char *label,
 }
 
 /*
+ * Set the initial information for a sanctum_offer inside of the
+ * given sanctum packet.
+ */
+struct sanctum_offer *
+sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
+    u_int64_t magic, u_int8_t type)
+{
+	struct timespec		ts;
+	struct sanctum_offer	*op;
+
+	PRECOND(pkt != NULL);
+	PRECOND(type == SANCTUM_OFFER_TYPE_KEY ||
+	    type == SANCTUM_OFFER_TYPE_AMBRY ||
+	    type == SANCTUM_OFFER_TYPE_INFO);
+
+	op = sanctum_packet_head(pkt);
+
+	op->data.type = type;
+	op->hdr.spi = htobe32(spi);
+	op->hdr.magic = htobe64(magic);
+
+	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+	nyfe_random_bytes(&op->hdr.flock, sizeof(op->hdr.flock));
+
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
+
+	return (op);
+}
+
+/*
+ * Encrypt and authenticate a sanctum_offer data structure.
+ * Note: does not zeroize the cipher, this is the caller its responsibility.
+ */
+void
+sanctum_offer_encrypt(struct nyfe_agelas *cipher, struct sanctum_offer *op)
+{
+	PRECOND(cipher != NULL);
+	PRECOND(op != NULL);
+
+	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_encrypt(cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(cipher, op->tag, sizeof(op->tag));
+}
+
+/*
+ * Verify and decrypt a sanctum_offer packet.
+ * Note: does not zeroize the cipher, this is the caller its responsibility.
+ */
+int
+sanctum_offer_decrypt(struct nyfe_agelas *cipher,
+    struct sanctum_offer *op, int valid)
+{
+	struct timespec		ts;
+	u_int8_t		tag[32];
+
+	PRECOND(cipher != NULL);
+	PRECOND(op != NULL);
+	PRECOND(valid > 0);
+
+	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
+	nyfe_agelas_decrypt(cipher, &op->data, &op->data, sizeof(op->data));
+	nyfe_agelas_authenticate(cipher, tag, sizeof(tag));
+
+	if (memcmp(op->tag, tag, sizeof(op->tag)))
+		return (-1);
+
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	op->data.timestamp = be64toh(op->data.timestamp);
+
+	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - valid) ||
+	    op->data.timestamp > ((u_int64_t)ts.tv_sec + valid))
+		return (-1);
+
+	return (0);
+}
+
+/*
+ * Install the given key offer to into the given state.
+ */
+void
+sanctum_offer_install(struct sanctum_key *state, struct sanctum_offer *op)
+{
+	struct sanctum_key_offer	*key;
+
+	PRECOND(state != NULL);
+	PRECOND(op != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_KEY);
+
+	key = &op->data.offer.key;
+
+	sanctum_install_key_material(state, op->hdr.spi, key->salt,
+	    key->key, sizeof(key->key));
+}
+
+/*
+ * Install the given spi, salt and key into the given state.
+ */
+void
+sanctum_install_key_material(struct sanctum_key *state, u_int32_t spi,
+    u_int32_t salt, const void *key, size_t len)
+{
+	PRECOND(state != NULL);
+	PRECOND(spi > 0);
+	PRECOND(key != NULL);
+	PRECOND(len == SANCTUM_KEY_LENGTH);
+
+	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
+		sanctum_cpu_pause();
+
+	if (!sanctum_atomic_cas_simple(&state->state,
+	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
+		fatal("failed to swap key state to generating");
+
+	nyfe_memcpy(state->key, key, len);
+	sanctum_atomic_write(&state->spi, spi);
+	sanctum_atomic_write(&state->salt, salt);
+
+	if (!sanctum_atomic_cas_simple(&state->state,
+	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
+		fatal("failed to swap key state to pending");
+}
+
+/*
  * Bind a socket to our configured local address and return it.
  */
 int
-sanctum_bind_local(void)
+sanctum_bind_local(struct sockaddr_in *sin)
 {
 	int		fd, val;
+
+	PRECOND(sin != NULL);
 
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("%s: socket: %s", __func__, errno_s);
 
-	sanctum->local.sin_family = AF_INET;
+	sin->sin_family = AF_INET;
 
-	if (bind(fd, (struct sockaddr *)&sanctum->local,
-	    sizeof(sanctum->local)) == -1)
+	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1)
 		fatal("%s: connect: %s", __func__, errno_s);
 
 	if ((val = fcntl(fd, F_GETFL, 0)) == -1)

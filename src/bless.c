@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -36,11 +36,13 @@ static struct sanctum_proc_io	*io = NULL;
 static struct sanctum_sa	state;
 
 /* Local timekeeping for heartbeats. */
-static u_int64_t		now = 0;
-static u_int64_t		next_heartbeat = 0;
+static u_int64_t	now = 0;
+static u_int64_t	heartbeat_next = 0;
+static u_int64_t	heartbeat_reset = 0;
+static u_int64_t	heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
 
 /* If we should wakeup SANCTUM_PROC_PURGATORY_TX. */
-static int			tx_wakeup = 0;
+static int		tx_wakeup = 0;
 
 /*
  * Bless - The process responsible for the blessing of packets coming
@@ -72,7 +74,7 @@ sanctum_bless(struct sanctum_proc *proc)
 	sanctum_platform_sandbox(proc);
 
 	now = sanctum_atomic_read(&sanctum->uptime);
-	next_heartbeat = now + SANCTUM_HEARTBEAT_INTERVAL;
+	heartbeat_next = now + heartbeat_interval;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -87,21 +89,30 @@ sanctum_bless(struct sanctum_proc *proc)
 		now = sanctum_atomic_read(&sanctum->uptime);
 
 		if (sanctum_ring_pending(io->bless) == 0)
-			sanctum_proc_suspend(next_heartbeat - now);
+			sanctum_proc_suspend(heartbeat_next - now);
 
 		now = sanctum_atomic_read(&sanctum->uptime);
+
+		if (sanctum_atomic_cas_simple(&sanctum->holepunch, 1, 0)) {
+			heartbeat_next = now;
+			heartbeat_interval = 1;
+			heartbeat_reset = now + SANCTUM_HEARTBEAT_INTERVAL;
+		} else if (heartbeat_reset != 0 && now >= heartbeat_reset) {
+			heartbeat_reset = 0;
+			heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
+		}
 
 		if (sanctum_key_erase("TX", io->tx, &state) != -1)
 			sanctum_stat_clear(&sanctum->tx);
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
 			state.seqnr = 1;
-			next_heartbeat = now;
+			heartbeat_next = now;
 			sanctum_atomic_write(&sanctum->tx.age, now);
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		}
 
-		if (next_heartbeat != 0 && now >= next_heartbeat)
+		if (heartbeat_next != 0 && now >= heartbeat_next)
 			bless_packet_heartbeat();
 
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
@@ -161,7 +172,7 @@ bless_packet_heartbeat(void)
 	pkt->next = SANCTUM_PACKET_HEARTBEAT;
 
 	bless_packet_process(pkt);
-	next_heartbeat = now + SANCTUM_HEARTBEAT_INTERVAL;
+	heartbeat_next = now + heartbeat_interval;
 }
 
 /*
@@ -170,10 +181,11 @@ bless_packet_heartbeat(void)
 static void
 bless_packet_process(struct sanctum_packet *pkt)
 {
+	u_int32_t			spi;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
-	size_t				overhead;
-	u_int8_t			nonce[12], aad[12];
+	size_t				overhead, offset;
+	u_int8_t			nonce[12], aad[12], *data;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
@@ -225,13 +237,25 @@ bless_packet_process(struct sanctum_packet *pkt)
 		return;
 	}
 
-	/* Fill in ESP header and t(r)ail. */
+	/* Apply TFC padding if requested. */
+	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
+	    pkt->length != sanctum->tun_mtu) {
+		offset = pkt->length;
+		pkt->length = sanctum->tun_mtu;
+		data = sanctum_packet_data(pkt);
+
+		if (pkt->length - offset > 0)
+			nyfe_mem_zero(&data[offset], pkt->length - offset);
+	}
+
+	/* Fill in ESP header and tail. */
 	hdr = sanctum_packet_head(pkt);
 	tail = sanctum_packet_tail(pkt);
 
 	hdr->pn = state.seqnr++;
 	hdr->esp.spi = htobe32(state.spi);
 	hdr->esp.seq = htobe32(hdr->pn & 0xffffffff);
+	hdr->pn = htobe64(hdr->pn);
 
 	/* We don't pad, RFC says its a SHOULD not a MUST. */
 	tail->pad = 0;
@@ -244,10 +268,9 @@ bless_packet_process(struct sanctum_packet *pkt)
 	memcpy(nonce, &state.salt, sizeof(state.salt));
 	memcpy(&nonce[sizeof(state.salt)], &hdr->pn, sizeof(hdr->pn));
 
-	memcpy(aad, &state.spi, sizeof(state.spi));
-	memcpy(&aad[sizeof(state.spi)], &hdr->pn, sizeof(hdr->pn));
-
-	hdr->pn = htobe64(hdr->pn);
+	spi = htobe32(state.spi);
+	memcpy(aad, &spi, sizeof(spi));
+	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
 
 	/* Do the cipher dance. */
 	sanctum_cipher_encrypt(state.cipher, nonce, sizeof(nonce),
