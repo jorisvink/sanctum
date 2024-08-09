@@ -225,7 +225,7 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(&entry, sizeof(entry));
 
-	entry.tunnel = htobe16(tunnel);
+	entry.tunnel = htons(tunnel);
 	nyfe_memcpy(entry.key, key, len);
 	nyfe_random_bytes(entry.seed, sizeof(entry.seed));
 
