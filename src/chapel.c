@@ -489,6 +489,7 @@ static void
 chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 {
 	struct sanctum_offer_data	*data;
+	u_int16_t			tunnel;
 
 	PRECOND(op != NULL);
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_AMBRY);
@@ -500,15 +501,14 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 	}
 
 	data = &op->data;
-	data->offer.ambry.tunnel = be16toh(data->offer.ambry.tunnel);
+	tunnel = be16toh(data->offer.ambry.tunnel);
 
 	op->hdr.spi = be32toh(op->hdr.spi);
 
 	if (op->hdr.spi != sanctum->cathedral_id ||
-	    data->offer.ambry.tunnel != sanctum->tun_spi) {
+	    tunnel != sanctum->tun_spi) {
 		sanctum_log(LOG_NOTICE,
-		    "got an ambry not ment for us (%04x)",
-		    data->offer.ambry.tunnel);
+		    "got an ambry not ment for us (%04x)", tunnel);
 		return;
 	}
 

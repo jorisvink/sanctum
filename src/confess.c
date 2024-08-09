@@ -204,7 +204,6 @@ confess_packet_process(struct sanctum_packet *pkt)
 	hdr = sanctum_packet_head(pkt);
 	hdr->esp.spi = be32toh(hdr->esp.spi);
 	hdr->esp.seq = be32toh(hdr->esp.seq);
-	hdr->pn = be64toh(hdr->pn);
 
 	if (confess_with_slot(&state.active, pkt) != -1)
 		return;
@@ -237,6 +236,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
+	u_int32_t			spi;
 	u_int64_t			now;
 	struct ip			*ip;
 	struct sanctum_ipsec_hdr	*hdr;
@@ -259,15 +259,15 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
 	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
 
-	memcpy(aad, &sa->spi, sizeof(sa->spi));
-	memcpy(&aad[sizeof(sa->spi)], &hdr->pn, sizeof(hdr->pn));
+	spi = htobe32(sa->spi);
+	memcpy(aad, &spi, sizeof(spi));
+	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
 
 	if (sanctum_cipher_decrypt(sa->cipher, nonce, sizeof(nonce),
-	    aad, sizeof(aad), pkt) == -1) {
-		sanctum_log(LOG_INFO, "pkt of %zu failed to decrypt",
-		    pkt->length);
+	    aad, sizeof(aad), pkt) == -1)
 		return (-1);
-	}
+
+	hdr->pn = be64toh(hdr->pn);
 
 	if (sa->pending) {
 		sa->pending = 0;
@@ -327,30 +327,31 @@ static int
 confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
     struct sanctum_ipsec_hdr *hdr)
 {
-	u_int64_t	bit;
+	u_int64_t	bit, pn;
 
 	PRECOND(sa != NULL);
 	PRECOND(pkt != NULL);
 	PRECOND(hdr != NULL);
 
-	if ((hdr->pn & 0xffffffff) != hdr->esp.seq)
+	pn = be64toh(hdr->pn);
+
+	if ((pn & 0xffffffff) != hdr->esp.seq)
 		return (-1);
 
-	if (hdr->pn > sa->seqnr)
+	if (pn > sa->seqnr)
 		return (0);
 
-	if (hdr->pn > 0 && SANCTUM_ARWIN_SIZE > sa->seqnr - hdr->pn) {
-		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - hdr->pn);
+	if (pn > 0 && SANCTUM_ARWIN_SIZE > sa->seqnr - pn) {
+		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - pn);
 		if (sa->bitmap & ((u_int64_t)1 << bit)) {
 			sanctum_log(LOG_INFO,
-			    "packet seq=0x%" PRIx64 " already seen", hdr->pn);
+			    "packet seq=0x%" PRIx64 " already seen", pn);
 			return (-1);
 		}
 		return (0);
 	}
 
-	sanctum_log(LOG_INFO,
-	    "packet seq=0x%" PRIx64 " too old", hdr->pn);
+	sanctum_log(LOG_INFO, "packet seq=0x%" PRIx64 " too old", pn);
 
 	return (-1);
 }

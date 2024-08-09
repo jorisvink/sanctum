@@ -181,6 +181,7 @@ bless_packet_heartbeat(void)
 static void
 bless_packet_process(struct sanctum_packet *pkt)
 {
+	u_int32_t			spi;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
 	size_t				overhead, offset;
@@ -254,6 +255,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	hdr->pn = state.seqnr++;
 	hdr->esp.spi = htobe32(state.spi);
 	hdr->esp.seq = htobe32(hdr->pn & 0xffffffff);
+	hdr->pn = htobe64(hdr->pn);
 
 	/* We don't pad, RFC says its a SHOULD not a MUST. */
 	tail->pad = 0;
@@ -266,10 +268,9 @@ bless_packet_process(struct sanctum_packet *pkt)
 	memcpy(nonce, &state.salt, sizeof(state.salt));
 	memcpy(&nonce[sizeof(state.salt)], &hdr->pn, sizeof(hdr->pn));
 
-	memcpy(aad, &state.spi, sizeof(state.spi));
-	memcpy(&aad[sizeof(state.spi)], &hdr->pn, sizeof(hdr->pn));
-
-	hdr->pn = htobe64(hdr->pn);
+	spi = htobe32(state.spi);
+	memcpy(aad, &spi, sizeof(spi));
+	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
 
 	/* Do the cipher dance. */
 	sanctum_cipher_encrypt(state.cipher, nonce, sizeof(nonce),

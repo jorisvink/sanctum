@@ -1129,6 +1129,8 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 			cathedral_flock_ambries_clear(flock);
 			break;
 		}
+
+		ambry->entry.tunnel = be16toh(ambry->entry.tunnel);
 	}
 
 	flock->ambry_mtime = st.st_mtime;

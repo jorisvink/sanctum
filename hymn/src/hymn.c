@@ -958,11 +958,14 @@ hymn_ip_mask_parse(struct addr *addr, const char *opt)
 static const char *
 hymn_ip_mask_str(struct addr *addr)
 {
+	in_addr_t	ip;
 	static char	str[INET_ADDRSTRLEN + 3];
 
+	ip = htonl(addr->ip);
+
 	(void)snprintf(str, sizeof(str), "%u.%u.%u.%u/%u",
-	    addr->ip & 0xff, (addr->ip >> 8) & 0xff,
-	    (addr->ip >> 16) & 0xff, (addr->ip >> 24) & 0xff, addr->mask);
+	    (ip >> 24) & 0xff, (ip >> 16) & 0xff,
+	    (ip >> 8) & 0xff, (ip) & 0xff, addr->mask);
 
 	return (str);
 }
@@ -987,11 +990,14 @@ hymn_ip_port_parse(struct addr *addr, char *ip)
 static const char *
 hymn_ip_port_str(struct addr *addr)
 {
+	in_addr_t	ip;
 	static char	str[INET_ADDRSTRLEN + 6];
 
+	ip = htonl(addr->ip);
+
 	(void)snprintf(str, sizeof(str), "%u.%u.%u.%u:%u",
-	    addr->ip & 0xff, (addr->ip >> 8) & 0xff,
-	    (addr->ip >> 16) & 0xff, (addr->ip >> 24) & 0xff, addr->port);
+	    (ip >> 24) & 0xff, (ip >> 16) & 0xff,
+	    (ip >> 8) & 0xff, (ip) & 0xff, addr->port);
 
 	return (str);
 }
