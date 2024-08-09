@@ -138,8 +138,7 @@ Please read docs/cathedral.md for more.
 
 ## Building
 
-Building requires pkg-config to pickup the openssl or libisal_crypto
-library locations.
+A default build requires pkg-config and libssl-dev.
 
 ```
 $ git clone https://github.com/jorisvink/sanctum
