@@ -1005,7 +1005,6 @@ cathedral_settings_flock(const char *option, struct flock **out)
 	if ((flock = cathedral_flock_lookup(id)) != NULL) {
 		flock->retain = 1;
 		cathedral_flock_allows_clear(flock);
-		cathedral_flock_ambries_clear(flock);
 	} else {
 		if ((flock = calloc(1, sizeof(*flock))) == NULL)
 			fatal("calloc: failed");
