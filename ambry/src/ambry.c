@@ -52,15 +52,17 @@ static void	ambry_kek_path(char *, size_t, u_int8_t);
 static void	ambry_key_wrap(int, const u_int8_t *, size_t,
 		    u_int8_t, u_int16_t, u_int32_t);
 
-static int	ambry_generate_kek(int, char **);
-static int	ambry_generate_ambry(int, char **);
+static int	ambry_kek_renew(int, char **);
+static int	ambry_kek_generate(int, char **);
+static int	ambry_bundle_generate(int, char **);
 
 static const struct {
 	const char	*name;
 	int		(*cb)(int, char **);
 } cmds[] = {
-	{ "generate-kek",	ambry_generate_kek },
-	{ "generate-ambry",	ambry_generate_ambry },
+	{ "generate",		ambry_kek_generate },
+	{ "bundle",		ambry_bundle_generate },
+	{ "renew",		ambry_kek_renew },
 	{ NULL,			NULL },
 };
 
@@ -69,8 +71,9 @@ usage(void)
 {
 	fprintf(stderr, "usage: ambry [cmd]\n");
 	fprintf(stderr, "commands:\n");
-	fprintf(stderr, "  generate-kek      - Generates all new KEKs\n");
-	fprintf(stderr, "  generate-ambry    - Generates an ambry file\n");
+	fprintf(stderr, "  bundle        - Generates a new Ambry bundle\n");
+	fprintf(stderr, "  generate      - Generates all new KEKs\n");
+	fprintf(stderr, "  renew         - Renews a given KEK\n");
 
 	exit(1);
 }
@@ -123,13 +126,13 @@ fatal(const char *fmt, ...)
 }
 
 static int
-ambry_generate_kek(int argc, char **argv)
+ambry_kek_generate(int argc, char **argv)
 {
 	int		idx;
 	char		path[1024];
 
 	if (argc != 0)
-		fatal("Usage: generate-kek");
+		fatal("Usage: generate");
 
 	ambry_mkdir(AMBRY_KEK_DIRECTORY, 0);
 
@@ -142,7 +145,36 @@ ambry_generate_kek(int argc, char **argv)
 }
 
 static int
-ambry_generate_ambry(int argc, char **argv)
+ambry_kek_renew(int argc, char **argv)
+{
+	unsigned long	kek;
+	char		*ep;
+	char		path[1024];
+
+	if (argc != 1)
+		fatal("Usage: renew [id]");
+
+	errno = 0;
+	kek = strtoul(argv[0], &ep, 16);
+	if (errno != 0 || argv[0] == ep || *ep != '\0')
+		fatal("not a number: %s", argv[0]);
+
+	if (kek > UCHAR_MAX)
+		fatal("'%s': out of range", argv[0]);
+
+	ambry_mkdir(AMBRY_KEK_DIRECTORY, 1);
+	ambry_kek_path(path, sizeof(path), kek);
+
+	if (unlink(path) == -1 && errno != ENOENT)
+		fatal("failed to remove '%s' (%s)", path, errno_s);
+
+	ambry_kek_gen(path);
+
+	return (0);
+}
+
+static int
+ambry_bundle_generate(int argc, char **argv)
 {
 	struct sanctum_ambry_head	hdr;
 	u_int32_t			gen;
@@ -152,7 +184,7 @@ ambry_generate_ambry(int argc, char **argv)
 	u_int8_t			key[SANCTUM_AMBRY_KEY_LEN];
 
 	if (argc != 1)
-		fatal("Usage: generate-ambry [file]");
+		fatal("Usage: bundle [file]");
 
 	if (unlink(argv[0]) == -1 && errno != ENOENT)
 		fatal("failed to unlink '%s': %s", argv[0], errno_s);
