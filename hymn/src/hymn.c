@@ -157,6 +157,7 @@ static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
+static void	hymn_config_parse_cathedral_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
 
 static void	hymn_ctl_status(const char *,
@@ -215,6 +216,7 @@ static const struct {
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
+	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
 	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
 	{ NULL,			NULL },
 };
@@ -1521,6 +1523,16 @@ static void
 hymn_config_parse_cathedral_flock(struct config *cfg, char *flock)
 {
 	cfg->cathedral_flock = hymn_number(flock, 16, 0, UINT64_MAX);
+}
+
+static void
+hymn_config_parse_cathedral_secret(struct config *cfg, char *secret)
+{
+	if (cfg->identity_path != NULL)
+		fatal("duplicate cathedral_secret");
+
+	if ((cfg->identity_path = strdup(secret)) == NULL)
+		fatal("strdup");
 }
 
 static void
