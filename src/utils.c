@@ -403,6 +403,8 @@ sanctum_file_open(const char *path)
 {
 	int		fd;
 
+	PRECOND(path != NULL);
+
 	if ((fd = open(path, O_RDONLY)) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "failed to open '%s': %s", path, errno_s);
