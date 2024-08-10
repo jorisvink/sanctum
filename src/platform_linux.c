@@ -142,6 +142,9 @@ static struct sock_filter keying_seccomp_filter[] = {
 #if defined(SYS_rename)
 	KORE_SYSCALL_ALLOW(rename),
 #endif
+#if defined(SYS_open)
+	KORE_SYSCALL_ALLOW(open),
+#endif
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(getrandom),
 	KORE_SYSCALL_ALLOW(newfstatat),
