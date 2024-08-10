@@ -84,7 +84,7 @@ struct config {
 	const char		*flock;
 
 	char			*kek;
-	char			*descr;
+	char			*name;
 	char			*secret;
 	char			*identity_path;
 
@@ -106,6 +106,7 @@ static void	usage_simple(const char *) __attribute__((noreturn));
 
 static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
+static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 
@@ -129,6 +130,7 @@ static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
+static int	hymn_name(int, char **);
 static int	hymn_route(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
@@ -142,7 +144,7 @@ static void	hymn_config_load(const char *, struct config *);
 static void	hymn_config_save(const char *, const char *, struct config *);
 
 static void	hymn_config_set_mtu(struct config *, const char *);
-static void	hymn_config_set_descr(struct config *, const char *);
+static void	hymn_config_set_name(struct config *, const char *);
 
 static void	hymn_config_parse_kek(struct config *, char *);
 static void	hymn_config_parse_peer(struct config *, char *);
@@ -191,6 +193,7 @@ static const struct {
 	{ "status",		hymn_status },
 	{ "list",		hymn_list },
 	{ "down",		hymn_down },
+	{ "name",		hymn_name },
 	{ "route",		hymn_route },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
@@ -225,6 +228,7 @@ usage(void)
 	fprintf(stderr, "  del      - delete an existing tunnel\n");
 	fprintf(stderr, "  down     - kills the given tunnel\n");
 	fprintf(stderr, "  list     - list all configured tunnels\n");
+	fprintf(stderr, "  name     - sets the name for a given tunnel\n");
 	fprintf(stderr, "  status   - show a specific tunnel its info\n");
 	fprintf(stderr, "  route    - modify tunnel routing rules\n");
 	fprintf(stderr, "  up       - starts the given tunnel\n");
@@ -236,7 +240,7 @@ static void
 usage_simple(const char *cmd)
 {
 	fprintf(stderr,
-	    "usage: hymn %s [descr | [<flock>-]<src>-<dst>]\n", cmd);
+	    "usage: hymn %s [name | [<flock>-]<src>-<dst>]\n", cmd);
 	exit(1);
 }
 
@@ -302,7 +306,7 @@ usage_add(void)
 	    "tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
 	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
-	fprintf(stderr, "    [kek <path>] [descr <description>] ");
+	fprintf(stderr, "    [kek <path>] [name <name>] ");
 	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
 	fprintf(stderr, "    [natport <port>]\n");
 
@@ -353,8 +357,8 @@ hymn_add(int argc, char *argv[])
 				fatal("duplicate kek");
 			if ((config.kek = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
-		} else if (!strcmp(argv[i], "descr")) {
-			hymn_config_set_descr(&config, argv[i + 1]);
+		} else if (!strcmp(argv[i], "name")) {
+			hymn_config_set_name(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "mtu")) {
 			hymn_config_set_mtu(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "peer")) {
@@ -450,7 +454,7 @@ hymn_add(int argc, char *argv[])
 static void
 usage_del(void)
 {
-	fprintf(stderr, "usage: hymn del [descr | [<flock>-]<src>-<dst>]\n");
+	fprintf(stderr, "usage: hymn del [name | [<flock>-]<src>-<dst>]\n");
 	exit(1);
 }
 
@@ -482,7 +486,7 @@ usage_route(void)
 {
 	fprintf(stderr,
 	    "usage: hymn route [add | del] <net/mask> via "
-	    "[descr | [<flock>-]<src>-<dst>]\n");
+	    "[name | [<flock>-]<src>-<dst>]\n");
 	exit(1);
 }
 
@@ -532,7 +536,7 @@ usage_accept(void)
 {
 	fprintf(stderr,
 	    "usage: hymn accept [add | del] <net/mask> on "
-	    "[descr | [<flock>-]<src>-<dst>]\n");
+	    "[name | [<flock>-]<src>-<dst>]\n");
 	exit(1);
 }
 
@@ -673,8 +677,8 @@ hymn_status(int argc, char *argv[])
 
 	printf("%s-%02x-%02x:\n", flock, src, dst);
 
-	if (config.descr != NULL)
-		printf("  name\t\t%s\n", config.descr);
+	if (config.name != NULL)
+		printf("  name\t\t%s\n", config.name);
 
 	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
@@ -777,8 +781,8 @@ hymn_list(int argc, char *argv[])
 				printf("pending");
 		}
 
-		if (tun->config.descr != NULL)
-			printf(" (%s)\n", tun->config.descr);
+		if (tun->config.name != NULL)
+			printf(" (%s)\n", tun->config.name);
 		else
 			printf("\n");
 	}
@@ -828,6 +832,53 @@ hymn_down(int argc, char *argv[])
 	}
 
 	printf("done\n");
+
+	return (0);
+}
+
+static void
+usage_name(void)
+{
+	fprintf(stderr, "usage: hymn name ");
+	fprintf(stderr, "[name | [<flock>-]<src>-<dst>] [name]\n");
+
+	exit(1);
+}
+
+static int
+hymn_name(int argc, char *argv[])
+{
+	const char		*flock;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_name();
+
+	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+		usage_name();
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	config.src = src;
+	config.dst = dst;
+
+	if ((config.flock = strdup(flock)) == NULL)
+		fatal("strdup");
+
+	if (config.name != NULL) {
+		free(config.name);
+		config.name = NULL;
+	}
+
+	hymn_config_set_name(&config, argv[1]);
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x name updated to '%s'\n", flock, src, dst, argv[1]);
 
 	return (0);
 }
@@ -1089,19 +1140,19 @@ hymn_config_init(struct config *cfg)
 
 static int
 hymn_tunnel_parse(char *str, const char **flock,
-    u_int8_t *src, u_int8_t *dst, int resolve_descr)
+    u_int8_t *src, u_int8_t *dst, int resolve_name)
 {
 	int			nelm;
 	struct tunnels		list;
 	struct tunnel		*tun;
 	char			*elm[4];
 
-	if (resolve_descr) {
+	if (resolve_name) {
 		hymn_tunnel_list(&list);
 
 		TAILQ_FOREACH(tun, &list, list) {
-			if (tun->config.descr != NULL &&
-			    !strcmp(tun->config.descr, str))
+			if (tun->config.name != NULL &&
+			    !strcmp(tun->config.name, str))
 				break;
 		}
 
@@ -1293,8 +1344,8 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 
 	hymn_config_write(fd, "secret %s\n", cfg->secret);
 
-	if (cfg->descr != NULL)
-		hymn_config_write(fd, "descr %s\n", cfg->descr);
+	if (cfg->name != NULL)
+		hymn_config_write(fd, "descr %s\n", cfg->name);
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "local %s\n", hymn_ip_port_str(&cfg->local));
@@ -1410,7 +1461,7 @@ hymn_config_parse_peer(struct config *cfg, char *peer)
 static void
 hymn_config_parse_descr(struct config *cfg, char *descr)
 {
-	hymn_config_set_descr(cfg, descr);
+	hymn_config_set_name(cfg, descr);
 }
 
 static void
@@ -1499,23 +1550,23 @@ hymn_config_parse_accept(struct config *cfg, char *accept)
 }
 
 static void
-hymn_config_set_descr(struct config *cfg, const char *descr)
+hymn_config_set_name(struct config *cfg, const char *name)
 {
 	size_t		len, idx;
 
-	if (cfg->descr != NULL)
-		fatal("duplicate descr given");
+	if (cfg->name != NULL)
+		fatal("duplicate name given");
 
-	len = strlen(descr);
+	len = strlen(name);
 	if (len > 31)
-		fatal("descr is too long");
+		fatal("name is too long");
 
 	for (idx = 0; idx < len; idx++) {
-		if (!isalnum((unsigned char)descr[idx]) && descr[idx] != '-')
-			fatal("descr may only contain alnum and '-'");
+		if (!isalnum((unsigned char)name[idx]) && name[idx] != '-')
+			fatal("name may only contain alnum and '-'");
 	}
 
-	if ((cfg->descr = strdup(descr)) == NULL)
+	if ((cfg->name = strdup(name)) == NULL)
 		fatal("strdup");
 }
 
