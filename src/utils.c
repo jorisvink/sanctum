@@ -141,10 +141,7 @@ sanctum_key_erase(const char *s, struct sanctum_key *key, struct sanctum_sa *sa)
 		return (-1);
 
 	if (sa->spi == key->spi) {
-		if (sa->cipher != NULL)
-			sanctum_cipher_cleanup(sa->cipher);
-		sanctum_mem_zero(sa, sizeof(*sa));
-
+		sanctum_sa_clear(sa);
 		sanctum_log(LOG_NOTICE,
 		    "%s SA erased (spi=0x%08x)", s, key->spi);
 
