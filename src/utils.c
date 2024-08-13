@@ -433,18 +433,25 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	if ((fd = sanctum_file_open(path)) == -1)
 		return (-1);
 
-	nyfe_zeroize_register(okm, sizeof(okm));
-	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
-		fatal("failed to read secret");
+	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret)) {
+		(void)close(fd);
+		nyfe_zeroize(secret, sizeof(secret));
+		sanctum_log(LOG_NOTICE,
+		    "failed to read all data from '%s', will try again", path);
+		return (-1);
+	}
 
 	(void)close(fd);
+
+	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
 
 	len = 64;
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
+
 	nyfe_zeroize(secret, sizeof(secret));
 
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
