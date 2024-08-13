@@ -122,6 +122,7 @@ static void	hymn_control_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 
 static int	hymn_tunnel_list(struct tunnels *);
+static void	hymn_tunnel_status(const char *, u_int8_t, u_int8_t);
 static int	hymn_tunnel_parse(char *, const char **,
 		    u_int8_t *, u_int8_t *, int);
 
@@ -647,89 +648,27 @@ hymn_up(int argc, char *argv[])
 static int
 hymn_status(int argc, char *argv[])
 {
-	struct in_addr				in;
-	struct addr				*net;
-	struct sanctum_ctl_status_response	resp;
-	struct config				config;
-	u_int8_t				src, dst;
-	char					path[PATH_MAX];
-	const char				*flock, *status;
+	struct tunnels			list;
+	const char			*flock;
+	struct tunnel			*tunnel;
+	u_int8_t			src, dst;
 
-	if (argc != 1)
+	switch (argc) {
+	case 0:
+		hymn_tunnel_list(&list);
+		TAILQ_FOREACH(tunnel, &list, list) {
+			hymn_tunnel_status(tunnel->config.flock,
+			    tunnel->config.src, tunnel->config.dst);
+		}
+		break;
+	case 1:
+		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+			usage_simple("status");
+		hymn_tunnel_status(flock, src, dst);
+		break;
+	default:
 		usage_simple("status");
-
-	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
-		usage_simple("status");
-
-	hymn_conf_path(path, sizeof(path), flock, src, dst);
-
-	hymn_config_init(&config);
-	hymn_config_load(path, &config);
-
-	hymn_pid_path(path, sizeof(path), flock, src, dst);
-	if (access(path, R_OK) == -1)
-		status = "  not active";
-	else
-		status = NULL;
-
-	if (status == NULL) {
-		hymn_control_path(path, sizeof(path), flock, src, dst);
-		hymn_ctl_status(path, &resp);
-	}
-
-	printf("%s-%02x-%02x:\n", flock, src, dst);
-
-	if (config.name != NULL)
-		printf("  name\t\t%s\n", config.name);
-
-	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
-	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
-	    config.tun_mtu);
-
-	if (config.peer_cathedral) {
-		printf("  cathedral\t%s", hymn_ip_port_str(&config.cathedral));
-	} else {
-		printf("  peer\t\t%s", hymn_ip_port_str(&config.peer));
-	}
-
-	if (status == NULL && resp.ip != config.peer.ip) {
-		in.s_addr = resp.ip;
-		printf(" (%s:%u)",
-		    inet_ntoa(in), ntohs(resp.port));
-	}
-
-	printf("\n");
-
-	if (config.peer_cathedral) {
-		printf("    flock\t%" PRIx64 "\n", config.cathedral_flock);
-		printf("    identity\t%" PRIx32 "\n", config.cathedral_id);
-	}
-
-	printf("\n");
-	printf("  routes\n");
-	if (LIST_EMPTY(&config.routes)) {
-		printf("    none\n");
-	} else {
-		LIST_FOREACH(net, &config.routes, list)
-			printf("    %s\n", hymn_ip_mask_str(net));
-	}
-
-	printf("\n");
-	printf("  accepts\n");
-	if (LIST_EMPTY(&config.accepts)) {
-		printf("    none\n");
-	} else {
-		LIST_FOREACH(net, &config.accepts, list)
-			printf("    %s\n", hymn_ip_mask_str(net));
-	}
-
-	printf("\n");
-
-	if (status != NULL) {
-		printf("%s\n", status);
-	} else {
-		hymn_dump_ifstat("tx", &resp.tx);
-		hymn_dump_ifstat("rx", &resp.rx);
+		break;
 	}
 
 	return (0);
@@ -1252,6 +1191,88 @@ hymn_tunnel_list(struct tunnels *list)
 	(void)closedir(dir);
 
 	return (normal_tunnels);
+}
+
+static void
+hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
+{
+	struct in_addr				in;
+	struct addr				*net;
+	struct sanctum_ctl_status_response	resp;
+	struct config				config;
+	const char				*status;
+	char					path[PATH_MAX];
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	hymn_pid_path(path, sizeof(path), flock, src, dst);
+	if (access(path, R_OK) == -1)
+		status = "  not active";
+	else
+		status = NULL;
+
+	if (status == NULL) {
+		hymn_control_path(path, sizeof(path), flock, src, dst);
+		hymn_ctl_status(path, &resp);
+	}
+
+	printf("%s-%02x-%02x:\n", flock, src, dst);
+
+	if (config.name != NULL)
+		printf("  name\t\t%s\n", config.name);
+
+	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
+	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
+	    config.tun_mtu);
+
+	if (config.peer_cathedral) {
+		printf("  cathedral\t%s", hymn_ip_port_str(&config.cathedral));
+	} else {
+		printf("  peer\t\t%s", hymn_ip_port_str(&config.peer));
+	}
+
+	if (status == NULL && resp.ip != config.peer.ip) {
+		in.s_addr = resp.ip;
+		printf(" (%s:%u)",
+		    inet_ntoa(in), ntohs(resp.port));
+	}
+
+	printf("\n");
+
+	if (config.peer_cathedral) {
+		printf("    flock\t%" PRIx64 "\n", config.cathedral_flock);
+		printf("    identity\t%" PRIx32 "\n", config.cathedral_id);
+	}
+
+	printf("\n");
+	printf("  routes\n");
+	if (LIST_EMPTY(&config.routes)) {
+		printf("    none\n");
+	} else {
+		LIST_FOREACH(net, &config.routes, list)
+			printf("    %s\n", hymn_ip_mask_str(net));
+	}
+
+	printf("\n");
+	printf("  accepts\n");
+	if (LIST_EMPTY(&config.accepts)) {
+		printf("    none\n");
+	} else {
+		LIST_FOREACH(net, &config.accepts, list)
+			printf("    %s\n", hymn_ip_mask_str(net));
+	}
+
+	printf("\n");
+
+	if (status != NULL) {
+		printf("%s\n", status);
+	} else {
+		hymn_dump_ifstat("tx", &resp.tx);
+		hymn_dump_ifstat("rx", &resp.rx);
+	}
 }
 
 static void
