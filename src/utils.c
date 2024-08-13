@@ -451,7 +451,6 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	len = 64;
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
-
 	nyfe_zeroize(secret, sizeof(secret));
 
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
