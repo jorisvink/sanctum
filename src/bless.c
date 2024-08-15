@@ -242,7 +242,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	/* Apply TFC padding if requested. */
 	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
-	    pkt->length != sanctum->tun_mtu) {
+	    pkt->length < sanctum->tun_mtu) {
 		offset = pkt->length;
 		pkt->length = sanctum->tun_mtu;
 		data = sanctum_packet_data(pkt);
