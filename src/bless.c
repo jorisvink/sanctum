@@ -246,9 +246,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 		offset = pkt->length;
 		pkt->length = sanctum->tun_mtu;
 		data = sanctum_packet_data(pkt);
-
-		if (pkt->length - offset > 0)
-			nyfe_mem_zero(&data[offset], pkt->length - offset);
+		nyfe_mem_zero(&data[offset], pkt->length - offset);
 	}
 
 	/* Fill in ESP header and tail. */
