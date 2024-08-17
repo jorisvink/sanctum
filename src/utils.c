@@ -141,10 +141,7 @@ sanctum_key_erase(const char *s, struct sanctum_key *key, struct sanctum_sa *sa)
 		return (-1);
 
 	if (sa->spi == key->spi) {
-		if (sa->cipher != NULL)
-			sanctum_cipher_cleanup(sa->cipher);
-		sanctum_mem_zero(sa, sizeof(*sa));
-
+		sanctum_sa_clear(sa);
 		sanctum_log(LOG_NOTICE,
 		    "%s SA erased (spi=0x%08x)", s, key->spi);
 
@@ -403,6 +400,8 @@ sanctum_file_open(const char *path)
 {
 	int		fd;
 
+	PRECOND(path != NULL);
+
 	if ((fd = open(path, O_RDONLY)) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "failed to open '%s': %s", path, errno_s);
@@ -434,14 +433,20 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	if ((fd = sanctum_file_open(path)) == -1)
 		return (-1);
 
-	nyfe_zeroize_register(okm, sizeof(okm));
-	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret))
-		fatal("failed to read secret");
+	if (nyfe_file_read(fd, secret, sizeof(secret)) != sizeof(secret)) {
+		(void)close(fd);
+		nyfe_zeroize(secret, sizeof(secret));
+		sanctum_log(LOG_NOTICE,
+		    "failed to read all data from '%s', will try again", path);
+		return (-1);
+	}
 
 	(void)close(fd);
+
+	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
 
 	len = 64;
 

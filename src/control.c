@@ -112,9 +112,6 @@ control_handle_request(int fd)
 		case SANCTUM_CTL_STATUS:
 			control_status_request(fd, &peer);
 			break;
-		case SANCTUM_CTL_COMMUNION:
-			sanctum_atomic_write(&sanctum->communion, 1);
-			break;
 		}
 
 		break;

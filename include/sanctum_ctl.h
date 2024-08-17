@@ -30,7 +30,6 @@ struct sanctum_ifstat {
 
 /* ctl requests, some go to keying, some go to status. */
 #define SANCTUM_CTL_STATUS		1
-#define SANCTUM_CTL_COMMUNION		2
 
 /*
  * A request to the status process for sanctum.

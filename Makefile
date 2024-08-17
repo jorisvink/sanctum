@@ -87,7 +87,6 @@ OBJS+=	$(OBJDIR)/version.o
 all: $(BIN)
 	$(MAKE) -C hymn
 	$(MAKE) -C ambry
-	$(MAKE) -C pontifex
 
 $(BIN): $(OBJDIR) $(LIBNYFE) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
@@ -116,7 +115,6 @@ install-bin: $(BIN)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 	$(MAKE) -C hymn install
 	$(MAKE) -C ambry install
-	$(MAKE) -C pontifex install
 
 install-darwin-sb:
 	mkdir -p $(DARWIN_SB_PATH)
@@ -138,7 +136,6 @@ clean:
 	$(MAKE) -C nyfe clean
 	$(MAKE) -C hymn clean
 	$(MAKE) -C ambry clean
-	$(MAKE) -C pontifex clean
 	rm -rf $(OBJDIR) $(BIN)
 
 .PHONY: all clean force

@@ -126,6 +126,9 @@ sanctum_bless(struct sanctum_proc *proc)
 
 	sanctum_sa_clear(&state);
 
+	nyfe_zeroize(&state, sizeof(state));
+	nyfe_zeroize(io->tx, sizeof(*io->tx));
+
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
@@ -239,13 +242,11 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	/* Apply TFC padding if requested. */
 	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
-	    pkt->length != sanctum->tun_mtu) {
+	    pkt->length < sanctum->tun_mtu) {
 		offset = pkt->length;
 		pkt->length = sanctum->tun_mtu;
 		data = sanctum_packet_data(pkt);
-
-		if (pkt->length - offset > 0)
-			nyfe_mem_zero(&data[offset], pkt->length - offset);
+		nyfe_mem_zero(&data[offset], pkt->length - offset);
 	}
 
 	/* Fill in ESP header and tail. */

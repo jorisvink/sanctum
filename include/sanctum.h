@@ -485,9 +485,6 @@ struct sanctum_state {
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
 
-	/* Should a communion take place in the Chapel? */
-	u_int8_t		communion;
-
 	/* The control socket. */
 	struct sanctum_sun	control;
 

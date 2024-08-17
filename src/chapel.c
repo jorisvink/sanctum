@@ -178,14 +178,6 @@ sanctum_chapel(struct sanctum_proc *proc)
 			sanctum_packet_release(pkt);
 		}
 
-		if (sanctum_atomic_read(&sanctum->communion) == 1 &&
-		    offer != NULL) {
-			offer_next = 0;
-			chapel_erase(io->rx, offer->spi);
-			sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-			chapel_offer_clear();
-		}
-
 		if (delay_check == 0)
 			chapel_peer_check(now);
 		else
@@ -668,13 +660,6 @@ chapel_offer_check(u_int64_t now)
 		offer_now = 1;
 		reason = "no keys";
 		sanctum_atomic_write(&sanctum->heartbeat, now);
-	}
-
-	if (sanctum_atomic_cas_simple(&sanctum->communion, 1, 0)) {
-		reason = "communion";
-		offer_now = 1;
-		offer_ttl = 5;
-		offer_next_send = 1;
 	}
 
 	if (offer_now == 0)
