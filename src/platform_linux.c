@@ -139,8 +139,14 @@ static struct sock_filter keying_seccomp_filter[] = {
 #if defined(SYS_unlink)
 	KORE_SYSCALL_ALLOW(unlink),
 #endif
+#if defined(SYS_unlinkat)
+	KORE_SYSCALL_ALLOW(unlinkat),
+#endif
 #if defined(SYS_rename)
 	KORE_SYSCALL_ALLOW(rename),
+#endif
+#if defined(SYS_renameat2)
+	KORE_SYSCALL_ALLOW(renameat2),
 #endif
 #if defined(SYS_open)
 	KORE_SYSCALL_ALLOW(open),
