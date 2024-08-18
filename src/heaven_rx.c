@@ -99,6 +99,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 static void
 heaven_rx_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->crypto);
 
 	sanctum_shm_detach(io->tx);

@@ -140,6 +140,7 @@ sanctum_bless(struct sanctum_proc *proc)
 static void
 bless_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->clear);
 	(void)close(io->crypto);
 

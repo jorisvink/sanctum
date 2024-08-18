@@ -105,6 +105,7 @@ sanctum_shrine(struct sanctum_proc *proc)
 static void
 shrine_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->clear);
 	(void)close(io->crypto);
 
