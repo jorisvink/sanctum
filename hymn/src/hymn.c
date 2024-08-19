@@ -381,6 +381,9 @@ hymn_add(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "identity")) {
 			if (config.peer_cathedral == 0)
 				fatal("identity only relevant for cathedral");
+			if (config.cathedral_id != 0 ||
+			    config.identity_path != NULL)
+				fatal("duplicate identity");
 			if ((p = strchr(argv[i + 1], ':')) != NULL) {
 				*(p)++ = '\0';
 				if ((config.identity_path = strdup(p)) == NULL)
