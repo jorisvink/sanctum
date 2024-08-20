@@ -152,7 +152,7 @@ static LIST_HEAD(, flock)	flocks;
  * The cathedral can also send the endpoint its ambry for the tunnel.
  *
  * Note that the cathedral will use 2 listening sockets, io->crypto and
- * the io->cathedral one. This is done for NAT detection.
+ * the io->cathedral one. This is done for NAT-type detection.
  */
 void
 sanctum_cathedral(struct sanctum_proc *proc)
