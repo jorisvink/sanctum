@@ -122,6 +122,8 @@ static void	hymn_control_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 
 static int	hymn_tunnel_list(struct tunnels *);
+static void	hymn_tunnel_up(const char *, u_int8_t, u_int8_t);
+static void	hymn_tunnel_down(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_status(const char *, u_int8_t, u_int8_t);
 static int	hymn_tunnel_parse(char *, const char **,
 		    u_int8_t *, u_int8_t *, int);
@@ -588,62 +590,28 @@ hymn_accept(int argc, char *argv[])
 static int
 hymn_up(int argc, char *argv[])
 {
-	pid_t		pid;
-	int		status;
-	const char	*flock;
-	u_int8_t	src, dst;
-	char		path[PATH_MAX], *ap[32];
+	struct tunnels			list;
+	const char			*flock;
+	struct tunnel			*tunnel;
+	u_int8_t			src, dst;
 
-	if (argc != 1)
-		usage_simple("[up | down]");
-
-	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
-		usage_simple("[up | down]");
-
-	hymn_pid_path(path ,sizeof(path), flock, src, dst);
-
-	if (access(path, R_OK) != -1)
-		fatal("hymn tunnel %02x-%02x is up", src, dst);
-
-	if ((pid = fork()) == -1)
-		fatal("fork: %s", errno_s);
-
-	if (pid == 0) {
-		hymn_conf_path(path, sizeof(path), flock, src, dst);
-
-		ap[0] = "sanctum";
-		ap[1] = "-c";
-		ap[2] = path;
-		ap[3] = "-d";
-		ap[4] = NULL;
-
-		execvp(ap[0], ap);
-		fatal("failed to execute sanctum: %s", errno_s);
-	}
-
-	for (;;) {
-		if (waitpid(pid, &status, 0) == -1) {
-			if (errno == EINTR)
-				continue;
-			fatal("waitpid: %s", errno_s);
+	switch (argc) {
+	case 0:
+		hymn_tunnel_list(&list);
+		TAILQ_FOREACH(tunnel, &list, list) {
+			hymn_tunnel_up(tunnel->config.flock,
+			    tunnel->config.src, tunnel->config.dst);
 		}
-
+		break;
+	case 1:
+		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+			usage_simple("status");
+		hymn_tunnel_up(flock, src, dst);
+		break;
+	default:
+		usage_simple("[up | down]");
 		break;
 	}
-
-	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-		fatal("sanctum failed to start");
-
-	printf("waiting for sanctum to start ... ");
-	fflush(stdout);
-
-	for (;;) {
-		if (access(path, R_OK) != -1)
-			break;
-		sleep(1);
-	}
-
-	printf("done\n");
 
 	return (0);
 }
@@ -737,45 +705,28 @@ hymn_list(int argc, char *argv[])
 static int
 hymn_down(int argc, char *argv[])
 {
-	FILE		*fp;
-	pid_t		pid;
-	const char	*flock;
-	u_int8_t	src, dst;
-	char		path[PATH_MAX], buf[32], *ptr;
+	struct tunnels			list;
+	const char			*flock;
+	struct tunnel			*tunnel;
+	u_int8_t			src, dst;
 
-	if (argc != 1)
+	switch (argc) {
+	case 0:
+		hymn_tunnel_list(&list);
+		TAILQ_FOREACH(tunnel, &list, list) {
+			hymn_tunnel_down(tunnel->config.flock,
+			    tunnel->config.src, tunnel->config.dst);
+		}
+		break;
+	case 1:
+		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+			usage_simple("[up | down]");
+		hymn_tunnel_down(flock, src, dst);
+		break;
+	default:
 		usage_simple("[up | down]");
-
-	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
-		usage_simple("[up | down]");
-
-	hymn_pid_path(path, sizeof(path), flock, src, dst);
-
-	if ((fp = fopen(path, "r")) == NULL) {
-		if (errno == ENOENT)
-			fatal("tunnel %s-%02x-%02x is down", flock, src, dst);
-		fatal("fopen(%s): %s", path, errno_s);
+		break;
 	}
-
-	if ((ptr = hymn_config_read(fp, buf, sizeof(buf))) == NULL)
-		fatal("failed to read %s", path);
-
-	pid = hymn_number(ptr, 10, 0, UINT_MAX);
-	(void)fclose(fp);
-
-	if (kill(pid, SIGQUIT) == -1)
-		fatal("failed to signal %02x-%02x: %s", src, dst, errno_s);
-
-	printf("waiting for %s-%02x-%02x to go down ... ", flock, src, dst);
-	fflush(stdout);
-
-	for (;;) {
-		if (access(path, R_OK) == -1 && errno == ENOENT)
-			break;
-		sleep(1);
-	}
-
-	printf("done\n");
 
 	return (0);
 }
@@ -1194,6 +1145,100 @@ hymn_tunnel_list(struct tunnels *list)
 	(void)closedir(dir);
 
 	return (normal_tunnels);
+}
+
+static void
+hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
+{
+	pid_t		pid;
+	int		status;
+	char		path[PATH_MAX], *ap[32];
+
+	hymn_pid_path(path ,sizeof(path), flock, src, dst);
+
+	if (access(path, R_OK) != -1) {
+		printf("tunnel %s-%02x-%02x is up\n", flock, src, dst);
+		return;
+	}
+
+	if ((pid = fork()) == -1)
+		fatal("fork: %s", errno_s);
+
+	if (pid == 0) {
+		hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+		ap[0] = "sanctum";
+		ap[1] = "-c";
+		ap[2] = path;
+		ap[3] = "-d";
+		ap[4] = NULL;
+
+		execvp(ap[0], ap);
+		fatal("failed to execute sanctum: %s", errno_s);
+	}
+
+	for (;;) {
+		if (waitpid(pid, &status, 0) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("waitpid: %s", errno_s);
+		}
+
+		break;
+	}
+
+	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+		fatal("sanctum failed to start");
+
+	printf("waiting for %s-%02x-%02x to go up ... ", flock, src, dst);
+	fflush(stdout);
+
+	for (;;) {
+		if (access(path, R_OK) != -1)
+			break;
+		sleep(1);
+	}
+
+	printf("done\n");
+}
+
+static void
+hymn_tunnel_down(const char *flock, u_int8_t src, u_int8_t dst)
+{
+	FILE		*fp;
+	pid_t		pid;
+	char		path[PATH_MAX], buf[32], *ptr;
+
+	hymn_pid_path(path, sizeof(path), flock, src, dst);
+
+	if ((fp = fopen(path, "r")) == NULL) {
+		if (errno == ENOENT) {
+			printf("tunnel %s-%02x-%02x is down\n",
+			    flock, src, dst);
+			return;
+		}
+		fatal("fopen(%s): %s", path, errno_s);
+	}
+
+	if ((ptr = hymn_config_read(fp, buf, sizeof(buf))) == NULL)
+		fatal("failed to read %s", path);
+
+	pid = hymn_number(ptr, 10, 0, UINT_MAX);
+	(void)fclose(fp);
+
+	if (kill(pid, SIGQUIT) == -1)
+		fatal("failed to signal %02x-%02x: %s", src, dst, errno_s);
+
+	printf("waiting for %s-%02x-%02x to go down ... ", flock, src, dst);
+	fflush(stdout);
+
+	for (;;) {
+		if (access(path, R_OK) == -1 && errno == ENOENT)
+			break;
+		sleep(1);
+	}
+
+	printf("done\n");
 }
 
 static void
