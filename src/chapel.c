@@ -129,12 +129,12 @@ sanctum_chapel(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
+	sanctum_proc_privsep(proc);
+	sanctum_platform_sandbox(proc);
+
 	running = 1;
 	last_rtime = 0;
 	delay_check = 0;
-
-	sanctum_proc_privsep(proc);
-	sanctum_platform_sandbox(proc);
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {

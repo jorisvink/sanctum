@@ -59,12 +59,12 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	running = 1;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
 	count = 1;
+	running = 1;
+
 	pfd[0].revents = 0;
 	pfd[0].events = POLLIN;
 	pfd[0].fd = io->crypto;

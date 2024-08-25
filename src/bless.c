@@ -68,11 +68,10 @@ sanctum_bless(struct sanctum_proc *proc)
 	nyfe_zeroize_register(&state, sizeof(state));
 	nyfe_zeroize_register(io->tx, sizeof(*io->tx));
 
-	running = 1;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
+	running = 1;
 	now = sanctum_atomic_read(&sanctum->uptime);
 	heartbeat_next = now + heartbeat_interval;
 
