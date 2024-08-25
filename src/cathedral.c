@@ -1064,9 +1064,9 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 	int				fd;
 	struct stat			st;
 	struct sanctum_ambry_head	hdr;
+	size_t				ret;
 	struct sanctum_ambry_entry	entry;
 	struct ambry			*ambry;
-	size_t				len, ret;
 
 	PRECOND(option != NULL);
 
@@ -1084,8 +1084,7 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 		goto out;
 	}
 
-	len = st.st_size;
-	if (len != CATHEDRAL_AMBRY_BUNDLE_LEN) {
+	if (st.st_size != CATHEDRAL_AMBRY_BUNDLE_LEN) {
 		sanctum_log(LOG_NOTICE,
 		    "ambry file '%s' has an abnormal size", option);
 		goto out;
@@ -1107,7 +1106,6 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 	sanctum_log(LOG_INFO,
 	    "reloading ambry file for flock %" PRIx64, flock->id);
 
-	len -= sizeof(hdr);
 	cathedral_flock_ambries_clear(flock);
 
 	for (;;) {
