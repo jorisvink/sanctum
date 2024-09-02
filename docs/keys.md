@@ -21,12 +21,18 @@ and how it is used.
 | SK | A session key used to provide traffic confidentiality and integrity. | Red
 | CS | The cathedral secret, used to talk to a cathedral if enabled. | Red
 | KEK | A key-encryption-key, used for wrapping an Ambry. | Red
+| TEK | Traffic encapsulation key, used to prevent traffic analysis. | Traffic
 | Ambry | A shared secret (SS) wrapped with a KEK. | Black
 
 ## Separation
 
 All keys are located in one of the key processes like chapel, cathedral,
 shrine or pilgrim and are not available from any of the other processes.
+
+The exception is the TEK (Traffic Encapsulation Key) as this key is only
+used to prevent traffic analysis. This key is available in purgatory-rx
+and purgatory-tx, but does not need to be explicitly wiped from other
+processes due to its nature.
 
 ## Wrapping algorithm
 
@@ -167,3 +173,15 @@ Cathedral to peer ambry message:
 
     send(header || encdata)
 ```
+
+## Traffic Encapsulation Key (TEK)
+
+The TEK is used when traffic encapsulation is turned on. When it is active,
+a 128-bit mask is derived using the TEK and KMAC256() based on an outer ESP
+header and a 128-bit seed.
+
+This mask is then XOR'd onto the inner ESP header and the outer header
+is stripped, leaving us with the original to be transported packet.
+
+With traffic encapsulation all sanctum traffic will be indistinguishable
+from other implementations their IPSec traffic.

@@ -128,7 +128,7 @@ static struct sock_filter purgatory_rx_seccomp_filter[] = {
 };
 
 static struct sock_filter purgatory_tx_seccomp_filter[] = {
-	KORE_SYSCALL_ALLOW(close),
+	KORE_SYSCALL_ALLOW(getrandom),
 };
 
 static struct sock_filter keying_seccomp_filter[] = {

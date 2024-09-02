@@ -114,8 +114,8 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
     const void *aad, size_t aad_len, struct sanctum_packet *pkt)
 {
 	union deconst		nptr;
-	size_t			ctlen;
 	struct cipher_aes_gcm	*cipher;
+	size_t			ctlen, len;
 	u_int8_t		*data, *tag, calc[CIPHER_AES_GCM_TAG_SIZE];
 
 	PRECOND(arg != NULL);
@@ -123,14 +123,16 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
 	PRECOND(aad != NULL);
 	PRECOND(pkt != NULL);
 
-	if (pkt->length < CIPHER_AES_GCM_TAG_SIZE)
+	if (pkt->length <
+	    sizeof(struct sanctum_ipsec_hdr) + CIPHER_AES_GCM_TAG_SIZE)
 		return (-1);
 
 	cipher = arg;
 	nptr.cp = nonce;
+	len = pkt->length - sizeof(struct sanctum_ipsec_hdr);
 
 	data = sanctum_packet_data(pkt);
-	tag = &pkt->buf[pkt->length - CIPHER_AES_GCM_TAG_SIZE];
+	tag = &data[len - CIPHER_AES_GCM_TAG_SIZE];
 	ctlen = tag - data;
 
 	aes_gcm_dec_256(&cipher->key, &cipher->gcm, data, data,

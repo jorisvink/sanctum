@@ -1,5 +1,8 @@
 #!/bin/sh
 
-export SANCTUM_SECCOMP_TRACE=1
+if [ $# -ne 1 ]; then
+	echo "usage: ./test/linux-right.sh [config]"
+	exit 1
+fi
 
-ip netns exec right ./sanctum -c test/right.conf
+ip netns exec right ./sanctum -c $1

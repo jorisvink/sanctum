@@ -228,7 +228,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	if (state.pending) {
 		state.pending = 0;
-		sanctum_log(LOG_NOTICE, "TX SA active (spi=0x%08x)", state.spi);
+		sanctum_log(LOG_NOTICE, "TX SA active (spi=%08x)", state.spi);
 	}
 
 	/* Belts and suspenders. */

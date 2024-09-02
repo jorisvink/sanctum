@@ -307,7 +307,7 @@ chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
 		chapel_cathedral_packet(pkt, now);
 	} else {
-		fatal("invalid chapel packet (spi=0x%x, seq=0x%x)", spi, seq);
+		fatal("invalid chapel packet (spi=%08x, seq=0x%x)", spi, seq);
 	}
 }
 
@@ -702,7 +702,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	    offer->salt, offer->key, sizeof(offer->key));
 
 	sanctum_log(LOG_INFO, "offering fresh key (%s) "
-	    "(spi=0x%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
+	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->spi, offer_ttl, offer_next_send);
 
 	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);

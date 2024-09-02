@@ -123,6 +123,9 @@ extern int daemon(int, int);
 /* Length of our symmetrical keys, in bytes. */
 #define SANCTUM_KEY_LENGTH		32
 
+/* Length for an encapsulation key in hex. */
+#define SANCTUM_ENCAP_HEX_LEN		(SANCTUM_KEY_LENGTH * 2)
+
 /* ESP next_proto value for a heartbeat. */
 #define SANCTUM_PACKET_HEARTBEAT	0xfc
 
@@ -166,8 +169,11 @@ extern int daemon(int, int);
 /* The magic for NAT detection messages (CIBORIUM). */
 #define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4349424f5249554d
 
-/* The KDF label. */
+/* The KDF label for the cathedral. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
+
+/* The KDF label for traffic encapsulation. */
+#define SANCTUM_ENCAP_LABEL		"SANCTUM.ENCAP.KDF"
 
 /*
  * Packets used when doing key offering or cathedral forward registration.
@@ -348,8 +354,26 @@ struct sanctum_ipsec_tail {
 	u_int8_t		next;
 } __attribute__((packed));
 
-/* The available head room is the entire size of an sanctum_ipsec_hdr. */
-#define SANCTUM_PACKET_HEAD_LEN		sizeof(struct sanctum_ipsec_hdr)
+/*
+ * The encapsulation header consisting of a normal ESP header
+ * in combination with a 16 byte seed. The entire header is
+ * used for mask generation when encapsulating an outgoing packet.
+ * The mask is used to hide the inner ESP header and 64-bit pn.
+ */
+struct sanctum_encap_hdr {
+	struct sanctum_ipsec_hdr	ipsec;
+	u_int8_t			seed[16];
+} __attribute__((packed));
+
+/* Preseed is used for when outer encapsulation is enabled. */
+#define SANCTUM_PACKET_ENCAP_LEN	sizeof(struct sanctum_encap_hdr)
+
+/* The header starts after our potential encapsulation. */
+#define SANCTUM_PACKET_HEAD_OFFSET	SANCTUM_PACKET_ENCAP_LEN
+
+/* The data starts after the header. */
+#define SANCTUM_PACKET_DATA_OFFSET	\
+    (SANCTUM_PACKET_HEAD_OFFSET + sizeof(struct sanctum_ipsec_hdr))
 
 /*
  * Maximum packet sizes we can receive from the interfaces.
@@ -405,6 +429,9 @@ struct sanctum_sun {
 
 /* Set if a peer was configured manually in the configuration. */
 #define SANCTUM_FLAG_PEER_CONFIGURED	(1 << 4)
+
+/* If purgatory is encapsulating / decapsulating for traffic protection. */
+#define SANCTUM_FLAG_ENCAPSULATE	(1 << 5)
 
 /*
  * The modes in which sanctum can run.
@@ -494,6 +521,9 @@ struct sanctum_state {
 	/* The sanctum instance description. */
 	char			descr[32];	/* XXX */
 
+	/* The traffic encapsulation key, if set. */
+	u_int8_t		tek[SANCTUM_KEY_LENGTH];
+
 	/* Tx and Rx statistics. */
 	struct sanctum_ifstat	tx;
 	struct sanctum_ifstat	rx;
@@ -554,6 +584,7 @@ void	*sanctum_packet_info(struct sanctum_packet *);
 void	*sanctum_packet_data(struct sanctum_packet *);
 void	*sanctum_packet_tail(struct sanctum_packet *);
 void	*sanctum_packet_head(struct sanctum_packet *);
+void	*sanctum_packet_start(struct sanctum_packet *);
 
 struct sanctum_packet	*sanctum_packet_get(void);
 

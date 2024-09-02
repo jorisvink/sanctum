@@ -85,6 +85,7 @@ struct config {
 
 	char			*kek;
 	char			*name;
+	char			*encap;
 	char			*secret;
 	char			*identity_path;
 
@@ -157,6 +158,8 @@ static void	hymn_config_parse_route(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
 static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
+static void	hymn_config_parse_encapsulation(struct config *, char *);
+
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
@@ -216,6 +219,7 @@ static const struct {
 	{ "accept",		hymn_config_parse_accept },
 	{ "tunnel",		hymn_config_parse_tunnel },
 	{ "secret",		hymn_config_parse_secret },
+	{ "encapsulation",	hymn_config_parse_encapsulation },
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
@@ -394,6 +398,13 @@ hymn_add(int argc, char *argv[])
 			which |= HYMN_IDENTITY;
 			config.cathedral_id = hymn_number(argv[i + 1], 16,
 			    0, UINT_MAX);
+		} else if (!strcmp(argv[i], "encap")) {
+			if (config.encap != NULL)
+				fatal("duplicate encap");
+			if (strlen(argv[i + 1]) != 64)
+				fatal("encap must be a 256-bit key in hex");
+			if ((config.encap = strdup(argv[i + 1])) == NULL)
+				fatal("strduP");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_add();
@@ -1410,6 +1421,9 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	hymn_config_write(fd, "tunnel %s %u\n",
 	    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
 
+	if (cfg->encap != NULL)
+		hymn_config_write(fd, "encapsulation %s\n", cfg->encap);
+
 	if (cfg->kek != NULL)
 		hymn_config_write(fd, "kek %s\n", cfg->kek);
 
@@ -1572,6 +1586,16 @@ hymn_config_parse_secret(struct config *cfg, char *secret)
 		fatal("duplicate secret");
 
 	if ((cfg->secret = strdup(secret)) == NULL)
+		fatal("strdup");
+}
+
+static void
+hymn_config_parse_encapsulation(struct config *cfg, char *encap)
+{
+	if (cfg->encap != NULL)
+		fatal("duplicate encapsulation");
+
+	if ((cfg->encap = strdup(encap)) == NULL)
 		fatal("strdup");
 }
 
