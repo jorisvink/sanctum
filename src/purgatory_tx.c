@@ -218,7 +218,7 @@ purgatory_tx_encapsulate(struct sanctum_packet *pkt)
 	struct nyfe_kmac256		kdf;
 	struct sanctum_encap_hdr	*hdr;
 	size_t				idx, total;
-	u_int8_t			*data, mask[16];
+	u_int8_t			*data, mask[SANCTUM_ENCAP_MASK_LEN];
 
 	PRECOND(pkt != NULL);
 
@@ -242,6 +242,12 @@ purgatory_tx_encapsulate(struct sanctum_packet *pkt)
 	nyfe_kmac256_update(&kdf, hdr, sizeof(*hdr));
 	nyfe_kmac256_final(&kdf, mask, sizeof(mask));
 
+	/*
+	 * We do not need to check pkt length here before XOR:ing
+	 * the mask onto its data. The packet buffer will have
+	 * SANCTUM_ENCAP_MASK_LEN bytes available even if no data
+	 * was actually written into it.
+	 */
 	for (idx = 0; idx < sizeof(mask); idx++)
 		data[idx] ^= mask[idx];
 

@@ -365,6 +365,15 @@ struct sanctum_encap_hdr {
 	u_int8_t			seed[16];
 } __attribute__((packed));
 
+/*
+ * The length of the mask we XOR onto the packet if encapsulation is enabled.
+ * The 20 bytes stems from the sanctum_offer_hdr having 4 bytes more than
+ * a normal ESP header + packet number. So this is essentially
+ * sizeof(struct sanctum_offer_hdr) - SANCTUM_KEY_OFFER_SALT_LEN.
+ */
+#define SANCTUM_ENCAP_MASK_LEN		\
+    (sizeof(struct sanctum_offer_hdr) - SANCTUM_KEY_OFFER_SALT_LEN)
+
 /* Preseed is used for when outer encapsulation is enabled. */
 #define SANCTUM_PACKET_ENCAP_LEN	sizeof(struct sanctum_encap_hdr)
 
