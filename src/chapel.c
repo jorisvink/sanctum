@@ -212,6 +212,10 @@ sanctum_chapel(struct sanctum_proc *proc)
 static void
 chapel_drop_access(void)
 {
+	(void)close(io->nat);
+	(void)close(io->clear);
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->heaven);
 	sanctum_shm_detach(io->confess);
