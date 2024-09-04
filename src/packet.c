@@ -68,6 +68,17 @@ sanctum_packet_release(struct sanctum_packet *pkt)
 }
 
 /*
+ * Returns a pointer to the start of the entire packet buffer.
+ */
+void *
+sanctum_packet_start(struct sanctum_packet *pkt)
+{
+	PRECOND(pkt != NULL);
+
+	return (&pkt->buf[0]);
+}
+
+/*
  * Returns a pointer to the packet header (the location of the ESP header).
  */
 void *
@@ -75,7 +86,7 @@ sanctum_packet_head(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
 
-	return (&pkt->buf[0]);
+	return (&pkt->buf[SANCTUM_PACKET_HEAD_OFFSET]);
 }
 
 /*
@@ -86,7 +97,7 @@ sanctum_packet_data(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
 
-	return (&pkt->buf[SANCTUM_PACKET_HEAD_LEN]);
+	return (&pkt->buf[SANCTUM_PACKET_DATA_OFFSET]);
 }
 
 /*
@@ -98,7 +109,7 @@ sanctum_packet_tail(struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->length <= SANCTUM_PACKET_DATA_LEN);
 
-	return (&pkt->buf[SANCTUM_PACKET_HEAD_LEN + pkt->length]);
+	return (&pkt->buf[SANCTUM_PACKET_DATA_OFFSET + pkt->length]);
 }
 
 /*

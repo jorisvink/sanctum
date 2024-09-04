@@ -78,10 +78,10 @@ sanctum_confess(struct sanctum_proc *proc)
 	nyfe_zeroize_register(&state, sizeof(state));
 	nyfe_zeroize_register(io->rx, sizeof(*io->rx));
 
-	running = 1;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+
+	running = 1;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -123,6 +123,7 @@ sanctum_confess(struct sanctum_proc *proc)
 static void
 confess_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->clear);
 	(void)close(io->crypto);
 
@@ -279,7 +280,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		sanctum_atomic_write(&sanctum->rx.bytes, 0);
 		sanctum_atomic_write(&sanctum->rx.age, sa->age);
 		sanctum_atomic_write(&sanctum->rx.spi, sa->spi);
-		sanctum_log(LOG_NOTICE, "RX SA active (spi=0x%08x)", sa->spi);
+		sanctum_log(LOG_NOTICE, "RX SA active (spi=%08x)", sa->spi);
 	}
 
 	confess_arwin_update(sa, pkt, hdr);
@@ -349,13 +350,13 @@ confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
 		bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - pn);
 		if (sa->bitmap & ((u_int64_t)1 << bit)) {
 			sanctum_log(LOG_INFO,
-			    "packet seq=0x%" PRIx64 " already seen", pn);
+			    "packet seq=%" PRIx64 " already seen", pn);
 			return (-1);
 		}
 		return (0);
 	}
 
-	sanctum_log(LOG_INFO, "packet seq=0x%" PRIx64 " too old", pn);
+	sanctum_log(LOG_INFO, "packet seq=%" PRIx64 " too old", pn);
 
 	return (-1);
 }

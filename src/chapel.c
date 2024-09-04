@@ -129,12 +129,12 @@ sanctum_chapel(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
+	sanctum_proc_privsep(proc);
+	sanctum_platform_sandbox(proc);
+
 	running = 1;
 	last_rtime = 0;
 	delay_check = 0;
-
-	sanctum_proc_privsep(proc);
-	sanctum_platform_sandbox(proc);
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -212,6 +212,10 @@ sanctum_chapel(struct sanctum_proc *proc)
 static void
 chapel_drop_access(void)
 {
+	(void)close(io->nat);
+	(void)close(io->clear);
+	(void)close(io->crypto);
+
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->heaven);
 	sanctum_shm_detach(io->confess);
@@ -307,7 +311,7 @@ chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
 		chapel_cathedral_packet(pkt, now);
 	} else {
-		fatal("invalid chapel packet (spi=0x%x, seq=0x%x)", spi, seq);
+		fatal("invalid chapel packet (spi=%08x, seq=0x%x)", spi, seq);
 	}
 }
 
@@ -702,7 +706,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	    offer->salt, offer->key, sizeof(offer->key));
 
 	sanctum_log(LOG_INFO, "offering fresh key (%s) "
-	    "(spi=0x%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
+	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->spi, offer_ttl, offer_next_send);
 
 	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
@@ -731,18 +735,18 @@ chapel_offer_encrypt(u_int64_t now)
 	op = sanctum_offer_init(pkt, offer->spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
-	key = &op->data.offer.key;
-	key->salt = offer->salt;
-	key->id = htobe64(local_id);
-	nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
-
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
-		return;
+		goto cleanup;
 	}
+
+	key = &op->data.offer.key;
+	key->salt = offer->salt;
+	key->id = htobe64(local_id);
+	nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
 
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));

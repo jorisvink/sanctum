@@ -96,10 +96,10 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	running = 1;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+
+	running = 1;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -133,6 +133,7 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 static void
 pilgrim_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->clear);
 	(void)close(io->crypto);
 
@@ -226,18 +227,18 @@ pilgrim_offer_encrypt(u_int64_t now)
 	op = sanctum_offer_init(pkt, offer->spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
-	key = &op->data.offer.key;
-	key->salt = offer->salt;
-	key->id = htobe64(local_id);
-	nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
-
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->secret, PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
-		return;
+		goto cleanup;
 	}
+
+	key = &op->data.offer.key;
+	key->salt = offer->salt;
+	key->id = htobe64(local_id);
+	nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
 
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));

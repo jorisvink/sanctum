@@ -58,13 +58,11 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 	sanctum_signal_ignore(SIGINT);
 
 	sanctum_config_routes();
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
-	pfd.fd = io->clear;
-
 	pfd.revents = 0;
+	pfd.fd = io->clear;
 	pfd.events = POLLIN;
 
 	running = 1;
@@ -99,6 +97,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 static void
 heaven_rx_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->crypto);
 
 	sanctum_shm_detach(io->tx);

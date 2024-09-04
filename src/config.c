@@ -53,6 +53,7 @@ static void	config_parse_instance(char *);
 static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
+static void	config_parse_encapsulation(char *);
 static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
@@ -87,6 +88,7 @@ static const struct {
 	{ "cathedral",		config_parse_cathedral },
 	{ "secretdir",		config_parse_secretdir },
 	{ "settings",		config_parse_settings },
+	{ "encapsulation",	config_parse_encapsulation },
 	{ "cathedral_id",	config_parse_cathedral_id },
 	{ "cathedral_flock",	config_parse_cathedral_flock },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
@@ -457,7 +459,7 @@ config_parse_tunnel(char *opt)
 	if (sscanf(opt, "%18s %hu", ip, &mtu) != 2)
 		fatal("tunnel <ip/mask> <mtu>");
 
-	if (mtu > 1500 || mtu < 576)
+	if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
 		fatal("mtu (%u) invalid", mtu);
 
 	sanctum->tun_mtu = mtu;
@@ -687,6 +689,41 @@ config_parse_settings(char *opt)
 
 	if ((sanctum->settings = strdup(opt)) == NULL)
 		fatal("strdup failed");
+}
+
+/*
+ * Parse the encapsulation option.
+ */
+static void
+config_parse_encapsulation(char *opt)
+{
+	size_t		idx, i;
+	char		hex[5], *ep;
+
+	PRECOND(opt != NULL);
+
+	if (strlen(opt) != SANCTUM_ENCAP_HEX_LEN) {
+		fatal("encapsulation key must be a %d-bit hex value",
+		    SANCTUM_KEY_LENGTH * 8);
+	}
+
+	hex[0] = '0';
+	hex[1] = 'x';
+	hex[4] = '\0';
+
+	i = 0;
+
+	for (idx = 0; idx < SANCTUM_ENCAP_HEX_LEN; idx += 2) {
+		hex[2] = opt[idx];
+		hex[3] = opt[idx + 1];
+
+		errno = 0;
+		sanctum->tek[i++] = strtoul(hex, &ep, 16);
+		if (errno != 0 || *ep != '\0')
+			fatal("hex byte '%s' invalid", hex);
+	}
+
+	sanctum->flags |= SANCTUM_FLAG_ENCAPSULATE;
 }
 
 /*

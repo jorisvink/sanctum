@@ -150,23 +150,25 @@ int
 sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
     const void *aad, size_t aad_len, struct sanctum_packet *pkt)
 {
-	size_t			ctlen;
 	struct cipher_agelas	*cipher;
+	size_t			ctlen, len;
 	u_int8_t		block[136];
 	u_int8_t		*data, *tag, calc[NYFE_TAG_LEN];
 
 	PRECOND(arg != NULL);
 	PRECOND(nonce != NULL);
+	PRECOND(nonce_len <= sizeof(block));
 	PRECOND(aad != NULL);
 	PRECOND(pkt != NULL);
 
-	VERIFY(pkt->length + NYFE_TAG_LEN < sizeof(pkt->buf));
-	VERIFY(nonce_len <= sizeof(block));
+	if (pkt->length < sizeof(struct sanctum_ipsec_hdr) + NYFE_TAG_LEN)
+		return (-1);
 
 	cipher = arg;
+	len = pkt->length - sizeof(struct sanctum_ipsec_hdr);
 
 	data = sanctum_packet_data(pkt);
-	tag = &pkt->buf[pkt->length - NYFE_TAG_LEN];
+	tag = &data[len - NYFE_TAG_LEN];
 	ctlen = tag - data;
 
 	memset(block, 0, sizeof(block));

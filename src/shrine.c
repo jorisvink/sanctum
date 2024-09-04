@@ -70,10 +70,10 @@ sanctum_shrine(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	running = 1;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+
+	running = 1;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -105,6 +105,7 @@ sanctum_shrine(struct sanctum_proc *proc)
 static void
 shrine_drop_access(void)
 {
+	(void)close(io->nat);
 	(void)close(io->clear);
 	(void)close(io->crypto);
 

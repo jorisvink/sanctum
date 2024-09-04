@@ -32,6 +32,7 @@
 
 static void	purgatory_rx_drop_access(void);
 static void	purgatory_rx_recv_packets(int);
+static int	purgatory_rx_decapsulate(struct sanctum_packet *);
 static int	purgatory_rx_packet_check(struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
@@ -59,12 +60,12 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	running = 1;
-
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
 	count = 1;
+	running = 1;
+
 	pfd[0].revents = 0;
 	pfd[0].events = POLLIN;
 	pfd[0].fd = io->crypto;
@@ -153,7 +154,11 @@ purgatory_rx_recv_packets(int fd)
 			pkt = &tpkt;
 
 		socklen = sizeof(pkt->addr);
-		data = sanctum_packet_head(pkt);
+
+		if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)
+			data = sanctum_packet_start(pkt);
+		else
+			data = sanctum_packet_head(pkt);
 
 		if ((ret = recvfrom(fd, data, SANCTUM_PACKET_DATA_LEN,
 		    MSG_DONTWAIT, (struct sockaddr *)&pkt->addr,
@@ -244,6 +249,11 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 
 	PRECOND(pkt != NULL);
 
+	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE) {
+		if (purgatory_rx_decapsulate(pkt) == -1)
+			return (-1);
+	}
+
 	if (sanctum_packet_crypto_checklen(pkt) == -1)
 		return (-1);
 
@@ -305,4 +315,48 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 	sanctum_log(LOG_INFO, "dropped too old packet, seq=0x%" PRIx64, pn);
 
 	return (-1);
+}
+
+/*
+ * Remove the encapsulation layer on the outer packet. Note that no integrity
+ * is provided or checked at this layer, it is purely for traffic analysis
+ * protection.
+ *
+ * We also don't bother with zeroizing the mask of kdf data structures
+ * here as we do not consider them as sensitive.
+ */
+static int
+purgatory_rx_decapsulate(struct sanctum_packet *pkt)
+{
+	size_t				idx;
+	struct nyfe_kmac256		kdf;
+	struct sanctum_encap_hdr	*hdr;
+	u_int8_t			*data, mask[SANCTUM_ENCAP_MASK_LEN];
+
+	PRECOND(pkt != NULL);
+	PRECOND(sanctum->flags & SANCTUM_FLAG_ENCAPSULATE);
+
+	if (pkt->length < sizeof(*hdr))
+		return (-1);
+
+	hdr = sanctum_packet_start(pkt);
+	data = sanctum_packet_head(pkt);
+
+	nyfe_kmac256_init(&kdf, sanctum->tek, sizeof(sanctum->tek),
+	    SANCTUM_ENCAP_LABEL, sizeof(SANCTUM_ENCAP_LABEL) - 1);
+	nyfe_kmac256_update(&kdf, hdr, sizeof(*hdr));
+	nyfe_kmac256_final(&kdf, mask, sizeof(mask));
+
+	/*
+	 * We do not need to check pkt length here before XOR:ing
+	 * the mask onto its data. The packet buffer will have
+	 * SANCTUM_ENCAP_MASK_LEN bytes available even if no data
+	 * was actually read into it.
+	 */
+	for (idx = 0; idx < sizeof(mask); idx++)
+		data[idx] ^= mask[idx];
+
+	pkt->length -= sizeof(*hdr);
+
+	return (0);
 }

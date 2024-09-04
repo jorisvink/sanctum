@@ -341,7 +341,7 @@ sanctum_pidfile_unlink(void)
 	if (sanctum->pidfile == NULL)
 		return;
 
-	if (unlink(sanctum->pidfile) == -1) {
+	if (unlink(sanctum->pidfile) == -1 && errno != ENOENT) {
 		sanctum_log(LOG_NOTICE, "failed to remove pidfile '%s' (%s)",
 		    sanctum->pidfile, strerror(errno));
 	}
