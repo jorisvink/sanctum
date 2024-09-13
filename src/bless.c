@@ -105,8 +105,9 @@ sanctum_bless(struct sanctum_proc *proc)
 			sanctum_stat_clear(&sanctum->tx);
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
-			state.seqnr = 1;
 			heartbeat_next = now;
+			sanctum_atomic_write(&sanctum->tx.pkt, 0);
+			sanctum_atomic_write(&sanctum->tx.bytes, 0);
 			sanctum_atomic_write(&sanctum->tx.age, now);
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		}
