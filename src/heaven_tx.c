@@ -28,9 +28,13 @@
 #include "sanctum.h"
 
 static void	heaven_tx_drop_access(void);
-static void	heaven_tx_log_block(struct ip *);
-static int	heaven_tx_is_sinner(struct sanctum_packet *);
 static void	heaven_tx_send_packet(int, struct sanctum_packet *);
+
+static void	heaven_tx_l2_log(struct sanctum_ether *);
+static int	heaven_tx_l2_sinner(struct sanctum_packet *);
+
+static void	heaven_tx_l3_log(struct ip *);
+static int	heaven_tx_l3_sinner(struct sanctum_packet *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -117,9 +121,16 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
 	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
-	if (heaven_tx_is_sinner(pkt) == -1) {
-		sanctum_packet_release(pkt);
-		return;
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP) {
+		if (heaven_tx_l2_sinner(pkt) == -1) {
+			sanctum_packet_release(pkt);
+			return;
+		}
+	} else {
+		if (heaven_tx_l3_sinner(pkt) == -1) {
+			sanctum_packet_release(pkt);
+			return;
+		}
 	}
 
 	for (;;) {
@@ -143,11 +154,45 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 }
 
 /*
- * Check if the packet we are about to send on the heaven interface
+ * Check if the L2 packet we are about to send on the heaven interface
  * actually is traffic we expect and allow.
  */
 static int
-heaven_tx_is_sinner(struct sanctum_packet *pkt)
+heaven_tx_l2_sinner(struct sanctum_packet *pkt)
+{
+	u_int16_t		proto;
+	struct sanctum_ether	*ether;
+
+	PRECOND(pkt != NULL);
+	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
+	PRECOND(sanctum->flags & SANCTUM_FLAG_USE_TAP);
+
+	if (pkt->length < sizeof(*ether))
+		return (-1);
+
+	ether = sanctum_packet_data(pkt);
+	proto = be16toh(ether->proto);
+
+	switch (proto) {
+	case SANCTUM_ETHER_TYPE_ARP:
+	case SANCTUM_ETHER_TYPE_VLAN:
+	case SANCTUM_ETHER_TYPE_IPV4:
+	case SANCTUM_ETHER_TYPE_IPV6:
+		break;
+	default:
+		heaven_tx_l2_log(ether);
+		return (-1);
+	}
+
+	return (0);
+}
+
+/*
+ * Check if the L3 packet we are about to send on the heaven interface
+ * actually is traffic we expect and allow.
+ */
+static int
+heaven_tx_l3_sinner(struct sanctum_packet *pkt)
 {
 	struct ip	*ip;
 	in_addr_t	net, mask;
@@ -169,7 +214,7 @@ heaven_tx_is_sinner(struct sanctum_packet *pkt)
 	case IPPROTO_ICMP:
 		break;
 	default:
-		heaven_tx_log_block(ip);
+		heaven_tx_l3_log(ip);
 		return (-1);
 	}
 
@@ -178,14 +223,14 @@ heaven_tx_is_sinner(struct sanctum_packet *pkt)
 
 	if ((ip->ip_src.s_addr & mask) != net) {
 		if (sanctum_config_routable(ip->ip_src.s_addr) == -1) {
-			heaven_tx_log_block(ip);
+			heaven_tx_l3_log(ip);
 			return (-1);
 		}
 	}
 
 	if ((ip->ip_dst.s_addr & mask) != net) {
 		if (sanctum_config_routable(ip->ip_dst.s_addr) == -1) {
-			heaven_tx_log_block(ip);
+			heaven_tx_l3_log(ip);
 			return (-1);
 		}
 	}
@@ -194,10 +239,26 @@ heaven_tx_is_sinner(struct sanctum_packet *pkt)
 }
 
 /*
- * Log a packet that was blocked by heaven_tx_is_sinner().
+ * Log an L2 packet that was blocked by heaven_tx_l2_sinner().
  */
 static void
-heaven_tx_log_block(struct ip *ip)
+heaven_tx_l2_log(struct sanctum_ether *ether)
+{
+	PRECOND(ether != NULL);
+
+	sanctum_log(LOG_INFO, "blocked 0x%04x "
+	    "%02x:%02x:%02x:%02x:%02x:%02x -> %02x:%02x:%02x:%02x:%02x:%02x",
+	    ether->proto, ether->src[0], ether->src[1], ether->src[2],
+	    ether->src[3], ether->src[4], ether->src[5], ether->dst[0],
+	    ether->dst[1], ether->dst[2], ether->dst[3], ether->dst[4],
+	    ether->dst[5]);
+}
+
+/*
+ * Log an L3 packet that was blocked by heaven_tx_l3_sinner().
+ */
+static void
+heaven_tx_l3_log(struct ip *ip)
 {
 	const char	*proto;
 	char		buf[16];

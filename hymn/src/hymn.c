@@ -83,6 +83,7 @@ struct config {
 
 	const char		*flock;
 
+	int			tap;
 	char			*kek;
 	char			*name;
 	char			*encap;
@@ -150,6 +151,7 @@ static void	hymn_config_save(const char *, const char *, struct config *);
 static void	hymn_config_set_mtu(struct config *, const char *);
 static void	hymn_config_set_name(struct config *, const char *);
 
+static void	hymn_config_parse_tap(struct config *, char *);
 static void	hymn_config_parse_kek(struct config *, char *);
 static void	hymn_config_parse_peer(struct config *, char *);
 static void	hymn_config_parse_descr(struct config *, char *);
@@ -211,6 +213,7 @@ static const struct {
 	const char		*option;
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
+	{ "tap",		hymn_config_parse_tap },
 	{ "kek",		hymn_config_parse_kek },
 	{ "peer",		hymn_config_parse_peer },
 	{ "descr",		hymn_config_parse_descr },
@@ -317,7 +320,7 @@ usage_add(void)
 	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
 	fprintf(stderr, "    [kek <path>] [name <name>] ");
 	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
-	fprintf(stderr, "    [natport <port>]\n");
+	fprintf(stderr, "    [natport <port>] [device [tun | tap]]\n");
 
 	exit(1);
 }
@@ -404,7 +407,14 @@ hymn_add(int argc, char *argv[])
 			if (strlen(argv[i + 1]) != 64)
 				fatal("encap must be a 256-bit key in hex");
 			if ((config.encap = strdup(argv[i + 1])) == NULL)
-				fatal("strduP");
+				fatal("strdup");
+		} else if (!strcmp(argv[i], "device")) {
+			if (!strcmp(argv[i + 1], "tap"))
+				config.tap = 1;
+			else if (!strcmp(argv[i + 1], "tun"))
+				config.tap = 0;
+			else
+				fatal("unknown device '%s'", argv[i + 1]);
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_add();
@@ -438,8 +448,12 @@ hymn_add(int argc, char *argv[])
 	if (!(which & HYMN_PEER) && (which & HYMN_CATHEDRAL))
 		which |= HYMN_PEER;
 
-	if (!(which & HYMN_TUNNEL))
-		printf("missing tunnel\n");
+	if (!(which & HYMN_TUNNEL)) {
+		if (config.tap == 1)
+			which |= HYMN_TUNNEL;
+		else
+			printf("missing tunnel\n");
+	}
 
 	if (which & HYMN_CATHEDRAL) {
 		if (!(which & HYMN_IDENTITY))
@@ -1283,6 +1297,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
 
+	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
 	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
 	    config.tun_mtu);
@@ -1307,6 +1322,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	printf("\n");
+
 	printf("  routes\n");
 	if (LIST_EMPTY(&config.routes)) {
 		printf("    none\n");
@@ -1418,6 +1434,10 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	    len, flock, cfg->src, cfg->dst);
 	hymn_config_write(fd, "pidfile %s/%s-%02x-%02x.pid\n",
 	    HYMN_RUN_PATH, flock, cfg->src, cfg->dst);
+
+	if (cfg->tap == 1)
+		hymn_config_write(fd, "tap yes\n");
+
 	hymn_config_write(fd, "tunnel %s %u\n",
 	    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
 
@@ -1567,6 +1587,18 @@ hymn_config_parse_tunnel(struct config *cfg, char *peer)
 
 	hymn_ip_mask_parse(&cfg->tun, peer);
 	hymn_config_set_mtu(cfg, mtu);
+}
+
+static void
+hymn_config_parse_tap(struct config *cfg, char *opt)
+{
+	if (!strcmp(opt, "yes")) {
+		cfg->tap = 1;
+	} else if (!strcmp(opt, "no")) {
+		cfg->tap = 0;
+	} else {
+		fatal("invalid tap option '%s'", opt);
+	}
 }
 
 static void

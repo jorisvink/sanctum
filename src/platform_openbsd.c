@@ -56,20 +56,26 @@ sanctum_platform_init(void)
 int
 sanctum_platform_tundev_create(void)
 {
+	const char	*type;
 	char		path[128];
 	int		fd, idx, len, flags;
 
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		type = "tap";
+	else
+		type = "tun";
+
 	for (idx = 0; idx < 256; idx++) {
-		len = snprintf(path, sizeof(path), "/dev/tun%d", idx);
+		len = snprintf(path, sizeof(path), "/dev/%s%d", type, idx);
 		if (len == -1 || (size_t)len >= sizeof(path))
-			fatal("/dev/tun%d too long", idx);
+			fatal("/dev/%s%d too long", type, idx);
 
 		if ((fd = open(path, O_RDWR)) != -1)
 			break;
 	}
 
 	if (idx == 256)
-		fatal("unable to find free tunnel device");
+		fatal("unable to find free %s device", type);
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1)
 		fatal("fcntl: %s", errno_s);
@@ -80,9 +86,13 @@ sanctum_platform_tundev_create(void)
 		fatal("fcntl: %s", errno_s);
 
 	openbsd_configure_tundev(&path[PATH_SKIP]);
-	sanctum_platform_tundev_route(&sanctum->tun_ip, &sanctum->tun_mask);
 
-	sanctum_log(LOG_INFO, "using tun device '%s'", path);
+	if (sanctum->tun_ip.sin_addr.s_addr != 0) {
+		sanctum_platform_tundev_route(&sanctum->tun_ip,
+		    &sanctum->tun_mask);
+	}
+
+	sanctum_log(LOG_INFO, "using %s device '%s'", type, path);
 
 	return (fd);
 }
@@ -95,6 +105,7 @@ sanctum_platform_tundev_create(void)
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 {
+	int			cnt;
 	ssize_t			ret;
 	u_int8_t		*data;
 	struct iovec		iov[2];
@@ -103,20 +114,26 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 
+	cnt = 0;
 	data = sanctum_packet_data(pkt);
 
-	iov[0].iov_base = &protocol;
-	iov[0].iov_len = sizeof(protocol);
-	iov[1].iov_base = data;
-	iov[1].iov_len = SANCTUM_PACKET_DATA_LEN;
+	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
+		iov[cnt].iov_base = &protocol;
+		iov[cnt].iov_len = sizeof(protocol);
+		cnt++;
+	}
+
+	iov[cnt].iov_base = data;
+	iov[cnt].iov_len = SANCTUM_PACKET_DATA_LEN;
+	cnt++;
 
 	/*
 	 * We have to adjust the total data read with the protocol
 	 * information we read, otherwise the size makes no sense
 	 * later for our other components.
 	 */
-	ret = readv(fd, iov, 2);
-	if (ret != -1 && (size_t)ret >= sizeof(protocol))
+	ret = readv(fd, iov, cnt);
+	if (cnt == 2 && ret != -1 && (size_t)ret >= sizeof(protocol))
 		ret -= sizeof(protocol);
 
 	return (ret);
@@ -129,6 +146,7 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 ssize_t
 sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 {
+	int			cnt;
 	u_int32_t		proto;
 	u_int8_t		*data;
 	struct iovec		iov[2];
@@ -136,15 +154,21 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 
-	data = sanctum_packet_data(pkt);
+	cnt = 0;
 	proto = htonl(AF_INET);
+	data = sanctum_packet_data(pkt);
 
-	iov[0].iov_base = &proto;
-	iov[0].iov_len = sizeof(proto);
-	iov[1].iov_base = data;
-	iov[1].iov_len = pkt->length;
+	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
+		iov[cnt].iov_base = &proto;
+		iov[cnt].iov_len = sizeof(proto);
+		cnt++;
+	}
 
-	return (writev(fd, iov, 2));
+	iov[cnt].iov_base = data;
+	iov[cnt].iov_len = pkt->length;
+	cnt++;
+
+	return (writev(fd, iov, cnt));
 }
 
 /* Adds a new route via our tunnel device. */
@@ -279,12 +303,17 @@ openbsd_configure_tundev(const char *dev)
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
 
-	memcpy(&ifra.ifra_addr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-	memcpy(&ifra.ifra_mask, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
-	memcpy(&ifra.ifra_broadaddr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+	if (sanctum->tun_ip.sin_addr.s_addr != 0) {
+		memcpy(&ifra.ifra_addr,
+		    &sanctum->tun_ip, sizeof(sanctum->tun_ip));
+		memcpy(&ifra.ifra_mask,
+		    &sanctum->tun_mask, sizeof(sanctum->tun_mask));
+		memcpy(&ifra.ifra_broadaddr,
+		    &sanctum->tun_ip, sizeof(sanctum->tun_ip));
 
-	if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
-		fatal("ioctl(SIOCAIFADDR): %s", errno_s);
+		if (ioctl(fd, SIOCAIFADDR, &ifra) == -1)
+			fatal("ioctl(SIOCAIFADDR): %s", errno_s);
+	}
 
 	if (sanctum->descr[0] != '\0') {
 		len = snprintf(descr, sizeof(descr), "%s (%s)",
@@ -300,13 +329,18 @@ openbsd_configure_tundev(const char *dev)
 	if (ioctl(fd, SIOCSIFDESCR, &ifr) == -1)
 		fatal("ioctl(SIOCSIFDESCR): %s", errno_s);
 
-	ifr.ifr_flags = IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCGIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCGIFFLAGS): %s", errno_s);
+
+	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
 		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
 
-	ifr.ifr_mtu = sanctum->tun_mtu;
-	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
-		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+	if (sanctum->tun_mtu != 0) {
+		ifr.ifr_mtu = sanctum->tun_mtu;
+		if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+			fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+	}
 
 	(void)close(fd);
 }

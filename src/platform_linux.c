@@ -190,8 +190,6 @@ sanctum_platform_init(void)
 /*
  * Linux tunnel device creation. The device is created and a
  * file descriptor for it is returned to the caller.
- *
- * XXX - permissions on tunnel device.
  */
 int
 sanctum_platform_tundev_create(void)
@@ -209,7 +207,10 @@ sanctum_platform_tundev_create(void)
 	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("sanctum.clr interface name too large");
 
-	ifr.ifr_flags = IFF_TUN | IFF_UP | IFF_NO_PI;
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
+	else
+		ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
 
 	if (ioctl(fd, TUNSETIFF, &ifr) == -1)
 		fatal("ioctl: %s", errno_s);
@@ -484,23 +485,36 @@ linux_configure_tundev(struct ifreq *ifr)
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
 
-	memcpy(&ifr->ifr_addr, &sanctum->tun_ip, sizeof(sanctum->tun_ip));
-	if (ioctl(fd, SIOCSIFADDR, ifr) == -1)
-		fatal("ioctl(SIOCSIFADDR): %s", errno_s);
-	if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
-		fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
+	if (sanctum->tun_ip.sin_addr.s_addr != 0) {
+		memcpy(&ifr->ifr_addr,
+		    &sanctum->tun_ip, sizeof(sanctum->tun_ip));
 
-	memcpy(&ifr->ifr_addr, &sanctum->tun_mask, sizeof(sanctum->tun_mask));
-	if (ioctl(fd, SIOCSIFNETMASK, ifr) == -1)
-		fatal("ioctl(SIOCSIFNETMASK): %s", errno_s);
+		if (ioctl(fd, SIOCSIFADDR, ifr) == -1)
+			fatal("ioctl(SIOCSIFADDR): %s", errno_s);
 
-	ifr->ifr_flags = IFF_UP | IFF_RUNNING;
+		if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
+			if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
+				fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
+		}
+
+		memcpy(&ifr->ifr_addr,
+		    &sanctum->tun_mask, sizeof(sanctum->tun_mask));
+		if (ioctl(fd, SIOCSIFNETMASK, ifr) == -1)
+			fatal("ioctl(SIOCSIFNETMASK): %s", errno_s);
+	}
+
+	if (ioctl(fd, SIOCGIFFLAGS, ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
+
+	ifr->ifr_flags |= IFF_UP | IFF_RUNNING;
 	if (ioctl(fd, SIOCSIFFLAGS, ifr) == -1)
 		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
 
-	ifr->ifr_mtu = sanctum->tun_mtu;
-	if (ioctl(fd, SIOCSIFMTU, ifr) == -1)
-		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+	if (sanctum->tun_mtu != 0) {
+		ifr->ifr_mtu = sanctum->tun_mtu;
+		if (ioctl(fd, SIOCSIFMTU, ifr) == -1)
+			fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+	}
 
 	(void)close(fd);
 }
