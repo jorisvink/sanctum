@@ -74,6 +74,8 @@ int	sandbox_init_with_parameters(const char *profile,
 void
 sanctum_platform_init(void)
 {
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		fatal("macos does not support tap devices");
 }
 
 /*

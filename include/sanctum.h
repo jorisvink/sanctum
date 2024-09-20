@@ -424,6 +424,24 @@ struct sanctum_sun {
 	char		path[256];		/* XXX */
 };
 
+/* The length of an ethernet MAC address. */
+#define SANCTUM_ETHERNET_MAC_LEN	6
+
+/* The ethertypes for IPv4, IPv6, ARP and VLAN tagged traffic. */
+#define SANCTUM_ETHER_TYPE_VLAN		0x8100
+#define SANCTUM_ETHER_TYPE_ARP		0x0806
+#define SANCTUM_ETHER_TYPE_IPV4		0x0800
+#define SANCTUM_ETHER_TYPE_IPV6		0x86dd
+
+/*
+ * An ethernet header, defined here for portability sake.
+ */
+struct sanctum_ether {
+	u_int8_t	dst[SANCTUM_ETHERNET_MAC_LEN];
+	u_int8_t	src[SANCTUM_ETHERNET_MAC_LEN];
+	u_int16_t	proto;
+} __attribute__((packed));
+
 /* Sanctum was started in the background. */
 #define SANCTUM_FLAG_DAEMONIZED		(1 << 0)
 
@@ -441,6 +459,9 @@ struct sanctum_sun {
 
 /* If purgatory is encapsulating / decapsulating for traffic protection. */
 #define SANCTUM_FLAG_ENCAPSULATE	(1 << 5)
+
+/* If we should create a tap device instead of a tun device. */
+#define SANCTUM_FLAG_USE_TAP		(1 << 6)
 
 /*
  * The modes in which sanctum can run.

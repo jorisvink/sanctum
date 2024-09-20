@@ -37,6 +37,7 @@ struct route {
 
 static void	config_parse_kek(char *);
 static void	config_parse_spi(char *);
+static void	config_parse_tap(char *);
 static void	config_parse_tfc(char *);
 static void	config_parse_mode(char *);
 static void	config_parse_peer(char *);
@@ -72,6 +73,7 @@ static const struct {
 } keywords[] = {
 	{ "kek",		config_parse_kek },
 	{ "spi",		config_parse_spi },
+	{ "tap",		config_parse_tap },
 	{ "tfc",		config_parse_tfc },
 	{ "mode",		config_parse_mode },
 	{ "peer",		config_parse_peer },
@@ -181,6 +183,8 @@ sanctum_config_load(const char *file)
 
 	switch (sanctum->mode) {
 	case SANCTUM_MODE_CATHEDRAL:
+		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+			fatal("cathedral: cannot use tap");
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		break;
@@ -205,6 +209,11 @@ sanctum_config_load(const char *file)
 		break;
 	default:
 		break;
+	}
+
+	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
+		if (sanctum->tun_ip.sin_addr.s_addr == 0)
+			fatal("no tunnel configuration specified");
 	}
 
 	if (sanctum->mode != SANCTUM_MODE_TUNNEL) {
@@ -312,6 +321,21 @@ config_parse_spi(char *opt)
 
 	if (sscanf(opt, "%hx", &sanctum->tun_spi) != 1)
 		fatal("spi <16-bit hex value>");
+}
+
+/*
+ * Parse the tap configuration option.
+ */
+static void
+config_parse_tap(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags |= SANCTUM_FLAG_USE_TAP;
+	} else if (strcmp(opt, "no")) {
+		fatal("unknown tap option '%s'", opt);
+	}
 }
 
 /*
