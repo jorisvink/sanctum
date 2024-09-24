@@ -549,7 +549,7 @@ hymn_route(int argc, char *argv[])
 	hymn_config_load(path, &config);
 
 	if (config.tap)
-		fatal("routes for a tap device make no sense");
+		fatal("route on a tunnel using a tap device makes no sense");
 
 	if (!strcmp(argv[0], "add")) {
 		hymn_netlist_add("route", &config.routes, net);
@@ -602,7 +602,7 @@ hymn_accept(int argc, char *argv[])
 	hymn_config_load(path, &config);
 
 	if (config.tap)
-		fatal("accepts for a tap device make no sense");
+		fatal("accept on a tunnel using a tap device makes no sense");
 
 	if (!strcmp(argv[0], "add")) {
 		hymn_netlist_add("accept", &config.accepts, net);
