@@ -548,6 +548,9 @@ hymn_route(int argc, char *argv[])
 	net = hymn_net_parse(argv[1]);
 	hymn_config_load(path, &config);
 
+	if (config.tap)
+		fatal("routes for a tap device make no sense");
+
 	if (!strcmp(argv[0], "add")) {
 		hymn_netlist_add("route", &config.routes, net);
 		hymn_netlist_add("accept", &config.accepts, net);
@@ -597,6 +600,9 @@ hymn_accept(int argc, char *argv[])
 
 	net = hymn_net_parse(argv[1]);
 	hymn_config_load(path, &config);
+
+	if (config.tap)
+		fatal("accepts for a tap device make no sense");
 
 	if (!strcmp(argv[0], "add")) {
 		hymn_netlist_add("accept", &config.accepts, net);
@@ -1298,7 +1304,10 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  name\t\t%s\n", config.name);
 
 	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
-	printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
+
+	if (config.local.ip != 0)
+		printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
+
 	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
 	    config.tun_mtu);
 
@@ -1323,24 +1332,26 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	printf("\n");
 
-	printf("  routes\n");
-	if (LIST_EMPTY(&config.routes)) {
-		printf("    none\n");
-	} else {
-		LIST_FOREACH(net, &config.routes, list)
-			printf("    %s\n", hymn_ip_mask_str(net));
-	}
+	if (config.tap == 0) {
+		printf("  routes\n");
+		if (LIST_EMPTY(&config.routes)) {
+			printf("    none\n");
+		} else {
+			LIST_FOREACH(net, &config.routes, list)
+				printf("    %s\n", hymn_ip_mask_str(net));
+		}
 
-	printf("\n");
-	printf("  accepts\n");
-	if (LIST_EMPTY(&config.accepts)) {
-		printf("    none\n");
-	} else {
-		LIST_FOREACH(net, &config.accepts, list)
-			printf("    %s\n", hymn_ip_mask_str(net));
-	}
+		printf("\n");
+		printf("  accepts\n");
+		if (LIST_EMPTY(&config.accepts)) {
+			printf("    none\n");
+		} else {
+			LIST_FOREACH(net, &config.accepts, list)
+				printf("    %s\n", hymn_ip_mask_str(net));
+		}
 
-	printf("\n");
+		printf("\n");
+	}
 
 	if (status != NULL) {
 		printf("%s\n", status);
