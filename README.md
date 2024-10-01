@@ -1,7 +1,8 @@
 # Sanctum
 
 "Thee packets that are chosen needeth not fear purgatory, for thee
-shall be safe with my blessing. Confess thy sins and moveth into heaven."
+shall be safe with my blessing. Confess thy sins and thy shall enter
+the heavens."
 
 Sanctum 1:1
 
