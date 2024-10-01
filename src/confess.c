@@ -312,6 +312,8 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
 		ip = sanctum_packet_data(pkt);
 		pkt->length = be16toh(ip->ip_len);
+		if (pkt->length > sanctum->tun_mtu)
+			return (-1);
 	}
 
 	/* The packet checks out, it is bound for heaven. */
