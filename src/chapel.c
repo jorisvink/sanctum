@@ -297,7 +297,7 @@ chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 
 	PRECOND(pkt != NULL);
 
-	if (pkt->length != sizeof(struct sanctum_offer))
+	if (pkt->length < sizeof(struct sanctum_offer))
 		return;
 
 	hdr = sanctum_packet_head(pkt);
@@ -378,6 +378,8 @@ chapel_cathedral_send_info(u_int64_t magic)
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
+	sanctum_offer_tfc(pkt);
+
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
 
@@ -403,7 +405,7 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	struct nyfe_agelas		cipher;
 
 	PRECOND(pkt != NULL);
-	PRECOND(pkt->length == sizeof(*op));
+	PRECOND(pkt->length >= sizeof(*op));
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
 
@@ -754,6 +756,8 @@ chapel_offer_encrypt(u_int64_t now)
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
+	sanctum_offer_tfc(pkt);
+
 	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
@@ -792,7 +796,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);
-	PRECOND(pkt->length == sizeof(*op));
+	PRECOND(pkt->length >= sizeof(*op));
 
 	op = sanctum_packet_head(pkt);
 

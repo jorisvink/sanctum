@@ -211,7 +211,8 @@ sanctum_config_load(const char *file)
 		break;
 	}
 
-	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+	    !(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
 		if (sanctum->tun_ip.sin_addr.s_addr == 0)
 			fatal("no tunnel configuration specified");
 	}

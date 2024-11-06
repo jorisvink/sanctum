@@ -301,7 +301,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 
 	PRECOND(pkt != NULL);
 
-	if (pkt->length != sizeof(*op))
+	if (pkt->length < sizeof(*op))
 		return;
 
 	op = sanctum_packet_head(pkt);
@@ -495,7 +495,7 @@ cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
 	PRECOND(flock != NULL);
 	PRECOND(update != NULL);
 
-	if (update->length != sizeof(*op))
+	if (update->length < sizeof(*op))
 		fatal("%s: pkt length invalid (%zu)", __func__, update->length);
 
 	/*
@@ -536,6 +536,8 @@ cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
 
 		pkt->length = sizeof(*op);
 		pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+		sanctum_offer_tfc(pkt);
 
 		pkt->addr.sin_family = AF_INET;
 		pkt->addr.sin_port = tunnel->port;
@@ -729,6 +731,8 @@ cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
 
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	sanctum_offer_tfc(pkt);
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = sin->sin_port;

@@ -511,6 +511,36 @@ sanctum_offer_encrypt(struct nyfe_agelas *cipher, struct sanctum_offer *op)
 }
 
 /*
+ * Provide TFC for the offer when both tfc and encap are enabled, this hides
+ * the fact that this is an offer on the wire.
+ *
+ * We have to include the ipsec header, tail and the cipher overhead
+ * so that the offer is indistinguishable from traffic.
+ *
+ * The remaining bytes in the packet are filled with random data.
+ */
+void
+sanctum_offer_tfc(struct sanctum_packet *pkt)
+{
+	u_int8_t	*data;
+	size_t		offset;
+
+	PRECOND(pkt != NULL);
+	PRECOND(pkt->length == sizeof(struct sanctum_offer));
+
+	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
+	    (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)) {
+		offset = pkt->length;
+		pkt->length = sanctum->tun_mtu +
+		    sizeof(struct sanctum_ipsec_hdr) +
+		    sizeof(struct sanctum_ipsec_tail) +
+		    sanctum_cipher_overhead();
+		data = sanctum_packet_head(pkt);
+		nyfe_random_bytes(&data[offset], pkt->length - offset);
+	}
+}
+
+/*
  * Verify and decrypt a sanctum_offer packet.
  * Note: does not zeroize the cipher, this is the caller its responsibility.
  */
