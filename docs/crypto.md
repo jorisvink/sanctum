@@ -1,4 +1,6 @@
-# Keys
+# Cryptographic description
+
+## Keys
 
 Sanctum uses several different secrets and keys to provide
 confidentiality and integrity for both traffic and authentication
@@ -13,7 +15,7 @@ An ambry is can be handled as an encrypted key
 This document describes all key material, where it comes from
 and how it is used.
 
-## TL;DR
+### TL;DR
 
 | Key | Description | Type |
 | --- | ----------- | ---- |
