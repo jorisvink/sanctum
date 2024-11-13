@@ -38,6 +38,9 @@
 /* The maximum age in seconds for a cached tunnel entry. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
 
+/* The interval at which we check for expired tunnel entries. */
+#define CATHEDRAL_TUNNEL_EXPIRE_NEXT	(10 * 1000)
+
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
 
@@ -209,7 +212,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 		now = cathedral_ms();
 
 		if (now >= next_expire) {
-			next_expire = now + (10 * 1000);
+			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
 			cathedral_tunnel_expire(now);
 		}
 
