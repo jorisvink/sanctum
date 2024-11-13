@@ -79,7 +79,7 @@ the other side. It does this by periodically generating a new
 key uniformly at random and wrapping it with a secret derived
 from the underlying shared secret between both parties.
 
-See docs/keys.md for details on the session key and shared secrets.
+See docs/crypto.md for details on the session key and shared secrets.
 
 Note that sanctum only supports symmetrical keying and does not
 implement any asymmetrical key exchange method.
