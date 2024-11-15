@@ -189,6 +189,7 @@ ambry_bundle_generate(int argc, char **argv)
 	if (unlink(argv[0]) == -1 && errno != ENOENT)
 		fatal("failed to unlink '%s': %s", argv[0], errno_s);
 
+	nyfe_mem_zero(&hdr, sizeof(hdr));
 	fd = nyfe_file_open(argv[0], NYFE_FILE_CREATE);
 
 	nyfe_random_init();

@@ -36,7 +36,10 @@
 #define CATHEDRAL_REG_VALID		5
 
 /* The maximum age in seconds for a cached tunnel entry. */
-#define CATHEDRAL_TUNNEL_MAX_AGE	30
+#define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
+
+/* The interval at which we check for expired tunnel entries. */
+#define CATHEDRAL_TUNNEL_EXPIRE_NEXT	(10 * 1000)
 
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
@@ -51,14 +54,21 @@
  * A known tunnel and its endpoint, or a federated cathedral.
  */
 struct tunnel {
+	/* tunnel information. */
 	u_int32_t		id;
 	u_int32_t		ip;
 	u_int64_t		age;
 	u_int16_t		port;
-	u_int64_t		pkts;
 	int			natseen;
 	int			peerinfo;
 	int			federated;
+
+	/* leaky bucket for bw handling. */
+	u_int32_t		limit;
+	u_int32_t		current;
+	u_int64_t		last_drain;
+	u_int32_t		drain_per_ms;
+
 	LIST_ENTRY(tunnel)	list;
 };
 
@@ -68,6 +78,7 @@ struct tunnel {
  */
 struct allow {
 	u_int32_t		id;
+	u_int32_t		bw;
 	u_int8_t		spi;
 	LIST_ENTRY(allow)	list;
 };
@@ -95,6 +106,7 @@ struct flock {
 	LIST_ENTRY(flock)	list;
 };
 
+static u_int64_t	cathedral_ms(void);
 static struct flock	*cathedral_flock_lookup(u_int64_t);
 static struct tunnel	*cathedral_tunnel_lookup(struct flock *, u_int16_t);
 
@@ -125,13 +137,14 @@ static void	cathedral_tunnel_prune(struct flock *);
 static void	cathedral_tunnel_federate(struct flock *,
 		    struct sanctum_packet *);
 
-static int	cathedral_tunnel_forward(struct sanctum_packet *, u_int32_t);
+static int	cathedral_tunnel_forward(struct sanctum_packet *,
+		    int, u_int32_t, u_int64_t);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
 		    u_int64_t, int, int);
 static int	cathedral_tunnel_update_valid(struct flock *,
 		    struct sanctum_offer *, u_int32_t, int);
 static int	cathedral_tunnel_update_allowed(struct flock *,
-		    struct sanctum_info_offer *, u_int32_t);
+		    struct sanctum_info_offer *, u_int32_t, u_int32_t *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -196,10 +209,10 @@ sanctum_cathedral(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = cathedral_ms();
 
 		if (now >= next_expire) {
-			next_expire = now + 10;
+			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
 			cathedral_tunnel_expire(now);
 		}
 
@@ -225,6 +238,7 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	struct tunnel			*srv;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_offer_hdr	*offer;
+	int				exchange;
 	u_int32_t			seq, spi;
 
 	PRECOND(pkt != NULL);
@@ -277,9 +291,17 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 			 */
 			spi = (u_int32_t)(be16toh(spi >> 16)) << 16 |
 			    (spi & 0x0000ffff);
+
+			/*
+			 * Indicate this is an exchange so it does not
+			 * get thrown away by the bandwidth limiter.
+			 */
+			exchange = 1;
+		} else {
+			exchange = 0;
 		}
 
-		if (cathedral_tunnel_forward(pkt, spi) == -1)
+		if (cathedral_tunnel_forward(pkt, exchange, spi, now) == -1)
 			sanctum_packet_release(pkt);
 	}
 }
@@ -292,16 +314,16 @@ static void
 cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
     int nat, int catacomb)
 {
-	u_int32_t			id;
 	u_int64_t			fid;
 	struct sanctum_offer		*op;
 	struct tunnel			*tun;
 	struct sanctum_info_offer	*info;
 	struct flock			*flock;
+	u_int32_t			id, bw;
 
 	PRECOND(pkt != NULL);
 
-	if (pkt->length != sizeof(*op))
+	if (pkt->length < sizeof(*op))
 		return;
 
 	op = sanctum_packet_head(pkt);
@@ -318,16 +340,20 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 	info->tunnel = be16toh(info->tunnel);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
-	if (cathedral_tunnel_update_allowed(flock, info, id)== -1)
+	if (cathedral_tunnel_update_allowed(flock, info, id, &bw)== -1)
 		return;
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
 		if ((tun = calloc(1, sizeof(*tun))) == NULL)
 			fatal("calloc failed");
 
+		tun->limit = (bw / 8) * 1024 * 1024;
+		tun->drain_per_ms = tun->limit / 1000;
+
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
-		sanctum_log(LOG_INFO, "tunnel 0x%04x discovered", info->tunnel);
-	}
+		sanctum_log(LOG_INFO, "tunnel 0x%04x discovered (%u mbit/sec)",
+		    info->tunnel, bw);
+	 }
 
 	if (catacomb == 0 && nat == 0) {
 		cathedral_ambry_send(flock, info, &pkt->addr, id);
@@ -411,32 +437,41 @@ cathedral_tunnel_update_valid(struct flock *flock, struct sanctum_offer *op,
  */
 static int
 cathedral_tunnel_update_allowed(struct flock *flock,
-    struct sanctum_info_offer *info, u_int32_t id)
+    struct sanctum_info_offer *info, u_int32_t id, u_int32_t *bw)
 {
 	struct allow		*allow;
 
 	PRECOND(flock != NULL);
 	PRECOND(info != NULL);
+	PRECOND(bw != NULL);
 
 	LIST_FOREACH(allow, &flock->allows, list) {
-		if (allow->id == id && (allow->spi == info->tunnel >> 8))
+		if (allow->id == id && (allow->spi == info->tunnel >> 8)) {
+			*bw = allow->bw;
 			return (0);
+		}
 	}
 
 	return (-1);
 }
 
 /*
- * Forward the given packet to the correct tunnel endpoint.
+ * Forward the given packet to the correct tunnel endpoint if possible.
+ * We do not check the bandwidth limiter if the packet contained in pkt
+ * is an actual key offer for an exchange.
  */
 static int
-cathedral_tunnel_forward(struct sanctum_packet *pkt, u_int32_t spi)
+cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
+    u_int32_t spi, u_int64_t now)
 {
 	u_int16_t		id;
+	u_int32_t		drain;
+	u_int64_t		delta;
 	struct flock		*flock;
 	struct tunnel		*tunnel;
 
 	PRECOND(pkt != NULL);
+	PRECOND(exchange == 0 || exchange == 1);
 
 	id = spi >> 16;
 
@@ -464,7 +499,21 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, u_int32_t spi)
 	if (tunnel == NULL)
 		return (-1);
 
-	tunnel->pkts++;
+	delta = now - tunnel->last_drain;
+	if (delta >= 1) {
+		tunnel->last_drain = now;
+		drain = tunnel->drain_per_ms * delta;
+		if (drain <= tunnel->current) {
+			tunnel->current -= drain;
+		} else {
+			tunnel->current = 0;
+		}
+	}
+
+	if (exchange == 0 && tunnel->current >= tunnel->limit)
+		return (-1);
+
+	tunnel->current += pkt->length;
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
@@ -495,7 +544,7 @@ cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
 	PRECOND(flock != NULL);
 	PRECOND(update != NULL);
 
-	if (update->length != sizeof(*op))
+	if (update->length < sizeof(*op))
 		fatal("%s: pkt length invalid (%zu)", __func__, update->length);
 
 	/*
@@ -536,6 +585,8 @@ cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
 
 		pkt->length = sizeof(*op);
 		pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+		sanctum_offer_tfc(pkt);
 
 		pkt->addr.sin_family = AF_INET;
 		pkt->addr.sin_port = tunnel->port;
@@ -729,6 +780,8 @@ cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
 
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	sanctum_offer_tfc(pkt);
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = sin->sin_port;
@@ -1027,8 +1080,8 @@ cathedral_settings_flock(const char *option, struct flock **out)
 static void
 cathedral_settings_allow(const char *option, struct flock *flock)
 {
-	u_int32_t	id;
 	u_int8_t	spi;
+	u_int32_t	id, bw;
 	struct allow	*allow;
 
 	PRECOND(option != NULL);
@@ -1038,7 +1091,7 @@ cathedral_settings_allow(const char *option, struct flock *flock)
 		return;
 	}
 
-	if (sscanf(option, "%x spi %hhx", &id, &spi) != 2) {
+	if (sscanf(option, "%x spi %hhx %u", &id, &spi, &bw) != 3) {
 		sanctum_log(LOG_NOTICE,
 		    "format error '%s' in allow", option);
 		return;
@@ -1047,8 +1100,10 @@ cathedral_settings_allow(const char *option, struct flock *flock)
 	if ((allow = calloc(1, sizeof(*allow))) == NULL)
 		fatal("calloc: failed to allocate allow entry");
 
+	allow->bw = bw;
 	allow->id = id;
 	allow->spi = spi;
+
 	LIST_INSERT_HEAD(&flock->allows, allow, list);
 }
 
@@ -1136,4 +1191,17 @@ cathedral_settings_ambry(const char *option, struct flock *flock)
 
 out:
 	(void)close(fd);
+}
+
+/*
+ * Returns the current monotonic timestamp as milliseconds.
+ */
+static u_int64_t
+cathedral_ms(void)
+{
+	struct timespec		ts;
+
+	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	return ((u_int64_t)(ts.tv_sec * 1000 + (ts.tv_nsec / 1000000)));
 }

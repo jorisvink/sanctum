@@ -93,6 +93,7 @@ static struct sock_filter filter_epilogue[] = {
 
 static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(brk),
+	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),

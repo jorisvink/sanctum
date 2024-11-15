@@ -137,7 +137,7 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 		if (sanctum_platform_tundev_write(fd, pkt) == -1) {
 			if (errno == EINTR)
 				continue;
-			if (errno == EIO)
+			if (errno == EIO || errno == ENOMEM)
 				break;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;

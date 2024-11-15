@@ -1,7 +1,8 @@
 # Sanctum
 
 "Thee packets that are chosen needeth not fear purgatory, for thee
-shall be safe with my blessing. Confess thy sins and moveth into heaven."
+shall be safe with my blessing. Confess thy sins and thy shall enter
+the heavens."
 
 Sanctum 1:1
 
@@ -78,7 +79,7 @@ the other side. It does this by periodically generating a new
 key uniformly at random and wrapping it with a secret derived
 from the underlying shared secret between both parties.
 
-See docs/keys.md for details on the session key and shared secrets.
+See docs/crypto.md for details on the session key and shared secrets.
 
 Note that sanctum only supports symmetrical keying and does not
 implement any asymmetrical key exchange method.

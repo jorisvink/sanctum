@@ -654,6 +654,7 @@ int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
 int	sanctum_cipher_kdf(const char *, const char *,
 	    struct nyfe_agelas *cipher, void *, size_t);
+void	sanctum_offer_tfc(struct sanctum_packet *);
 void	sanctum_offer_encrypt(struct nyfe_agelas *, struct sanctum_offer *);
 void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
 int	sanctum_offer_decrypt(struct nyfe_agelas *,
