@@ -163,6 +163,9 @@ a simple configuration below.
 # Name of this sanctum instance.
 instance laptop
 
+# Uncomment if you want l2 instead of l3.
+#tap yes
+
 # Path to the shared secret.
 secret /etc/sanctum/laptop_secret.key
 
