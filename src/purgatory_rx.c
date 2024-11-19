@@ -175,7 +175,7 @@ purgatory_rx_recv_packets(int fd)
 		}
 
 		if (ret == 0)
-			fatal("eof on purgatory interface");
+			continue;
 
 		if (pkt == &tpkt)
 			continue;
