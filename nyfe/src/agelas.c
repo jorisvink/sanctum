@@ -33,8 +33,10 @@
  * when absorbing the state for different purposes.
  *
  * init(key):
- *	K_1 = bytepad(len(key) / 2 || key[0..31] || 0x01, 136)
- *	K_2 = bytepad(len(key) / 2 || key[32..63] || 0x03, 136)
+ *	K_1 = bytepad(0x20 || key[ 0..31], 136)
+ *	K_1[135] = 0x01
+ *	K_2 = bytepad(0x20 || key[32..63], 136)
+ *	K_2[135] = 0x03
  *	State <- Keccak1600.init(K_1)
  *
  * encryption(pt):

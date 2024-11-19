@@ -162,6 +162,7 @@ static struct sock_filter control_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(poll),
 #endif
 	KORE_SYSCALL_ALLOW(read),
+	KORE_SYSCALL_ALLOW(fstat),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(lseek),
 	KORE_SYSCALL_ALLOW(ppoll),
