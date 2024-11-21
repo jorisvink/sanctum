@@ -564,7 +564,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	if (memcmp(ambry->tag, tag, sizeof(tag))) {
+	if (nyfe_mem_cmp(ambry->tag, tag, sizeof(tag))) {
 		sanctum_log(LOG_NOTICE, "ambry integrity check failed");
 		return;
 	}

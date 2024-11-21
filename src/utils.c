@@ -559,7 +559,7 @@ sanctum_offer_decrypt(struct nyfe_agelas *cipher,
 	nyfe_agelas_decrypt(cipher, &op->data, &op->data, sizeof(op->data));
 	nyfe_agelas_authenticate(cipher, tag, sizeof(tag));
 
-	if (memcmp(op->tag, tag, sizeof(op->tag)))
+	if (nyfe_mem_cmp(op->tag, tag, sizeof(op->tag)))
 		return (-1);
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);

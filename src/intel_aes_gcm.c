@@ -138,7 +138,7 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
 	aes_gcm_dec_256(&cipher->key, &cipher->gcm, data, data,
 	    ctlen, nptr.p, aad, aad_len, calc, sizeof(calc));
 
-	if (memcmp(tag, calc, sizeof(calc)))
+	if (nyfe_mem_cmp(tag, calc, sizeof(calc)))
 		return (-1);
 
 	return (0);

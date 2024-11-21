@@ -192,7 +192,7 @@ sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
 	sanctum_mem_zero(block, sizeof(block));
 	sanctum_mem_zero(&cipher->ctx, sizeof(cipher->ctx));
 
-	if (memcmp(tag, calc, sizeof(calc)))
+	if (nyfe_mem_cmp(tag, calc, sizeof(calc)))
 		return (-1);
 
 	return (0);
