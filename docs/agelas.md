@@ -18,7 +18,9 @@ init(key):
 	K_1[135] = 0x01
 	K_2 = bytepad(0x20 || key[32..63], 136)
 	K_2[135] = 0x03
-	State <- Keccak1600.init(K_1)
+	keccak = KECCAK[512]
+	keccak.absorb(K_1)
+	State <- keccak.squeeze(136)
 ```
 
 ```
@@ -30,9 +32,9 @@ encryption(pt):
 		clen += len(pt)
 		State[128..134] = counter
 		State[135] = 0x07
-		Keccak1600.absorb(State)
+		keccak.absorb(State)
 		counter = counter + 1
-		State <- Keccak1600.squeeze(136)
+		State <- keccak.squeeze(136)
 ```
 
 ```
@@ -44,9 +46,9 @@ decryption(ct):
 		clen += len(ct)
 		State[128..134] = counter
 		State[135] = 0x07
-		Keccak1600.absorb(State)
+		keccak.absorb(State)
 		counter = counter + 1
-		State <- Keccak1600.squeeze(136)
+		State <- keccak.squeeze(136)
 ```
 
 Additional Authenticated Data may be added at any time as long as it is
@@ -57,9 +59,9 @@ Each AAD call must fit in a single agelas_bytepad() block.
 
 ```
 add_aad(aad):
-	aad = bytepad(aad, 136)
-	aad[135] = 0x0f
-	Keccak1600.absorb(aad)
+	aad_padded = bytepad(aad, 136)
+	aad_padded[135] = 0x0f
+	keccak.absorb(aad_padded)
 	alen += len(aad)
 ```
 
@@ -70,15 +72,15 @@ includes the length of the AAD and data operated on.
 authenticate(tag, taglen):
 	L = bytepad(alen, 136)
 	L[135] = 0x1f
-	Keccak1600.absorb(L)
+	keccak.absorb(L)
 	L = bytepad(clen, 136)
 	L[135] = 0x1f
-	Keccak1600.absorb(L)
+	keccak.absorb(L)
 	State[128..134] = counter
-	State[135] = 0x03
-	Keccak1600.absorb(State)
-	Keccak1600.absorb(K_2)
-	tag <- Keccak1600.squeeze(taglen)
+	State[135] = 0x3f
+	keccak.absorb(State)
+	keccak.absorb(K_2)
+	tag <- keccak.squeeze(taglen)
 ```
 
 ## Caveats
