@@ -37,7 +37,9 @@
  *	K_1[135] = 0x01
  *	K_2 = bytepad(0x20 || key[32..63], 136)
  *	K_2[135] = 0x03
- *	State <- Keccak1600.init(K_1)
+ *	keccak = KECCAK[512]
+ *	keccak.absorb(K_1)
+ *	State <- keccak.squeeze(136)
  *
  * encryption(pt):
  *	for each 128 byte block, do
@@ -47,9 +49,9 @@
  *		clen += len(pt)
  *		State[128..134] = counter
  *		State[135] = 0x07
- *		Keccak1600.absorb(State)
+ *		keccak.absorb(State)
  *		counter = counter + 1
- *		State <- Keccak1600.squeeze(136)
+ *		State <- keccak.squeeze(136)
  *
  * decryption(ct):
  *	for each 128 byte block, do
@@ -59,19 +61,19 @@
  *		clen += len(ct)
  *		State[128..134] = counter
  *		State[135] = 0x07
- *		Keccak1600.absorb(State)
+ *		keccak.absorb(State)
  *		counter = counter + 1
- *		State <- Keccak1600.squeeze(136)
+ *		State <- keccak.squeeze(136)
  *
  * Additional Authenticated Data may be added at any time as long as this
  * matches in both the encryption and decryption process.
  *
- * Each AAD call must fit in a single agelas_bytepad() block.
+ * The data for each AAD call must fit in a single agelas_bytepad() block.
  *
  * add_aad(aad):
- *	aad = bytepad(aad, 136)
- *	aad[135] = 0x0f
- *	Keccak1600.absorb(aad)
+ *	aad_padded = bytepad(aad, 136)
+ *	aad_padded[135] = 0x0f
+ *	keccak.absorb(aad_padded)
  *	alen += len(aad)
  *
  * The authentication tag is obtained at the end. The authentication step
@@ -80,15 +82,15 @@
  * authenticate(tag, taglen):
  *	L = bytepad(alen, 136)
  *	L[135] = 0x1f
- *	Keccak1600.absorb(L)
+ *	keccak.absorb(L)
  *	L = bytepad(clen, 136)
  *	L[135] = 0x1f
- *	Keccak1600.absorb(L)
+ *	keccak.absorb(L)
  *	State[128..134] = counter
- *	State[135] = 0x03
- *	Keccak1600.absorb(State)
- *	Keccak1600.absorb(K_2)
- *	tag <- Keccak1600.squeeze(taglen)
+ *	State[135] = 0x3f
+ *	keccak.absorb(State)
+ *	keccak.absorb(K_2)
+ *	tag <- keccak.squeeze(taglen)
  */
 
 /* Number of bits for the capacity (c). */
@@ -270,7 +272,7 @@ nyfe_agelas_authenticate(struct nyfe_agelas *ctx, u_int8_t *tag, size_t len)
 }
 
 /*
- * Absorb the current state into the Keccak1600 and squeeze out a new one.
+ * Absorb the current state into the keccak state and squeeze out a new one.
  */
 static void
 agelas_absorb_state(struct nyfe_agelas *ctx, u_int8_t tag)
