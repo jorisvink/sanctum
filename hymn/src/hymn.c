@@ -1182,7 +1182,7 @@ static void
 hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 {
 	pid_t		pid;
-	int		status;
+	int		status, wait;
 	char		path[PATH_MAX], *ap[32];
 
 	hymn_pid_path(path ,sizeof(path), flock, src, dst);
@@ -1224,13 +1224,17 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 	printf("waiting for %s-%02x-%02x to go up ... ", flock, src, dst);
 	fflush(stdout);
 
-	for (;;) {
+	for (wait = 0; wait < 10; wait++) {
 		if (access(path, R_OK) != -1)
 			break;
 		sleep(1);
 	}
 
-	printf("done\n");
+	if (wait == 10) {
+		printf(" no response after 10 seconds\n");
+	} else {
+		printf("done\n");
+	}
 }
 
 static void
