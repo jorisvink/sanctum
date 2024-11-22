@@ -364,7 +364,7 @@ openbsd_sandbox_pledge(struct sanctum_proc *proc)
 		 * only, they log things via syslog() which is done via the
 		 * sendsyslog(2) on OpenBSD ... which falls under the stdio
 		 * pledge, so there's zero good way of handling this other
-		 * than allowing the all of stdio.
+		 * than allowing all of stdio.
 		 */
 		ret = pledge("stdio", NULL);
 		break;
