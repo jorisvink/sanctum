@@ -340,7 +340,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 	info->tunnel = be16toh(info->tunnel);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
-	if (cathedral_tunnel_update_allowed(flock, info, id, &bw)== -1)
+	if (cathedral_tunnel_update_allowed(flock, info, id, &bw) == -1)
 		return;
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
