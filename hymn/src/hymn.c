@@ -140,6 +140,7 @@ static int	hymn_route(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
 static int	hymn_keygen(int, char **);
+static int	hymn_restart(int, char **);
 static int	hymn_cathedral(int, char **);
 
 static void	hymn_config_init(struct config *);
@@ -208,6 +209,7 @@ static const struct {
 	{ "route",		hymn_route },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
+	{ "restart",		hymn_restart },
 	{ "cathedral",		hymn_cathedral },
 	{ NULL,			NULL },
 };
@@ -246,6 +248,7 @@ usage(void)
 	fprintf(stderr, "  list      - list all configured tunnels\n");
 	fprintf(stderr, "  name      - sets the name for a given tunnel\n");
 	fprintf(stderr, "  status    - show a specific tunnel its info\n");
+	fprintf(stderr, "  restart   - restart a tunnel (down, up)\n");
 	fprintf(stderr, "  route     - modify tunnel routing rules\n");
 	fprintf(stderr, "  up        - starts the given tunnel\n");
 
@@ -621,6 +624,18 @@ hymn_accept(int argc, char *argv[])
 	free(net);
 
 	printf("tunnel modified, please restart it\n");
+
+	return (0);
+}
+
+static int
+hymn_restart(int argc, char *argv[])
+{
+	if (argc != 1)
+		usage_simple("restart");
+
+	hymn_down(argc, argv);
+	hymn_up(argc, argv);
 
 	return (0);
 }
