@@ -241,16 +241,16 @@ usage(void)
 {
 	fprintf(stderr, "usage: hymn [cmd]\n");
 	fprintf(stderr, "commands:\n");
-	fprintf(stderr, "  add       - add a new tunnel\n");
-	fprintf(stderr, "  cathedral - change cathedral for a tunnel\n");
-	fprintf(stderr, "  del       - delete an existing tunnel\n");
-	fprintf(stderr, "  down      - kills the given tunnel\n");
-	fprintf(stderr, "  list      - list all configured tunnels\n");
-	fprintf(stderr, "  name      - sets the name for a given tunnel\n");
-	fprintf(stderr, "  status    - show a specific tunnel its info\n");
-	fprintf(stderr, "  restart   - restart a tunnel (down, up)\n");
-	fprintf(stderr, "  route     - modify tunnel routing rules\n");
-	fprintf(stderr, "  up        - starts the given tunnel\n");
+	fprintf(stderr, "  add         - add a new tunnel\n");
+	fprintf(stderr, "  cathedral   - change cathedral for a tunnel\n");
+	fprintf(stderr, "  del         - delete an existing tunnel\n");
+	fprintf(stderr, "  down        - kills the given tunnel\n");
+	fprintf(stderr, "  list        - list all configured tunnels\n");
+	fprintf(stderr, "  name        - sets the name for a given tunnel\n");
+	fprintf(stderr, "  status      - show a specific tunnel its info\n");
+	fprintf(stderr, "  restart     - restart a tunnel (down, up)\n");
+	fprintf(stderr, "  route       - modify tunnel routing rules\n");
+	fprintf(stderr, "  up          - starts the given tunnel\n");
 
 	exit(1);
 }
