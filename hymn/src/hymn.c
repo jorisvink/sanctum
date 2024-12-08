@@ -140,6 +140,7 @@ static int	hymn_route(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
 static int	hymn_keygen(int, char **);
+static int	hymn_cathedral(int, char **);
 
 static void	hymn_config_init(struct config *);
 static void	hymn_config_write(int, const char *, ...)
@@ -149,6 +150,7 @@ static void	hymn_config_load(const char *, struct config *);
 static void	hymn_config_save(const char *, const char *, struct config *);
 
 static void	hymn_config_set_mtu(struct config *, const char *);
+static void	hymn_config_set_cathedral(struct config *, char *);
 static void	hymn_config_set_name(struct config *, const char *);
 
 static void	hymn_config_parse_tap(struct config *, char *);
@@ -206,6 +208,7 @@ static const struct {
 	{ "route",		hymn_route },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
+	{ "cathedral",		hymn_cathedral },
 	{ NULL,			NULL },
 };
 
@@ -236,14 +239,15 @@ usage(void)
 {
 	fprintf(stderr, "usage: hymn [cmd]\n");
 	fprintf(stderr, "commands:\n");
-	fprintf(stderr, "  add      - add a new tunnel\n");
-	fprintf(stderr, "  del      - delete an existing tunnel\n");
-	fprintf(stderr, "  down     - kills the given tunnel\n");
-	fprintf(stderr, "  list     - list all configured tunnels\n");
-	fprintf(stderr, "  name     - sets the name for a given tunnel\n");
-	fprintf(stderr, "  status   - show a specific tunnel its info\n");
-	fprintf(stderr, "  route    - modify tunnel routing rules\n");
-	fprintf(stderr, "  up       - starts the given tunnel\n");
+	fprintf(stderr, "  add       - add a new tunnel\n");
+	fprintf(stderr, "  cathedral - change cathedral for a tunnel\n");
+	fprintf(stderr, "  del       - delete an existing tunnel\n");
+	fprintf(stderr, "  down      - kills the given tunnel\n");
+	fprintf(stderr, "  list      - list all configured tunnels\n");
+	fprintf(stderr, "  name      - sets the name for a given tunnel\n");
+	fprintf(stderr, "  status    - show a specific tunnel its info\n");
+	fprintf(stderr, "  route     - modify tunnel routing rules\n");
+	fprintf(stderr, "  up        - starts the given tunnel\n");
 
 	exit(1);
 }
@@ -380,8 +384,7 @@ hymn_add(int argc, char *argv[])
 			hymn_ip_port_parse(&config.local, argv[i + 1]);
 		} else if (!strcmp(argv[i], "cathedral")) {
 			which |= HYMN_CATHEDRAL;
-			hymn_ip_port_parse(&config.cathedral, argv[i + 1]);
-			config.peer_cathedral = 1;
+			hymn_config_set_cathedral(&config, argv[i + 1]);
 		} else if (!strcmp(argv[i], "natport")) {
 			if (config.peer_cathedral == 0)
 				fatal("natport only relevant for cathedral");
@@ -564,6 +567,8 @@ hymn_route(int argc, char *argv[])
 	hymn_config_save(path, flock, &config);
 	free(net);
 
+	printf("tunnel modified, please restart it\n");
+
 	return (0);
 }
 
@@ -614,6 +619,8 @@ hymn_accept(int argc, char *argv[])
 
 	hymn_config_save(path, flock, &config);
 	free(net);
+
+	printf("tunnel modified, please restart it\n");
 
 	return (0);
 }
@@ -805,6 +812,52 @@ hymn_name(int argc, char *argv[])
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x name updated to '%s'\n", flock, src, dst, argv[1]);
+
+	return (0);
+}
+
+static void
+usage_cathedral(void)
+{
+	fprintf(stderr, "usage: hymn cathedral ");
+	fprintf(stderr, "[name | [<flock>-]<src>-<dst>] [ip:port]\n");
+
+	exit(1);
+}
+
+static int
+hymn_cathedral(int argc, char *argv[])
+{
+	const char		*flock;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_cathedral();
+
+	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+		usage_cathedral();
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	if (config.peer_cathedral != 1)
+		fatal("this only makes sense on cathedral tunnels");
+
+	config.src = src;
+	config.dst = dst;
+
+	if ((config.flock = strdup(flock)) == NULL)
+		fatal("strdup");
+
+	hymn_config_set_cathedral(&config, argv[1]);
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x cathedral modified to %s\n",
+	    flock, src, dst, argv[1]);
 
 	return (0);
 }
@@ -1649,8 +1702,7 @@ hymn_config_parse_encapsulation(struct config *cfg, char *encap)
 static void
 hymn_config_parse_cathedral(struct config *cfg, char *cathedral)
 {
-	hymn_ip_port_parse(&cfg->cathedral, cathedral);
-	cfg->peer_cathedral = 1;
+	hymn_config_set_cathedral(cfg, cathedral);
 }
 
 static void
@@ -1699,6 +1751,13 @@ hymn_config_parse_accept(struct config *cfg, char *accept)
 	net = hymn_net_parse(accept);
 
 	LIST_INSERT_HEAD(&cfg->accepts, net, list);
+}
+
+static void
+hymn_config_set_cathedral(struct config *cfg, char *cathedral)
+{
+	hymn_ip_port_parse(&cfg->cathedral, cathedral);
+	cfg->peer_cathedral = 1;
 }
 
 static void
