@@ -1057,12 +1057,19 @@ cathedral_settings_federate(const char *option)
 		return;
 	}
 
+	if (sin.sin_addr.s_addr == sanctum->local.sin_addr.s_addr &&
+	    htobe16(port) == sanctum->local.sin_port) {
+		sanctum_log(LOG_INFO, "skipping federation to own cathedral");
+		return;
+	}
+
 	if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
 		fatal("calloc: failed to allocate federation");
 
 	tunnel->port = htobe16(port);
 	tunnel->ip = sin.sin_addr.s_addr;
 
+	sanctum_log(LOG_INFO, "federating to %s:%u", ip, port);
 	LIST_INSERT_HEAD(&federations, tunnel, list);
 }
 
