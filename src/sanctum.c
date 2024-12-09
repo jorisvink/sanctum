@@ -115,6 +115,12 @@ main(int argc, char *argv[])
 	sanctum_platform_init();
 	sanctum_proc_init(argv);
 	sanctum_packet_init();
+
+	if (foreground == 0) {
+		if (daemon(1, 0) == -1)
+			fatal("daemon: %s", errno_s);
+	}
+
 	sanctum_proc_start();
 
 	if (sigfillset(&sigset) == -1)
@@ -128,11 +134,6 @@ main(int argc, char *argv[])
 	(void)sigprocmask(SIG_BLOCK, &sigset, NULL);
 
 	early = 0;
-
-	if (foreground == 0) {
-		if (daemon(1, 0) == -1)
-			fatal("daemon: %s", errno_s);
-	}
 
 	openlog("sanctum", LOG_NDELAY | LOG_PID, LOG_DAEMON);
 	sanctum_proc_title("guardian");

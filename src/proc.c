@@ -100,7 +100,8 @@ sanctum_proc_start(void)
 
 	io.crypto = sanctum_bind_local(&sanctum->local);
 
-	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL &&
+	    sanctum->cathedral_nat_port != 0) {
 		memcpy(&nat, &sanctum->local, sizeof(nat));
 		nat.sin_port = htobe16(sanctum->cathedral_nat_port);
 		io.nat = sanctum_bind_local(&nat);

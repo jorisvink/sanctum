@@ -40,6 +40,7 @@ struct rtmsg {
 #define PATH_SKIP	(sizeof("/dev/") - 1)
 
 static void	openbsd_configure_tundev(const char *);
+static void	openbsd_sandbox_pledge(struct sanctum_proc *);
 
 /*
  * Setup the required platform bits and bobs.
@@ -227,7 +228,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 {
 	PRECOND(proc != NULL);
 
-	/* TODO */
+	openbsd_sandbox_pledge(proc);
 }
 
 /*
@@ -343,4 +344,51 @@ openbsd_configure_tundev(const char *dev)
 	}
 
 	(void)close(fd);
+}
+
+/*
+ * Pledge the correct facilities for the given proc.
+ */
+static void
+openbsd_sandbox_pledge(struct sanctum_proc *proc)
+{
+	int		ret;
+
+	PRECOND(proc != NULL);
+
+	switch (proc->type) {
+	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_CONFESS:
+		/*
+		 * While bless and confess can be seen as computational
+		 * only, they log things via syslog() which is done via the
+		 * sendsyslog(2) on OpenBSD ... which falls under the stdio
+		 * pledge, so there's zero good way of handling this other
+		 * than allowing all of stdio.
+		 */
+		ret = pledge("stdio", NULL);
+		break;
+	case SANCTUM_PROC_CHAPEL:
+	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_CATHEDRAL:
+		ret = pledge("stdio rpath wpath cpath", NULL);
+		break;
+	case SANCTUM_PROC_CONTROL:
+		ret = pledge("stdio", NULL);
+		break;
+	case SANCTUM_PROC_HEAVEN_TX:
+	case SANCTUM_PROC_HEAVEN_RX:
+		ret = pledge("stdio", NULL);
+		break;
+	case SANCTUM_PROC_PURGATORY_TX:
+	case SANCTUM_PROC_PURGATORY_RX:
+		ret = pledge("stdio inet", NULL);
+		break;
+	default:
+		fatal("%s: unknown process type %d", __func__, proc->type);
+	}
+
+	if (ret == -1)
+		fatal("pledge for proc %d failed: %s", proc->type, errno_s);
 }

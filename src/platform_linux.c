@@ -137,6 +137,7 @@ static struct sock_filter keying_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(write),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(fstat),
+	KORE_SYSCALL_ALLOW(fcntl),
 #if defined(SYS_unlink)
 	KORE_SYSCALL_ALLOW(unlink),
 #endif

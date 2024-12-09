@@ -21,6 +21,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
@@ -40,6 +41,9 @@
 
 /* The interval at which we check for expired tunnel entries. */
 #define CATHEDRAL_TUNNEL_EXPIRE_NEXT	(10 * 1000)
+
+/* The interval at which we check if settings changed. */
+#define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
@@ -95,7 +99,7 @@ struct ambry {
  * A flock is a group of clients that can talk to each other via the
  * cathedral.
  */
-struct flock {
+struct flockent {
 	u_int64_t		id;
 	int			retain;
 	time_t			ambry_mtime;
@@ -103,16 +107,16 @@ struct flock {
 	LIST_HEAD(, allow)	allows;
 	LIST_HEAD(, tunnel)	tunnels;
 	LIST_HEAD(, ambry)	ambries;
-	LIST_ENTRY(flock)	list;
+	LIST_ENTRY(flockent)	list;
 };
 
 static u_int64_t	cathedral_ms(void);
-static struct flock	*cathedral_flock_lookup(u_int64_t);
-static struct tunnel	*cathedral_tunnel_lookup(struct flock *, u_int16_t);
+static struct flockent	*cathedral_flock_lookup(u_int64_t);
+static struct tunnel	*cathedral_tunnel_lookup(struct flockent *, u_int16_t);
 
-static void	cathedral_flock_allows_clear(struct flock *);
-static void	cathedral_flock_tunnels_clear(struct flock *);
-static void	cathedral_flock_ambries_clear(struct flock *);
+static void	cathedral_flock_allows_clear(struct flockent *);
+static void	cathedral_flock_tunnels_clear(struct flockent *);
+static void	cathedral_flock_ambries_clear(struct flockent *);
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
@@ -121,29 +125,29 @@ static int	cathedral_offer_send(const char *, struct sanctum_packet *,
 
 static void	cathedral_settings_reload(void);
 static void	cathedral_settings_federate(const char *);
-static void	cathedral_settings_allow(const char *, struct flock *);
-static void	cathedral_settings_ambry(const char *, struct flock *);
-static void	cathedral_settings_flock(const char *, struct flock **);
+static void	cathedral_settings_allow(const char *, struct flockent *);
+static void	cathedral_settings_ambry(const char *, struct flockent *);
+static void	cathedral_settings_flock(const char *, struct flockent **);
 
-static void	cathedral_ambry_send(struct flock *,
+static void	cathedral_ambry_send(struct flockent *,
 		    struct sanctum_info_offer *, struct sockaddr_in *,
 		    u_int32_t);
-static void	cathedral_info_send(struct flock *,
+static void	cathedral_info_send(struct flockent *,
 		    struct sanctum_info_offer *, struct sockaddr_in *,
 		    u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
-static void	cathedral_tunnel_prune(struct flock *);
-static void	cathedral_tunnel_federate(struct flock *,
+static void	cathedral_tunnel_prune(struct flockent *);
+static void	cathedral_tunnel_federate(struct flockent *,
 		    struct sanctum_packet *);
 
 static int	cathedral_tunnel_forward(struct sanctum_packet *,
 		    int, u_int32_t, u_int64_t);
 static void	cathedral_tunnel_update(struct sanctum_packet *,
 		    u_int64_t, int, int);
-static int	cathedral_tunnel_update_valid(struct flock *,
+static int	cathedral_tunnel_update_valid(struct flockent *,
 		    struct sanctum_offer *, u_int32_t, int);
-static int	cathedral_tunnel_update_allowed(struct flock *,
+static int	cathedral_tunnel_update_allowed(struct flockent *,
 		    struct sanctum_info_offer *, u_int32_t, u_int32_t *);
 
 /* The local queues. */
@@ -153,7 +157,10 @@ static struct sanctum_proc_io	*io = NULL;
 static LIST_HEAD(, tunnel)	federations;
 
 /* The list of configured flocks (congregations). */
-static LIST_HEAD(, flock)	flocks;
+static LIST_HEAD(, flockent)	flocks;
+
+/* The last modified time of the settings file. */
+static time_t			settings_last_mtime = -1;
 
 /*
  * Cathedral - The place packets all meet and get exchanged.
@@ -172,7 +179,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
 	int			sig, running;
-	u_int64_t		now, next_expire;
+	u_int64_t		now, next_expire, next_settings;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -181,7 +188,6 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	nyfe_random_init();
 	io = proc->arg;
 
-	sanctum_signal_trap(SIGHUP);
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
@@ -194,6 +200,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 
 	running = 1;
 	next_expire = 0;
+	next_settings = 0;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -202,14 +209,16 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			case SIGQUIT:
 				running = 0;
 				continue;
-			case SIGHUP:
-				cathedral_settings_reload();
-				break;
 			}
 		}
 
 		sanctum_proc_suspend(1);
 		now = cathedral_ms();
+
+		if (now >= next_settings) {
+			next_settings = now + CATHEDRAL_SETTINGS_RELOAD_NEXT;
+			cathedral_settings_reload();
+		}
 
 		if (now >= next_expire) {
 			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
@@ -318,7 +327,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 	struct sanctum_offer		*op;
 	struct tunnel			*tun;
 	struct sanctum_info_offer	*info;
-	struct flock			*flock;
+	struct flockent			*flock;
 	u_int32_t			id, bw;
 
 	PRECOND(pkt != NULL);
@@ -340,7 +349,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 	info->tunnel = be16toh(info->tunnel);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
-	if (cathedral_tunnel_update_allowed(flock, info, id, &bw)== -1)
+	if (cathedral_tunnel_update_allowed(flock, info, id, &bw) == -1)
 		return;
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
@@ -391,7 +400,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
  * or from another cathedral we federate with.
  */
 static int
-cathedral_tunnel_update_valid(struct flock *flock, struct sanctum_offer *op,
+cathedral_tunnel_update_valid(struct flockent *flock, struct sanctum_offer *op,
     u_int32_t id, int cb)
 {
 	struct nyfe_agelas	cipher;
@@ -436,7 +445,7 @@ cathedral_tunnel_update_valid(struct flock *flock, struct sanctum_offer *op,
  * update the connection information for the given tunnel.
  */
 static int
-cathedral_tunnel_update_allowed(struct flock *flock,
+cathedral_tunnel_update_allowed(struct flockent *flock,
     struct sanctum_info_offer *info, u_int32_t id, u_int32_t *bw)
 {
 	struct allow		*allow;
@@ -467,7 +476,7 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 	u_int16_t		id;
 	u_int32_t		drain;
 	u_int64_t		delta;
-	struct flock		*flock;
+	struct flockent		*flock;
 	struct tunnel		*tunnel;
 
 	PRECOND(pkt != NULL);
@@ -532,7 +541,7 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
  * Send out the given tunnel update to all federated cathedrals.
  */
 static void
-cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
+cathedral_tunnel_federate(struct flockent *flock, struct sanctum_packet *update)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
@@ -606,7 +615,7 @@ cathedral_tunnel_federate(struct flock *flock, struct sanctum_packet *update)
  * See if we have peer information for the other end of the tunnel given.
  */
 static struct tunnel *
-cathedral_tunnel_lookup(struct flock *flock, u_int16_t spi)
+cathedral_tunnel_lookup(struct flockent *flock, u_int16_t spi)
 {
 	struct tunnel		*tunnel;
 
@@ -624,7 +633,7 @@ cathedral_tunnel_lookup(struct flock *flock, u_int16_t spi)
  * Remove tunnels from the flock that are no longer configured.
  */
 static void
-cathedral_tunnel_prune(struct flock *flock)
+cathedral_tunnel_prune(struct flockent *flock)
 {
 	struct allow		*allow;
 	struct tunnel		*tun, *next;
@@ -656,7 +665,7 @@ cathedral_tunnel_prune(struct flock *flock)
  * connection towards each other, skipping the cathedral for traffic.
  */
 static void
-cathedral_info_send(struct flock *flock, struct sanctum_info_offer *info,
+cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
     struct sockaddr_in *sin, u_int32_t id)
 {
 	struct sanctum_offer		*op;
@@ -708,7 +717,7 @@ cathedral_info_send(struct flock *flock, struct sanctum_info_offer *info,
  * If it needs to be updated, we send the fresh wrapped ambry.
  */
 static void
-cathedral_ambry_send(struct flock *flock, struct sanctum_info_offer *info,
+cathedral_ambry_send(struct flockent *flock, struct sanctum_info_offer *info,
     struct sockaddr_in *s, u_int32_t id)
 {
 	struct sanctum_offer		*op;
@@ -801,7 +810,7 @@ cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
 static void
 cathedral_tunnel_expire(u_int64_t now)
 {
-	struct flock		*flock;
+	struct flockent		*flock;
 	struct tunnel		*tunnel, *next;
 
 	LIST_FOREACH(flock, &flocks, list) {
@@ -820,10 +829,10 @@ cathedral_tunnel_expire(u_int64_t now)
 /*
  * Lookup the flock for the given id.
  */
-static struct flock *
+static struct flockent *
 cathedral_flock_lookup(u_int64_t id)
 {
-	struct flock		*flock;
+	struct flockent		*flock;
 
 	LIST_FOREACH(flock, &flocks, list) {
 		if (flock->id == id)
@@ -837,7 +846,7 @@ cathedral_flock_lookup(u_int64_t id)
  * Clear all allows for a flock.
  */
 static void
-cathedral_flock_allows_clear(struct flock *flock)
+cathedral_flock_allows_clear(struct flockent *flock)
 {
 	struct allow	*entry;
 
@@ -855,7 +864,7 @@ cathedral_flock_allows_clear(struct flock *flock)
  * Clear all tunnels from a flock.
  */
 static void
-cathedral_flock_tunnels_clear(struct flock *flock)
+cathedral_flock_tunnels_clear(struct flockent *flock)
 {
 	struct tunnel	*entry;
 
@@ -873,7 +882,7 @@ cathedral_flock_tunnels_clear(struct flock *flock)
  * Clear all ambries from a flock.
  */
 static void
-cathedral_flock_ambries_clear(struct flock *flock)
+cathedral_flock_ambries_clear(struct flockent *flock)
 {
 	struct ambry	*entry;
 
@@ -906,22 +915,46 @@ cathedral_secret_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
 }
 
 /*
- * Reload the settings from disk and apply them to the cathedral.
+ * Reload the settings from disk and apply them to the cathedral if
+ * they changed since last time we looked at them.
  */
 static void
 cathedral_settings_reload(void)
 {
+	int			fd;
+	struct stat		st;
 	FILE			*fp;
 	struct tunnel		*entry;
-	struct flock		*flock, *next;
+	struct flockent		*flock, *next;
 	char			buf[256], *kw, *option;
 
 	if (sanctum->settings == NULL)
 		return;
 
-	if ((fp = fopen(sanctum->settings, "r")) == NULL) {
+	if ((fd = open(sanctum->settings, O_RDONLY)) == -1) {
 		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
 		    sanctum->settings, errno_s);
+		return;
+	}
+
+	if (fstat(fd, &st) == -1) {
+		sanctum_log(LOG_NOTICE, "failed to fstat '%s': %s",
+		    sanctum->settings, errno_s);
+		(void)close(fd);
+		return;
+	}
+
+	if (st.st_mtime == settings_last_mtime) {
+		(void)close(fd);
+		return;
+	}
+
+	sanctum_log(LOG_INFO, "settings changed, reloading");
+
+	if ((fp = fdopen(fd, "r")) == NULL) {
+		sanctum_log(LOG_NOTICE, "failed to fdopen '%s': %s",
+		    sanctum->settings, errno_s);
+		(void)close(fd);
 		return;
 	}
 
@@ -995,6 +1028,7 @@ cathedral_settings_reload(void)
 
 	sanctum_log(LOG_INFO, "settings reloaded");
 
+	settings_last_mtime = st.st_mtime;
 	(void)fclose(fp);
 }
 
@@ -1023,12 +1057,19 @@ cathedral_settings_federate(const char *option)
 		return;
 	}
 
+	if (sin.sin_addr.s_addr == sanctum->local.sin_addr.s_addr &&
+	    htobe16(port) == sanctum->local.sin_port) {
+		sanctum_log(LOG_INFO, "skipping federation to own cathedral");
+		return;
+	}
+
 	if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
 		fatal("calloc: failed to allocate federation");
 
 	tunnel->port = htobe16(port);
 	tunnel->ip = sin.sin_addr.s_addr;
 
+	sanctum_log(LOG_INFO, "federating to %s:%u", ip, port);
 	LIST_INSERT_HEAD(&federations, tunnel, list);
 }
 
@@ -1036,10 +1077,10 @@ cathedral_settings_federate(const char *option)
  * Create a new flock under which we can attach tunnels and ambries.
  */
 static void
-cathedral_settings_flock(const char *option, struct flock **out)
+cathedral_settings_flock(const char *option, struct flockent **out)
 {
 	u_int64_t		id;
-	struct flock		*flock;
+	struct flockent		*flock;
 
 	PRECOND(option != NULL);
 	PRECOND(out != NULL);
@@ -1078,7 +1119,7 @@ cathedral_settings_flock(const char *option, struct flock **out)
  * Adds a new allow for a key ID and tunnel SPI.
  */
 static void
-cathedral_settings_allow(const char *option, struct flock *flock)
+cathedral_settings_allow(const char *option, struct flockent *flock)
 {
 	u_int8_t	spi;
 	u_int32_t	id, bw;
@@ -1114,7 +1155,7 @@ cathedral_settings_allow(const char *option, struct flock *flock)
  * reload it if it should still be the same.
  */
 static void
-cathedral_settings_ambry(const char *option, struct flock *flock)
+cathedral_settings_ambry(const char *option, struct flockent *flock)
 {
 	int				fd;
 	struct stat			st;
