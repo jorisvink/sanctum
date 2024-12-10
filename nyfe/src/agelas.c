@@ -16,7 +16,10 @@
 
 #include <sys/types.h>
 
+#if !defined(__APPLE__)
 #include <endian.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 
