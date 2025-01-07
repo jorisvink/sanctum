@@ -508,21 +508,23 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 	if (tunnel == NULL)
 		return (-1);
 
-	delta = now - tunnel->last_drain;
-	if (delta >= 1) {
-		tunnel->last_drain = now;
-		drain = tunnel->drain_per_ms * delta;
-		if (drain <= tunnel->current) {
-			tunnel->current -= drain;
-		} else {
-			tunnel->current = 0;
+	if (tunnel->limit != 0) {
+		delta = now - tunnel->last_drain;
+		if (delta >= 1) {
+			tunnel->last_drain = now;
+			drain = tunnel->drain_per_ms * delta;
+			if (drain <= tunnel->current) {
+				tunnel->current -= drain;
+			} else {
+				tunnel->current = 0;
+			}
 		}
+
+		if (exchange == 0 && tunnel->current >= tunnel->limit)
+			return (-1);
+
+		tunnel->current += pkt->length;
 	}
-
-	if (exchange == 0 && tunnel->current >= tunnel->limit)
-		return (-1);
-
-	tunnel->current += pkt->length;
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
