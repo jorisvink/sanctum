@@ -1493,8 +1493,14 @@ static void
 hymn_config_save(const char *path, const char *flock, struct config *cfg)
 {
 	struct addr	*net;
+	const char	*user;
 	char		tmp[PATH_MAX];
 	int		fd, len, saved_errno;
+
+	if ((user = getlogin()) == NULL) {
+		if ((user = getenv("HYMN_USER")) == NULL)
+			fatal("who are you? failed to find a username");
+	}
 
 	len = snprintf(tmp, sizeof(tmp), "%s.new", path);
 	if (len == -1 || (size_t)len >= sizeof(tmp))
@@ -1572,10 +1578,10 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(net));
 
 	hymn_config_write(fd, "\n");
-	hymn_config_write(fd, "run heaven-rx as %s\n", getlogin());
-	hymn_config_write(fd, "run heaven-tx as %s\n", getlogin());
-	hymn_config_write(fd, "run purgatory-rx as %s\n", getlogin());
-	hymn_config_write(fd, "run purgatory-tx as %s\n", getlogin());
+	hymn_config_write(fd, "run heaven-rx as %s\n", user);
+	hymn_config_write(fd, "run heaven-tx as %s\n", user);
+	hymn_config_write(fd, "run purgatory-rx as %s\n", user);
+	hymn_config_write(fd, "run purgatory-tx as %s\n", user);
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "run control as root\n");
