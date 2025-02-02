@@ -932,18 +932,8 @@ cathedral_settings_reload(void)
 	if (sanctum->settings == NULL)
 		return;
 
-	if ((fd = open(sanctum->settings, O_RDONLY)) == -1) {
-		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
-		    sanctum->settings, errno_s);
+	if ((fd = sanctum_file_open(sanctum->settings, &st)) == -1)
 		return;
-	}
-
-	if (fstat(fd, &st) == -1) {
-		sanctum_log(LOG_NOTICE, "failed to fstat '%s': %s",
-		    sanctum->settings, errno_s);
-		(void)close(fd);
-		return;
-	}
 
 	if (st.st_mtime == settings_last_mtime) {
 		(void)close(fd);
