@@ -399,12 +399,27 @@ int
 sanctum_file_open(const char *path)
 {
 	int		fd;
+	struct stat	st;
 
 	PRECOND(path != NULL);
 
 	if ((fd = open(path, O_RDONLY)) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "failed to open '%s': %s", path, errno_s);
+		return (-1);
+	}
+
+	if (fstat(fd, &st) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to fstat '%s': %s", path, errno_s);
+		(void)close(fd);
+		return (-1);
+	}
+
+	if (!S_ISREG(st.st_mode)) {
+		sanctum_log(LOG_NOTICE,
+		    "'%s': not a regular file", path);
+		(void)close(fd);
 		return (-1);
 	}
 
