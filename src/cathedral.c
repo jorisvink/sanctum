@@ -16,7 +16,6 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -1173,14 +1172,8 @@ cathedral_settings_ambry(const char *option, struct flockent *flock)
 		return;
 	}
 
-	if ((fd = sanctum_file_open(option)) == -1)
+	if ((fd = sanctum_file_open(option, &st)) == -1)
 		return;
-
-	if (fstat(fd, &st) == -1) {
-		sanctum_log(LOG_NOTICE, "fstat on ambry file '%s' failed (%s)",
-		    option, errno_s);
-		goto out;
-	}
 
 	if (st.st_size != CATHEDRAL_AMBRY_BUNDLE_LEN) {
 		sanctum_log(LOG_NOTICE,

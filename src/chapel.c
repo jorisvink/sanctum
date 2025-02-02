@@ -530,7 +530,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	PRECOND(ambry != NULL);
 	PRECOND(sanctum->kek != NULL);
 
-	if ((fd = sanctum_file_open(sanctum->kek)) == -1)
+	if ((fd = sanctum_file_open(sanctum->kek, NULL)) == -1)
 		return;
 
 	nyfe_zeroize_register(kek, sizeof(kek));

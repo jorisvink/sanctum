@@ -27,6 +27,7 @@ extern const char	*sanctum_build_date;
 
 #include <sys/types.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
 
 #include <netinet/in.h>
 
@@ -634,7 +635,7 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
-int	sanctum_file_open(const char *);
+int	sanctum_file_open(const char *, struct stat *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
 void	sanctum_logv(int, const char *, va_list);
