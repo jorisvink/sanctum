@@ -403,7 +403,7 @@ sanctum_file_open(const char *path, struct stat *st)
 	PRECOND(path != NULL);
 	/* st is optional */
 
-	if ((fd = open(path, O_RDONLY)) == -1) {
+	if ((fd = open(path, O_RDONLY | O_NOFOLLOW)) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "failed to open '%s': %s", path, errno_s);
 		return (-1);
