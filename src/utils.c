@@ -652,7 +652,7 @@ sanctum_bind_local(struct sockaddr_in *sin)
 	sin->sin_family = AF_INET;
 
 	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1)
-		fatal("%s: connect: %s", __func__, errno_s);
+		fatal("%s: bind: %s", __func__, errno_s);
 
 	if ((val = fcntl(fd, F_GETFL, 0)) == -1)
 		fatal("%s: fcntl: %s", __func__, errno_s);
