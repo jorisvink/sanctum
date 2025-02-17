@@ -631,10 +631,20 @@ hymn_accept(int argc, char *argv[])
 static int
 hymn_restart(int argc, char *argv[])
 {
+	char		*copy, *old;
+
 	if (argc != 1)
 		usage_simple("restart");
 
+	old = argv[0];
+	if ((copy = strdup(old)) == NULL)
+		fatal("strdup");
+
+	argv[0] = copy;
 	hymn_down(argc, argv);
+	free(copy);
+
+	argv[0] = old;
 	hymn_up(argc, argv);
 
 	return (0);
