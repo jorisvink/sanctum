@@ -365,8 +365,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 
 	if (catacomb == 0 && nat == 0) {
 		cathedral_ambry_send(flock, info, &pkt->addr, id);
-		if (tun->peerinfo)
-			cathedral_info_send(flock, info, &pkt->addr, id);
+		cathedral_info_send(flock, info, &pkt->addr, id);
 	}
 
 	if (tun->natseen) {
