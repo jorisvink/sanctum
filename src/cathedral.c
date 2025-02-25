@@ -133,7 +133,7 @@ static void	cathedral_ambry_send(struct flockent *,
 		    u_int32_t);
 static void	cathedral_info_send(struct flockent *,
 		    struct sanctum_info_offer *, struct sockaddr_in *,
-		    u_int32_t, int);
+		    u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_prune(struct flockent *);
@@ -365,7 +365,8 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 
 	if (catacomb == 0 && nat == 0) {
 		cathedral_ambry_send(flock, info, &pkt->addr, id);
-		cathedral_info_send(flock, info, &pkt->addr, id, tun->peerinfo);
+		if (tun->peerinfo)
+			cathedral_info_send(flock, info, &pkt->addr, id);
 	}
 
 	if (tun->natseen) {
@@ -666,7 +667,7 @@ cathedral_tunnel_prune(struct flockent *flock)
  */
 static void
 cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
-    struct sockaddr_in *sin, u_int32_t id, int peerinfo)
+    struct sockaddr_in *sin, u_int32_t id)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
@@ -696,7 +697,7 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	info->local_port = sin->sin_port;
 	info->local_ip = sin->sin_addr.s_addr;
 
-	if (peerinfo && peer->peerinfo) {
+	if (peer->peerinfo) {
 		info->peer_ip = peer->ip;
 		info->peer_port = peer->port;
 	} else {
