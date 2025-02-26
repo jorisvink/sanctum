@@ -62,7 +62,6 @@ struct tunnel {
 	u_int32_t		ip;
 	u_int64_t		age;
 	u_int16_t		port;
-	int			natseen;
 	int			peerinfo;
 	int			federated;
 
@@ -352,6 +351,12 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 		return;
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
+		if (nat) {
+			sanctum_log(LOG_INFO, "%lx:%04x NAT but no tunnel",
+			    fid, info->tunnel);
+			return;
+		}
+
 		if ((tun = calloc(1, sizeof(*tun))) == NULL)
 			fatal("calloc failed");
 
@@ -359,8 +364,8 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 		tun->drain_per_ms = tun->limit / 1000;
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
-		sanctum_log(LOG_INFO, "tunnel 0x%04x discovered (%u mbit/sec)",
-		    info->tunnel, bw);
+		sanctum_log(LOG_INFO, "%lx:%04x discovered (%u mbit/sec)",
+		    fid, info->tunnel, bw);
 	 }
 
 	if (catacomb == 0 && nat == 0) {
@@ -369,7 +374,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 			cathedral_info_send(flock, info, &pkt->addr, id);
 	}
 
-	if (tun->natseen) {
+	if (nat) {
 		if ((tun->ip == pkt->addr.sin_addr.s_addr &&
 		    tun->port != pkt->addr.sin_port) ||
 		    tun->ip != pkt->addr.sin_addr.s_addr) {
@@ -377,10 +382,6 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 		} else {
 			tun->peerinfo = 1;
 		}
-	}
-
-	if (nat) {
-		tun->natseen = 1;
 	} else {
 		tun->age = now;
 		tun->id = info->tunnel;
@@ -820,6 +821,8 @@ cathedral_tunnel_expire(u_int64_t now)
 			next = LIST_NEXT(tunnel, list);
 
 			if ((now - tunnel->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
+				sanctum_log(LOG_INFO, "%lx:%04x removed",
+				    flock->id, tunnel->id);
 				LIST_REMOVE(tunnel, list);
 				free(tunnel);
 			}
