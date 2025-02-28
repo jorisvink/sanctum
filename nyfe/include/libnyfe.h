@@ -27,6 +27,13 @@
 #define NYFE_FILE_READ			1
 #define NYFE_FILE_CREATE		2
 
+/* Constants for certain primitives. */
+#define NYFE_KEY_ID_LEN		16
+#define NYFE_TAG_LEN		32
+#define NYFE_SEED_LEN		64
+#define NYFE_KEY_LEN		64
+#define NYFE_OKM_LEN		NYFE_KEY_LEN
+
 /*
  * Half of the seed is used as a salt into key_passphrase_kdf() while
  * half of it is used as seed for key_kdf().
