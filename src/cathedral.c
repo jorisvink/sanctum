@@ -352,7 +352,8 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
 		if (nat) {
-			sanctum_log(LOG_INFO, "%lx:%04x NAT but no tunnel",
+			sanctum_log(LOG_INFO,
+			    "%" PRIx64 ":%04x NAT but no tunnel",
 			    fid, info->tunnel);
 			return;
 		}
@@ -364,7 +365,8 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 		tun->drain_per_ms = tun->limit / 1000;
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
-		sanctum_log(LOG_INFO, "%lx:%04x discovered (%u mbit/sec)",
+		sanctum_log(LOG_INFO,
+		    "%" PRIx64 " :%04x discovered (%u mbit/sec)",
 		    fid, info->tunnel, bw);
 	 }
 
@@ -821,7 +823,8 @@ cathedral_tunnel_expire(u_int64_t now)
 			next = LIST_NEXT(tunnel, list);
 
 			if ((now - tunnel->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
-				sanctum_log(LOG_INFO, "%lx:%04x removed",
+				sanctum_log(LOG_INFO,
+				    "%" PRIx64 ":%04x removed",
 				    flock->id, tunnel->id);
 				LIST_REMOVE(tunnel, list);
 				free(tunnel);
