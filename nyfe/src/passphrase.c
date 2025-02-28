@@ -64,7 +64,9 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
     const void *salt, size_t salt_len, u_int8_t *out, size_t out_len)
 {
 	u_int16_t			*ap;
+#if !defined(NYFE_LIBRARY_ONLY)
 	int				sig;
+#endif
 	struct nyfe_kmac256		kmac;
 	struct nyfe_sha3		shake;
 	struct nyfe_agelas		stream;
@@ -132,8 +134,10 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
 	 *	- tmp[offset] ^= buf
 	 */
 	for (iter = 0; iter < PASSPHRASE_KDF_ITERATIONS; iter++) {
+#if !defined(NYFE_LIBRARY_ONLY)
 		if ((sig = nyfe_signal_pending()) != -1)
 			fatal("clean abort due to received signal %d", sig);
+#endif
 
 		offset = ap[iter] * PASSPHRASE_KDF_STEP_LEN;
 
