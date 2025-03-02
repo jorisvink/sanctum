@@ -3,7 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=ambry
-LIBNYFE=../nyfe/libnyfe.a
+LIBNYFE=../../nyfe/libnyfe.a
 
 DESTDIR?=
 PREFIX?=/usr/local
@@ -14,8 +14,8 @@ SRC=	src/ambry.c
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
-CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I../include
-CFLAGS+=-I../nyfe/include
+CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I../../include
+CFLAGS+=-I../../nyfe/include
 CFLAGS+=-g
 
 LDFLAGS+=$(LIBNYFE)
@@ -46,7 +46,7 @@ uninstall:
 	rm -f $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 
 $(LIBNYFE):
-	$(MAKE) -C ../nyfe
+	$(MAKE) -C ../../nyfe
 
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
