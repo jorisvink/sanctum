@@ -65,7 +65,8 @@
  */
 void
 nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
-    const void *salt, size_t salt_len, u_int8_t *out, size_t out_len)
+    const void *salt, size_t salt_len, u_int8_t *out, size_t out_len,
+    const char *label, size_t label_len)
 {
 	u_int16_t			*ap;
 #if !defined(NYFE_LIBRARY_ONLY)
@@ -83,6 +84,8 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
 	PRECOND(salt_len == NYFE_KEY_FILE_SALT_LEN);
 	PRECOND(out != NULL);
 	PRECOND(out_len == NYFE_KEY_LEN);
+	PRECOND(label != NULL);
+	PRECOND(label_len > 0);
 
 	/* Allocate large intermediate buffers. */
 	if ((tmp = calloc(1, PASSPHRASE_KDF_MEM_SIZE)) == NULL)
@@ -180,8 +183,7 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
 	 * while the remainder is used as X.
 	 */
 	iter = htobe32(PASSPHRASE_KDF_MEM_SIZE - 32);
-	nyfe_kmac256_init(&kmac, tmp, 32, NYFE_PASSPHRASE_DERIVE_LABEL,
-	    sizeof(NYFE_PASSPHRASE_DERIVE_LABEL) - 1);
+	nyfe_kmac256_init(&kmac, tmp, 32, label, label_len);
 	nyfe_kmac256_update(&kmac, &iter, sizeof(iter));
 	nyfe_kmac256_update(&kmac, &tmp[32], PASSPHRASE_KDF_MEM_SIZE - 32);
 	nyfe_kmac256_final(&kmac, out, out_len);

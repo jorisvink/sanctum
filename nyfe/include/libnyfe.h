@@ -35,17 +35,10 @@
 #define NYFE_OKM_LEN		NYFE_KEY_LEN
 
 /*
- * Half of the seed is used as a salt into key_passphrase_kdf() while
+ * Half of the seed is used as a salt into nyfe_passphrase_kdf() while
  * half of it is used as seed for key_kdf().
  */
 #define NYFE_KEY_FILE_SALT_LEN		(NYFE_SEED_LEN / 2)
-
-/*
- * Allow other code pulling in libnyfe to override this label.
- */
-#if !defined(NYFE_PASSPHRASE_DERIVE_LABEL)
-#define NYFE_PASSPHRASE_DERIVE_LABEL	"NYFE.PASSPHRASE.KDF"
-#endif
 
 /*
  * Our keccak1600 context.
@@ -127,8 +120,8 @@ void	nyfe_kmac256_init(struct nyfe_kmac256 *, const void *, size_t,
 	    const void *, size_t);
 
 /* src/passphrase.c */
-void	nyfe_passphrase_kdf(const void *,
-	    u_int32_t, const void *, size_t, u_int8_t *, size_t);
+void	nyfe_passphrase_kdf(const void *, u_int32_t, const void *, size_t,
+	    u_int8_t *, size_t, const char *, size_t);
 
 /* src/random.c */
 void	nyfe_random_init(void);
