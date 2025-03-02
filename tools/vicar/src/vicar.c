@@ -34,13 +34,13 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "libnyfe.h"
+
 #define VICAR_KEY_LEN			64
 #define VICAR_SALT_LEN			32
 #define VICAR_TAG_LEN			32
 
 #define KDF_LABEL			"VICAR.PASSPHRASE.PBKDF"
-
-#include "libnyfe.h"
 
 struct config {
 	u_int8_t	salt[VICAR_SALT_LEN];
