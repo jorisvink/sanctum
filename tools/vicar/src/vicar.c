@@ -38,7 +38,7 @@
 #define VICAR_SALT_LEN			32
 #define VICAR_TAG_LEN			32
 
-#define NYFE_PASSPHRASE_DERIVE_LABEL	"VICAR.PASSPHRASE.PBKDF"
+#define KDF_LABEL			"VICAR.PASSPHRASE.PBKDF"
 
 #include "libnyfe.h"
 
@@ -183,7 +183,8 @@ vicar_wrap_config(struct config *cfg)
 	vicar_read_passphrase(passphrase, sizeof(passphrase));
 
 	nyfe_passphrase_kdf(passphrase, sizeof(passphrase),
-	    cfg->salt, sizeof(cfg->salt), okm, sizeof(okm));
+	    cfg->salt, sizeof(cfg->salt), okm, sizeof(okm),
+	    KDF_LABEL, sizeof(KDF_LABEL) - 1);
 	nyfe_zeroize(passphrase, sizeof(passphrase));
 
 	nyfe_agelas_init(&cipher, okm, sizeof(okm));
