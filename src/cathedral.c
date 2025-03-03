@@ -366,7 +366,7 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
 		sanctum_log(LOG_INFO,
-		    "%" PRIx64 " :%04x discovered (%u mbit/sec)",
+		    "%" PRIx64 ":%04x discovered (%u mbit/sec)",
 		    fid, info->tunnel, bw);
 	 }
 
