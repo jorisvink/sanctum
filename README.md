@@ -43,11 +43,22 @@ There are several processes that make up a sanctum instance:
 | pilgrim | The process handling TX keys when running in pilgrim mode.
 | shrine | The process handling RX keys when running in shrine mode.
 | cathedral | The process forwarding traffic when running in cathedral mode.
+| liturgy | The process responsible for autodiscovery of peers in a cathedral.
+| bishop | The process responsible for configuring autodiscovered tunnels.
 
 Each process can run as its own user.
 
 Each process is sandboxed and only has access to the system calls
 required to perform its task.
+
+There are two exceptions, guardian (the main process) is not sandboxed
+nor seccomped, and bishop.
+
+The guardian process is only monitoring its child processes and has no
+other external interfaces.
+
+The bishop process must be privileged due to the fact it is fork+exec'ing
+the hymn configuration tool for setting up new tunnels.
 
 ## Packets
 
