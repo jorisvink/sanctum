@@ -221,6 +221,11 @@ sanctum_config_load(const char *file)
 		break;
 	}
 
+	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
+	    (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE) &&
+	    sanctum->tun_mtu == 0)
+		fatal("tfc/encap is enabled but no mtu has been set");
+
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 	    sanctum->mode != SANCTUM_MODE_LITURGY &&
 	    !(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
