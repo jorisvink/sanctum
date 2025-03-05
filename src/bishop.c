@@ -64,11 +64,11 @@ static int	bishop_split_string(char *, const char *, char **, size_t);
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 
-/* Quick bookkeeping of the instances that are up. */
-static u_int8_t			instances[SANCTUM_PEERS_PER_FLOCK];
-
 /* Pipe we re-use to read stdout from the forked hymn processes. */
 static int			hymn_pipe[2];
+
+/* Quick bookkeeping of the instances that are up. */
+static u_int8_t			instances[SANCTUM_PEERS_PER_FLOCK];
 
 /*
  * Bishop - Part of the liturgy.
