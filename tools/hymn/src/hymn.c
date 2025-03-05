@@ -1761,11 +1761,16 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(net));
 
 	hymn_config_write(fd, "\n");
-	hymn_config_write(fd, "run heaven-rx as %s\n", user);
-	hymn_config_write(fd, "run heaven-tx as %s\n", user);
+
+	if (cfg->is_liturgy == 0) {
+		hymn_config_write(fd, "run heaven-rx as %s\n", user);
+		hymn_config_write(fd, "run heaven-tx as %s\n", user);
+	} else {
+		hymn_config_write(fd, "run liturgy as %s\n", user);
+	}
+
 	hymn_config_write(fd, "run purgatory-rx as %s\n", user);
 	hymn_config_write(fd, "run purgatory-tx as %s\n", user);
-
 	hymn_config_write(fd, "\n");
 
 	if (cfg->is_liturgy == 0) {
@@ -1773,12 +1778,10 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		hymn_config_write(fd,
 		    "control /tmp/%s-%02x-%02x.control root\n",
 		    flock, cfg->src, cfg->dst);
-	} else {
-		hymn_config_write(fd, "run liturgy as %s\n", user);
-		hymn_config_write(fd, "run bishop as root\n");
+		hymn_config_write(fd, "\n");
 	}
 
-	hymn_config_write(fd, "\n");
+	hymn_config_write(fd, "run bishop as root\n");
 	hymn_config_write(fd, "run bless as root\n");
 	hymn_config_write(fd, "run confess as root\n");
 	hymn_config_write(fd, "run chapel as root\n");
