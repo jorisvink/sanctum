@@ -38,17 +38,12 @@
  */
 #define HYMN_RUN_PATH		"/var/run/hymn"
 
-/*
- * The format string for adding a new tunnel via our configured cathedral
- * settings.
- */
+/* The format string for adding a new tunnel using the hymn tool. */
 #define HYMN_FMT_ADD						\
     "hymn add %" PRIx64 "-%02x-%02x tunnel %s/32 "		\
     "cathedral %s:%u kek %s identity %x:%s natport %u"
 
-/*
- * The format string for up/down of a tunnel via the hymn tool.
- */
+/* The format string for up/down of a tunnel via the hymn tool. */
 #define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x"
 
 /*
