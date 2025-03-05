@@ -44,6 +44,8 @@ static const char *proctab[] = {
 	"pilgrim",
 	"shrine",
 	"cathedral",
+	"liturgy",
+	"bishop",
 };
 
 /* Points to the process its own sanctum_proc, or NULL or parent. */
@@ -96,7 +98,10 @@ sanctum_proc_start(void)
 	struct sanctum_proc_io		io;
 	struct sockaddr_in		nat;
 
-	sanctum_proc_create(SANCTUM_PROC_CONTROL, sanctum_control, NULL);
+	if (sanctum->mode != SANCTUM_MODE_LITURGY) {
+		sanctum_proc_create(SANCTUM_PROC_CONTROL,
+		    sanctum_control, NULL);
+	}
 
 	io.crypto = sanctum_bind_local(&sanctum->local);
 
@@ -109,9 +114,11 @@ sanctum_proc_start(void)
 		io.nat = -1;
 	}
 
+	io.bishop = NULL;
 	io.purgatory = sanctum_ring_alloc(1024);
 
-	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+	    sanctum->mode != SANCTUM_MODE_LITURGY) {
 		io.clear = sanctum_platform_tundev_create();
 		io.offer = sanctum_ring_alloc(16);
 		io.chapel = sanctum_ring_alloc(16);
@@ -124,11 +131,14 @@ sanctum_proc_start(void)
 		io.clear = -1;
 		io.tx = NULL;
 		io.rx = NULL;
-		io.offer = NULL;
 		io.bless = NULL;
+		io.offer = NULL;
 		io.heaven = NULL;
 		io.confess = NULL;
 		io.chapel = sanctum_ring_alloc(1024);
+
+		if (sanctum->mode == SANCTUM_MODE_LITURGY)
+			io.bishop = sanctum_ring_alloc(1024);
 	}
 
 	if (sanctum->mode != SANCTUM_MODE_PILGRIM) {
@@ -141,7 +151,8 @@ sanctum_proc_start(void)
 		    sanctum_purgatory_tx, &io);
 	}
 
-	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+	    sanctum->mode != SANCTUM_MODE_LITURGY) {
 		sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
 		sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
 
@@ -169,6 +180,10 @@ sanctum_proc_start(void)
 	case SANCTUM_MODE_CATHEDRAL:
 		sanctum_proc_create(SANCTUM_PROC_CATHEDRAL,
 		    sanctum_cathedral, &io);
+		break;
+	case SANCTUM_MODE_LITURGY:
+		sanctum_proc_create(SANCTUM_PROC_BISHOP, sanctum_bishop, &io);
+		sanctum_proc_create(SANCTUM_PROC_LITURGY, sanctum_liturgy, &io);
 		break;
 	default:
 		fatal("unknown mode %u", sanctum->mode);
@@ -208,7 +223,9 @@ sanctum_proc_create(u_int16_t type,
 	    type == SANCTUM_PROC_CONTROL ||
 	    type == SANCTUM_PROC_PILGRIM ||
 	    type == SANCTUM_PROC_SHRINE ||
-	    type == SANCTUM_PROC_CATHEDRAL);
+	    type == SANCTUM_PROC_CATHEDRAL ||
+	    type == SANCTUM_PROC_LITURGY ||
+	    type == SANCTUM_PROC_BISHOP);
 
 	PRECOND(entry != NULL);
 	/* arg is optional. */
@@ -273,6 +290,7 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 	case SANCTUM_PROC_SHRINE:
 	case SANCTUM_PROC_PILGRIM:
 	case SANCTUM_PROC_CATHEDRAL:
+	case SANCTUM_PROC_LITURGY:
 		break;
 	default:
 		fatal("%s: unknown process type %d", __func__, proc->type);
@@ -420,7 +438,9 @@ sanctum_proc_wakeup(u_int16_t type)
 	    type == SANCTUM_PROC_CONTROL ||
 	    type == SANCTUM_PROC_PILGRIM ||
 	    type == SANCTUM_PROC_SHRINE ||
-	    type == SANCTUM_PROC_CATHEDRAL);
+	    type == SANCTUM_PROC_CATHEDRAL ||
+	    type == SANCTUM_PROC_LITURGY ||
+	    type == SANCTUM_PROC_BISHOP);
 
 	sanctum_platform_wakeup(&sanctum->wstate[type]);
 }

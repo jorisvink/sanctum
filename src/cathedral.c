@@ -16,7 +16,6 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -36,10 +35,10 @@
 /* The half-time window in which offers are valid. */
 #define CATHEDRAL_REG_VALID		5
 
-/* The maximum age in seconds for a cached tunnel entry. */
+/* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
 
-/* The interval at which we check for expired tunnel entries. */
+/* The interval at which we check for expired tunnel and liturgy entries. */
 #define CATHEDRAL_TUNNEL_EXPIRE_NEXT	(10 * 1000)
 
 /* The interval at which we check if settings changed. */
@@ -63,7 +62,6 @@ struct tunnel {
 	u_int32_t		ip;
 	u_int64_t		age;
 	u_int16_t		port;
-	int			natseen;
 	int			peerinfo;
 	int			federated;
 
@@ -88,6 +86,17 @@ struct allow {
 };
 
 /*
+ * A client that will receive a liturgy update for the attached flock.
+ */
+struct liturgy {
+	u_int32_t		ip;
+	u_int64_t		age;
+	u_int16_t		id;
+	u_int16_t		port;
+	LIST_ENTRY(liturgy)	list;
+};
+
+/*
  * An ambry that can be given to a client.
  */
 struct ambry {
@@ -107,6 +116,7 @@ struct flockent {
 	LIST_HEAD(, allow)	allows;
 	LIST_HEAD(, tunnel)	tunnels;
 	LIST_HEAD(, ambry)	ambries;
+	LIST_HEAD(, liturgy)	liturgies;
 	LIST_ENTRY(flockent)	list;
 };
 
@@ -117,11 +127,23 @@ static struct tunnel	*cathedral_tunnel_lookup(struct flockent *, u_int16_t);
 static void	cathedral_flock_allows_clear(struct flockent *);
 static void	cathedral_flock_tunnels_clear(struct flockent *);
 static void	cathedral_flock_ambries_clear(struct flockent *);
+static void	cathedral_flock_liturgies_clear(struct flockent *);
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
-static int	cathedral_offer_send(const char *, struct sanctum_packet *,
-		    struct sockaddr_in *);
+
+static void	cathedral_offer_federate(struct flockent *,
+		    struct sanctum_packet *);
+static void	cathedral_offer_handle(struct sanctum_packet *,
+		    u_int64_t, int, int);
+static int	cathedral_offer_send(const char *,
+		    struct sanctum_packet *, struct sockaddr_in *);
+static int	cathedral_offer_validate(struct flockent *,
+		    struct sanctum_offer *, u_int32_t, int);
+static void	cathedral_offer_info(struct sanctum_packet *,
+		    struct flockent *, u_int64_t, int, int);
+static void	cathedral_offer_liturgy(struct sanctum_packet *,
+		    struct flockent *, u_int64_t, int);
 
 static void	cathedral_settings_reload(void);
 static void	cathedral_settings_federate(const char *);
@@ -135,18 +157,14 @@ static void	cathedral_ambry_send(struct flockent *,
 static void	cathedral_info_send(struct flockent *,
 		    struct sanctum_info_offer *, struct sockaddr_in *,
 		    u_int32_t);
+static void	cathedral_liturgy_send(struct flockent *,
+		    struct liturgy *, struct sockaddr_in *, u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_prune(struct flockent *);
-static void	cathedral_tunnel_federate(struct flockent *,
-		    struct sanctum_packet *);
 
 static int	cathedral_tunnel_forward(struct sanctum_packet *,
 		    int, u_int32_t, u_int64_t);
-static void	cathedral_tunnel_update(struct sanctum_packet *,
-		    u_int64_t, int, int);
-static int	cathedral_tunnel_update_valid(struct flockent *,
-		    struct sanctum_offer *, u_int32_t, int);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
 		    struct sanctum_info_offer *, u_int32_t, u_int32_t *);
 
@@ -239,7 +257,8 @@ sanctum_cathedral(struct sanctum_proc *proc)
  *
  * 1) A tunnel update from a sanctum instance.
  * 2) A CATACOMB message from another cathedral.
- * 3) A normal packet that must be forwarded.
+ * 3) A liturgy message from a sanctum instance.
+ * 4) A normal packet that must be forwarded.
  */
 static void
 cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
@@ -258,11 +277,15 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 
 	if ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
-		cathedral_tunnel_update(pkt, now, 0, 0);
+		cathedral_offer_handle(pkt, now, 0, 0);
 		sanctum_packet_release(pkt);
 	} else if ((spi == (SANCTUM_CATHEDRAL_NAT_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_CATHEDRAL_NAT_MAGIC & 0xffffffff))) {
-		cathedral_tunnel_update(pkt, now, 1, 0);
+		cathedral_offer_handle(pkt, now, 1, 0);
+		sanctum_packet_release(pkt);
+	} else if ((spi == (SANCTUM_CATHEDRAL_LITURGY_MAGIC >> 32)) &&
+	    (seq == (SANCTUM_CATHEDRAL_LITURGY_MAGIC & 0xffffffff))) {
+		cathedral_offer_handle(pkt, now, 0, 0);
 		sanctum_packet_release(pkt);
 	} else if ((spi == (CATHEDRAL_CATACOMB_MAGIC >> 32)) &&
 	    (seq == (CATHEDRAL_CATACOMB_MAGIC & 0xffffffff))) {
@@ -281,7 +304,7 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 			return;
 		}
 
-		cathedral_tunnel_update(pkt, now, 0, 1);
+		cathedral_offer_handle(pkt, now, 0, 1);
 		sanctum_packet_release(pkt);
 	} else {
 		if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
@@ -316,19 +339,17 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 }
 
 /*
- * Attempt to decrypt a tunnel registration, if successfull either
- * create a new tunnel entry or update an existing one.
+ * Attempt to verify and decrypt an incoming offer message from a client.
+ * We accept both INFO and LITURGY messages.
  */
 static void
-cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
+cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
     int nat, int catacomb)
 {
+	u_int32_t			id;
 	u_int64_t			fid;
 	struct sanctum_offer		*op;
-	struct tunnel			*tun;
-	struct sanctum_info_offer	*info;
 	struct flockent			*flock;
-	u_int32_t			id, bw;
 
 	PRECOND(pkt != NULL);
 
@@ -342,66 +363,71 @@ cathedral_tunnel_update(struct sanctum_packet *pkt, u_int64_t now,
 	if ((flock = cathedral_flock_lookup(fid)) == NULL)
 		return;
 
-	if (cathedral_tunnel_update_valid(flock, op, id, catacomb) == -1)
+	if (cathedral_offer_validate(flock, op, id, catacomb) == -1)
 		return;
 
-	info = &op->data.offer.info;
-	info->tunnel = be16toh(info->tunnel);
-	info->ambry_generation = be32toh(info->ambry_generation);
-
-	if (cathedral_tunnel_update_allowed(flock, info, id, &bw) == -1)
-		return;
-
-	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
-		if ((tun = calloc(1, sizeof(*tun))) == NULL)
-			fatal("calloc failed");
-
-		tun->limit = (bw / 8) * 1024 * 1024;
-		tun->drain_per_ms = tun->limit / 1000;
-
-		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
-		sanctum_log(LOG_INFO, "tunnel 0x%04x discovered (%u mbit/sec)",
-		    info->tunnel, bw);
-	 }
-
-	if (catacomb == 0 && nat == 0) {
-		cathedral_ambry_send(flock, info, &pkt->addr, id);
-		if (tun->peerinfo)
-			cathedral_info_send(flock, info, &pkt->addr, id);
-	}
-
-	if (tun->natseen) {
-		if ((tun->ip == pkt->addr.sin_addr.s_addr &&
-		    tun->port != pkt->addr.sin_port) ||
-		    tun->ip != pkt->addr.sin_addr.s_addr) {
-			tun->peerinfo = 0;
-		} else {
-			tun->peerinfo = 1;
-		}
-	}
-
-	if (nat) {
-		tun->natseen = 1;
-	} else {
-		tun->age = now;
-		tun->id = info->tunnel;
-		tun->port = pkt->addr.sin_port;
-		tun->ip = pkt->addr.sin_addr.s_addr;
-
-		if (catacomb == 0)
-			cathedral_tunnel_federate(flock, pkt);
-		else
-			tun->federated = 1;
+	switch (op->data.type) {
+	case SANCTUM_OFFER_TYPE_INFO:
+		cathedral_offer_info(pkt, flock, now, nat, catacomb);
+		break;
+	case SANCTUM_OFFER_TYPE_LITURGY:
+		cathedral_offer_liturgy(pkt, flock, now, catacomb);
+		break;
+	default:
+		break;
 	}
 }
 
 /*
- * Verify and decrypt an info offer we received from a potential client
+ * Encrypt and send a sanctum offer back to the client.
+ */
+static int
+cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
+    struct sockaddr_in *sin)
+{
+	struct sanctum_offer		*op;
+	struct nyfe_agelas		cipher;
+
+	PRECOND(secret != NULL);
+	PRECOND(pkt != NULL);
+	PRECOND(sin != NULL);
+
+	op = sanctum_packet_head(pkt);
+
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return (-1);
+	}
+
+	sanctum_offer_encrypt(&cipher, op);
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	pkt->length = sizeof(*op);
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	sanctum_offer_tfc(pkt);
+
+	pkt->addr.sin_family = AF_INET;
+	pkt->addr.sin_port = sin->sin_port;
+	pkt->addr.sin_addr.s_addr = sin->sin_addr.s_addr;
+
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+		return (-1);
+
+	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+
+	return (0);
+}
+
+/*
+ * Verify and decrypt an offer we received from a potential client
  * or from another cathedral we federate with.
  */
 static int
-cathedral_tunnel_update_valid(struct flockent *flock, struct sanctum_offer *op,
-    u_int32_t id, int cb)
+cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
+    u_int32_t id, int catacomb)
 {
 	struct nyfe_agelas	cipher;
 	const char		*label;
@@ -410,7 +436,7 @@ cathedral_tunnel_update_valid(struct flockent *flock, struct sanctum_offer *op,
 	PRECOND(flock != NULL);
 	PRECOND(op != NULL);
 
-	if (cb) {
+	if (catacomb) {
 		secret = sanctum->secret;
 		label = CATHEDRAL_CATACOMB_LABEL;
 	} else {
@@ -434,10 +460,205 @@ cathedral_tunnel_update_valid(struct flockent *flock, struct sanctum_offer *op,
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	if (op->data.type != SANCTUM_OFFER_TYPE_INFO)
-		return (-1);
-
 	return (0);
+}
+
+/*
+ * We received a tunnel registration update, so we create a new tunnel
+ * entry or update an existing one.
+ */
+static void
+cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
+    u_int64_t now, int nat, int catacomb)
+{
+	struct sanctum_offer		*op;
+	struct tunnel			*tun;
+	struct sanctum_info_offer	*info;
+	u_int32_t			id, bw;
+
+	PRECOND(pkt != NULL);
+	PRECOND(flock != NULL);
+	PRECOND(pkt->length >= sizeof(*op));
+
+	op = sanctum_packet_head(pkt);
+	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_INFO);
+
+	id = be32toh(op->hdr.spi);
+
+	info = &op->data.offer.info;
+	info->tunnel = be16toh(info->tunnel);
+	info->ambry_generation = be32toh(info->ambry_generation);
+
+	if (cathedral_tunnel_update_allowed(flock, info, id, &bw) == -1)
+		return;
+
+	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
+		if (nat) {
+			sanctum_log(LOG_INFO,
+			    "%" PRIx64 ":%04x NAT but no tunnel",
+			    flock->id, info->tunnel);
+			return;
+		}
+
+		if ((tun = calloc(1, sizeof(*tun))) == NULL)
+			fatal("calloc failed");
+
+		tun->limit = (bw / 8) * 1024 * 1024;
+		tun->drain_per_ms = tun->limit / 1000;
+
+		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
+		sanctum_log(LOG_INFO,
+		    "%" PRIx64 ":%04x discovered (%u mbit/sec)",
+		    flock->id, info->tunnel, bw);
+	 }
+
+	if (catacomb == 0 && nat == 0) {
+		cathedral_ambry_send(flock, info, &pkt->addr, id);
+		if (tun->peerinfo)
+			cathedral_info_send(flock, info, &pkt->addr, id);
+	}
+
+	if (nat) {
+		if ((tun->ip == pkt->addr.sin_addr.s_addr &&
+		    tun->port != pkt->addr.sin_port) ||
+		    tun->ip != pkt->addr.sin_addr.s_addr) {
+			tun->peerinfo = 0;
+		} else {
+			tun->peerinfo = 1;
+		}
+	} else {
+		tun->age = now;
+		tun->id = info->tunnel;
+		tun->port = pkt->addr.sin_port;
+		tun->ip = pkt->addr.sin_addr.s_addr;
+
+		if (catacomb == 0) {
+			info->tunnel = htobe16(info->tunnel);
+			cathedral_offer_federate(flock, pkt);
+		} else {
+			tun->federated = 1;
+		}
+	}
+}
+
+/*
+ * A liturgy message from a sanctum instance arrived. We verify and
+ * decrypt it and respond to the client with our own liturgy message
+ * carrying the relevant information.
+ */
+static void
+cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
+    u_int64_t now, int catacomb)
+{
+	u_int32_t			id;
+	struct sanctum_offer		*op;
+	struct sanctum_liturgy_offer	*lit;
+	struct liturgy			*entry;
+
+	PRECOND(pkt != NULL);
+	PRECOND(flock != NULL);
+	PRECOND(pkt->length >= sizeof(*op));
+
+	op = sanctum_packet_head(pkt);
+	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
+
+	id = be32toh(op->hdr.spi);
+
+	lit = &op->data.offer.liturgy;
+	LIST_FOREACH(entry, &flock->liturgies, list) {
+		if (entry->id == lit->id)
+			break;
+	}
+
+	if (entry == NULL) {
+		if ((entry = calloc(1, sizeof(*entry))) == NULL)
+			fatal("calloc: failed to allocate liturgy");
+
+		entry->id = lit->id;
+		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
+
+		sanctum_log(LOG_INFO, "liturgy for %" PRIx64 ":%02x (%d)",
+		    flock->id, lit->id, catacomb);
+	}
+
+	entry->age = now;
+	entry->port = pkt->addr.sin_port;
+	entry->ip = pkt->addr.sin_addr.s_addr;
+
+	if (catacomb == 0) {
+		cathedral_offer_federate(flock, pkt);
+		cathedral_liturgy_send(flock, entry, &pkt->addr, id);
+	}
+}
+
+/*
+ * Send out the offer inside of the given packet to all other cathedrals.
+ */
+static void
+cathedral_offer_federate(struct flockent *flock, struct sanctum_packet *update)
+{
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	u_int8_t			*ptr;
+	struct nyfe_agelas		cipher;
+	struct tunnel			*tunnel;
+
+	PRECOND(flock != NULL);
+	PRECOND(update != NULL);
+
+	if (update->length < sizeof(*op))
+		fatal("%s: pkt length invalid (%zu)", __func__, update->length);
+
+	/*
+	 * We update the information in place with a new magic field,
+	 * a new seed and a new timestamp.
+	 *
+	 * This is then re-encrypted with our synchronization key and
+	 * sent to all cathedrals that are configured.
+	 */
+	op = sanctum_packet_head(update);
+	op = sanctum_offer_init(update, be32toh(op->hdr.spi),
+	    CATHEDRAL_CATACOMB_MAGIC, op->data.type);
+
+	op->hdr.flock = htobe64(flock->id);
+
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_cipher_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return;
+	}
+
+	sanctum_offer_encrypt(&cipher, op);
+	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	LIST_FOREACH(tunnel, &federations, list) {
+		if ((pkt = sanctum_packet_get()) == NULL) {
+			sanctum_log(LOG_NOTICE,
+			    "no CATACOMB update possible, out of packets");
+			return;
+		}
+
+		ptr = sanctum_packet_head(pkt);
+		memcpy(ptr, op, sizeof(*op));
+
+		pkt->length = sizeof(*op);
+		pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+		sanctum_offer_tfc(pkt);
+
+		pkt->addr.sin_family = AF_INET;
+		pkt->addr.sin_port = tunnel->port;
+		pkt->addr.sin_addr.s_addr = tunnel->ip;
+
+		if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
+			sanctum_log(LOG_NOTICE,
+			    "no CATACOMB update possible, failed to queue");
+			sanctum_packet_release(pkt);
+		} else {
+			sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+		}
+	}
 }
 
 /*
@@ -508,21 +729,23 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 	if (tunnel == NULL)
 		return (-1);
 
-	delta = now - tunnel->last_drain;
-	if (delta >= 1) {
-		tunnel->last_drain = now;
-		drain = tunnel->drain_per_ms * delta;
-		if (drain <= tunnel->current) {
-			tunnel->current -= drain;
-		} else {
-			tunnel->current = 0;
+	if (tunnel->limit != 0) {
+		delta = now - tunnel->last_drain;
+		if (delta >= 1) {
+			tunnel->last_drain = now;
+			drain = tunnel->drain_per_ms * delta;
+			if (drain <= tunnel->current) {
+				tunnel->current -= drain;
+			} else {
+				tunnel->current = 0;
+			}
 		}
+
+		if (exchange == 0 && tunnel->current >= tunnel->limit)
+			return (-1);
+
+		tunnel->current += pkt->length;
 	}
-
-	if (exchange == 0 && tunnel->current >= tunnel->limit)
-		return (-1);
-
-	tunnel->current += pkt->length;
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
@@ -535,80 +758,6 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 	return (0);
-}
-
-/*
- * Send out the given tunnel update to all federated cathedrals.
- */
-static void
-cathedral_tunnel_federate(struct flockent *flock, struct sanctum_packet *update)
-{
-	struct sanctum_offer		*op;
-	struct sanctum_packet		*pkt;
-	u_int8_t			*ptr;
-	struct sanctum_info_offer	*info;
-	struct nyfe_agelas		cipher;
-	struct tunnel			*tunnel;
-
-	PRECOND(flock != NULL);
-	PRECOND(update != NULL);
-
-	if (update->length < sizeof(*op))
-		fatal("%s: pkt length invalid (%zu)", __func__, update->length);
-
-	/*
-	 * We update the information in place with a new magic field,
-	 * a new seed and a new timestamp.
-	 *
-	 * This is then re-encrypted with our synchronization key and
-	 * sent to all cathedrals that are configured.
-	 */
-	op = sanctum_packet_head(update);
-	op = sanctum_offer_init(update, be32toh(op->hdr.spi),
-	    CATHEDRAL_CATACOMB_MAGIC, op->data.type);
-
-	op->hdr.flock = htobe64(flock->id);
-
-	info = &op->data.offer.info;
-	info->tunnel = htobe16(info->tunnel);
-
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_cipher_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
-		nyfe_zeroize(&cipher, sizeof(cipher));
-		return;
-	}
-
-	sanctum_offer_encrypt(&cipher, op);
-	nyfe_zeroize(&cipher, sizeof(cipher));
-
-	LIST_FOREACH(tunnel, &federations, list) {
-		if ((pkt = sanctum_packet_get()) == NULL) {
-			sanctum_log(LOG_NOTICE,
-			    "no CATACOMB update possible, out of packets");
-			return;
-		}
-
-		ptr = sanctum_packet_head(pkt);
-		memcpy(ptr, op, sizeof(*op));
-
-		pkt->length = sizeof(*op);
-		pkt->target = SANCTUM_PROC_PURGATORY_TX;
-
-		sanctum_offer_tfc(pkt);
-
-		pkt->addr.sin_family = AF_INET;
-		pkt->addr.sin_port = tunnel->port;
-		pkt->addr.sin_addr.s_addr = tunnel->ip;
-
-		if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
-			sanctum_log(LOG_NOTICE,
-			    "no CATACOMB update possible, failed to queue");
-			sanctum_packet_release(pkt);
-		} else {
-			sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
-		}
-	}
 }
 
 /*
@@ -661,6 +810,46 @@ cathedral_tunnel_prune(struct flockent *flock)
 }
 
 /*
+ * Expire tunnel and liturgy entries that are too old and remove them
+ * from the known list.
+ */
+static void
+cathedral_tunnel_expire(u_int64_t now)
+{
+	struct flockent		*flock;
+	struct tunnel		*tunnel, *tunnel_next;
+	struct liturgy		*liturgy, *liturgy_next;
+
+	LIST_FOREACH(flock, &flocks, list) {
+		for (liturgy = LIST_FIRST(&flock->liturgies);
+		    liturgy != NULL; liturgy = liturgy_next) {
+			liturgy_next = LIST_NEXT(liturgy, list);
+
+			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
+				sanctum_log(LOG_INFO,
+				    "liturgy %" PRIx64 ":%02x removed",
+				    flock->id, liturgy->id);
+				LIST_REMOVE(liturgy, list);
+				free(liturgy);
+			}
+		}
+
+		for (tunnel = LIST_FIRST(&flock->tunnels);
+		    tunnel != NULL; tunnel = tunnel_next) {
+			tunnel_next = LIST_NEXT(tunnel, list);
+
+			if ((now - tunnel->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
+				sanctum_log(LOG_INFO,
+				    "tunnel %" PRIx64 ":%04x removed",
+				    flock->id, tunnel->id);
+				LIST_REMOVE(tunnel, list);
+				free(tunnel);
+			}
+		}
+	}
+}
+
+/*
  * Send the information required for both peers to establish a
  * connection towards each other, skipping the cathedral for traffic.
  */
@@ -702,6 +891,42 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	} else {
 		info->peer_port = sanctum->local.sin_port;
 		info->peer_ip = sanctum->local.sin_addr.s_addr;
+	}
+
+	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
+
+	if (cathedral_offer_send(secret, pkt, sin) == -1)
+		sanctum_packet_release(pkt);
+}
+
+/*
+ * Send a liturgy offering to a client. In this message we will include
+ * all peers in the same flock that are part of the liturgy.
+ */
+static void
+cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
+    struct sockaddr_in *sin, u_int32_t id)
+{
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	struct sanctum_liturgy_offer	*lit;
+	struct liturgy			*entry;
+	char				secret[1024];
+
+	PRECOND(flock != NULL);
+	PRECOND(src != NULL);
+	PRECOND(sin != NULL);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	op = sanctum_offer_init(pkt, id,
+	    SANCTUM_CATHEDRAL_LITURGY_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
+
+	lit = &op->data.offer.liturgy;
+	LIST_FOREACH(entry, &flock->liturgies, list) {
+		if (entry != src)
+			lit->peers[entry->id] = 1;
 	}
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
@@ -759,71 +984,6 @@ cathedral_ambry_send(struct flockent *flock, struct sanctum_info_offer *info,
 
 	if (cathedral_offer_send(secret, pkt, s) == -1)
 		sanctum_packet_release(pkt);
-}
-
-/*
- * Encrypt and send a sanctum offer back to the client.
- */
-static int
-cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
-    struct sockaddr_in *sin)
-{
-	struct sanctum_offer		*op;
-	struct nyfe_agelas		cipher;
-
-	PRECOND(secret != NULL);
-	PRECOND(pkt != NULL);
-	PRECOND(sin != NULL);
-
-	op = sanctum_packet_head(pkt);
-
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_cipher_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
-		nyfe_zeroize(&cipher, sizeof(cipher));
-		return (-1);
-	}
-
-	sanctum_offer_encrypt(&cipher, op);
-	nyfe_zeroize(&cipher, sizeof(cipher));
-
-	pkt->length = sizeof(*op);
-	pkt->target = SANCTUM_PROC_PURGATORY_TX;
-
-	sanctum_offer_tfc(pkt);
-
-	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_port = sin->sin_port;
-	pkt->addr.sin_addr.s_addr = sin->sin_addr.s_addr;
-
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
-		return (-1);
-
-	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
-
-	return (0);
-}
-
-/*
- * Expire tunnels that are too old and remove them from the known list.
- */
-static void
-cathedral_tunnel_expire(u_int64_t now)
-{
-	struct flockent		*flock;
-	struct tunnel		*tunnel, *next;
-
-	LIST_FOREACH(flock, &flocks, list) {
-		for (tunnel = LIST_FIRST(&flock->tunnels);
-		    tunnel != NULL; tunnel = next) {
-			next = LIST_NEXT(tunnel, list);
-
-			if ((now - tunnel->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
-				LIST_REMOVE(tunnel, list);
-				free(tunnel);
-			}
-		}
-	}
 }
 
 /*
@@ -898,6 +1058,24 @@ cathedral_flock_ambries_clear(struct flockent *flock)
 }
 
 /*
+ * Clear all liturgies from a flock.
+ */
+static void
+cathedral_flock_liturgies_clear(struct flockent *flock)
+{
+	struct liturgy	*entry;
+
+	PRECOND(flock != NULL);
+
+	while ((entry = LIST_FIRST(&flock->liturgies)) != NULL) {
+		LIST_REMOVE(entry, list);
+		free(entry);
+	}
+
+	LIST_INIT(&flock->liturgies);
+}
+
+/*
  * Create the path to a cathedral secret for the given flock and id.
  */
 static void
@@ -931,18 +1109,8 @@ cathedral_settings_reload(void)
 	if (sanctum->settings == NULL)
 		return;
 
-	if ((fd = open(sanctum->settings, O_RDONLY)) == -1) {
-		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
-		    sanctum->settings, errno_s);
+	if ((fd = sanctum_file_open(sanctum->settings, &st)) == -1)
 		return;
-	}
-
-	if (fstat(fd, &st) == -1) {
-		sanctum_log(LOG_NOTICE, "failed to fstat '%s': %s",
-		    sanctum->settings, errno_s);
-		(void)close(fd);
-		return;
-	}
 
 	if (st.st_mtime == settings_last_mtime) {
 		(void)close(fd);
@@ -1022,6 +1190,7 @@ cathedral_settings_reload(void)
 		cathedral_flock_allows_clear(flock);
 		cathedral_flock_ambries_clear(flock);
 		cathedral_flock_tunnels_clear(flock);
+		cathedral_flock_liturgies_clear(flock);
 
 		free(flock);
 	}
@@ -1109,6 +1278,7 @@ cathedral_settings_flock(const char *option, struct flockent **out)
 		LIST_INIT(&flock->allows);
 		LIST_INIT(&flock->ambries);
 		LIST_INIT(&flock->tunnels);
+		LIST_INIT(&flock->liturgies);
 		LIST_INSERT_HEAD(&flocks, flock, list);
 	}
 
@@ -1171,14 +1341,8 @@ cathedral_settings_ambry(const char *option, struct flockent *flock)
 		return;
 	}
 
-	if ((fd = sanctum_file_open(option)) == -1)
+	if ((fd = sanctum_file_open(option, &st)) == -1)
 		return;
-
-	if (fstat(fd, &st) == -1) {
-		sanctum_log(LOG_NOTICE, "fstat on ambry file '%s' failed (%s)",
-		    option, errno_s);
-		goto out;
-	}
 
 	if (st.st_size != CATHEDRAL_AMBRY_BUNDLE_LEN) {
 		sanctum_log(LOG_NOTICE,

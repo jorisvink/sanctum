@@ -23,6 +23,7 @@ CFLAGS+=-g
 
 SRC=	src/sanctum.c \
 	src/bless.c \
+	src/bishop.c \
 	src/cathedral.c \
 	src/chapel.c \
 	src/confess.c \
@@ -30,6 +31,7 @@ SRC=	src/sanctum.c \
 	src/control.c \
 	src/heaven_rx.c \
 	src/heaven_tx.c \
+	src/liturgy.c \
 	src/proc.c \
 	src/packet.c \
 	src/pool.c \
@@ -85,8 +87,9 @@ OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
 all: $(BIN)
-	$(MAKE) -C hymn
-	$(MAKE) -C ambry
+	$(MAKE) -C tools/hymn
+	$(MAKE) -C tools/ambry
+	$(MAKE) -C tools/vicar
 
 $(BIN): $(OBJDIR) $(LIBNYFE) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
@@ -113,8 +116,9 @@ install: $(INSTALL_TARGETS)
 install-bin: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
-	$(MAKE) -C hymn install
-	$(MAKE) -C ambry install
+	$(MAKE) -C tools/hymn install
+	$(MAKE) -C tools/ambry install
+	$(MAKE) -C tools/vicar install
 
 install-darwin-sb:
 	mkdir -p $(DARWIN_SB_PATH)
@@ -134,8 +138,9 @@ $(OBJDIR)/%.o: src/%.c
 clean:
 	rm -f $(VERSION)
 	$(MAKE) -C nyfe clean
-	$(MAKE) -C hymn clean
-	$(MAKE) -C ambry clean
+	$(MAKE) -C tools/hymn clean
+	$(MAKE) -C tools/ambry clean
+	$(MAKE) -C tools/vicar clean
 	rm -rf $(OBJDIR) $(BIN)
 
 .PHONY: all clean force

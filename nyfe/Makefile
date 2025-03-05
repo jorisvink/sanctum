@@ -8,7 +8,7 @@ LIB=libnyfe.a
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
-CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
+CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2 -fPIC
 CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -Iinclude
 CFLAGS+=-fno-builtin -DNYFE_LIBRARY_ONLY=1
 
@@ -27,6 +27,7 @@ SRC=	src/agelas.c \
 	src/keccak1600.c \
 	src/kmac256.c \
 	src/mem.c \
+	src/passphrase.c \
 	src/sha3.c \
 	src/random.c
 
@@ -40,6 +41,18 @@ $(OBJDIR):
 
 $(OBJDIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+sync:
+	@if [ -z "$(NYFE)" ]; then \
+		echo "No NYFE path has been set"; \
+		exit 1; \
+	fi
+	@for src in $(SRC); do \
+		cp $(NYFE)/$${src} src; \
+	done
+	@cp $(NYFE)/include/libnyfe.h include
+	@echo -n "nyfe synced from $(NYFE) "
+	@echo "$(shell cd $(NYFE) && git rev-parse --short=8 HEAD)"
 
 clean:
 	rm -rf $(OBJDIR) $(LIB)

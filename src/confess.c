@@ -36,9 +36,9 @@ static void	confess_packet_process(struct sanctum_packet *);
 static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
 static int	confess_arwin_check(struct sanctum_sa *,
-		    struct sanctum_packet *, struct sanctum_ipsec_hdr *);
+		    struct sanctum_ipsec_hdr *);
 static void	confess_arwin_update(struct sanctum_sa *,
-		    struct sanctum_packet *, struct sanctum_ipsec_hdr *);
+		    struct sanctum_ipsec_hdr *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -258,7 +258,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (hdr->esp.spi != sa->spi)
 		return (-1);
 
-	if (confess_arwin_check(sa, pkt, hdr) == -1)
+	if (confess_arwin_check(sa, hdr) == -1)
 		return (-1);
 
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
@@ -283,7 +283,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		sanctum_log(LOG_NOTICE, "RX SA active (spi=%08x)", sa->spi);
 	}
 
-	confess_arwin_update(sa, pkt, hdr);
+	confess_arwin_update(sa, hdr);
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
 	/* The length was checked earlier by the caller. */
@@ -331,13 +331,11 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
  * Check if the given packet was too old, or already seen.
  */
 static int
-confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
-    struct sanctum_ipsec_hdr *hdr)
+confess_arwin_check(struct sanctum_sa *sa, struct sanctum_ipsec_hdr *hdr)
 {
 	u_int64_t	bit, pn;
 
 	PRECOND(sa != NULL);
-	PRECOND(pkt != NULL);
 	PRECOND(hdr != NULL);
 
 	pn = be64toh(hdr->pn);
@@ -367,13 +365,11 @@ confess_arwin_check(struct sanctum_sa *sa, struct sanctum_packet *pkt,
  * Update the anti-replay window.
  */
 static void
-confess_arwin_update(struct sanctum_sa *sa, struct sanctum_packet *pkt,
-    struct sanctum_ipsec_hdr *hdr)
+confess_arwin_update(struct sanctum_sa *sa, struct sanctum_ipsec_hdr *hdr)
 {
 	u_int64_t	bit;
 
 	PRECOND(sa != NULL);
-	PRECOND(pkt != NULL);
 	PRECOND(hdr != NULL);
 
 	if (hdr->pn > sa->seqnr) {

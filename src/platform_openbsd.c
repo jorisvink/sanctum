@@ -375,6 +375,7 @@ openbsd_sandbox_pledge(struct sanctum_proc *proc)
 		ret = pledge("stdio rpath wpath cpath", NULL);
 		break;
 	case SANCTUM_PROC_CONTROL:
+	case SANCTUM_PROC_LITURGY:
 		ret = pledge("stdio", NULL);
 		break;
 	case SANCTUM_PROC_HEAVEN_TX:

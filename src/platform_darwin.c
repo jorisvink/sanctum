@@ -19,7 +19,6 @@
 #include <sys/kern_control.h>
 #include <sys/socket.h>
 #include <sys/sys_domain.h>
-#include <sys/stat.h>
 #include <sys/uio.h>
 
 #include <arpa/inet.h>
@@ -271,6 +270,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	case SANCTUM_PROC_CONFESS:
 	case SANCTUM_PROC_CONTROL:
 	case SANCTUM_PROC_CATHEDRAL:
+	case SANCTUM_PROC_LITURGY:
 	case SANCTUM_PROC_HEAVEN_TX:
 	case SANCTUM_PROC_HEAVEN_RX:
 	case SANCTUM_PROC_PURGATORY_TX:
@@ -314,11 +314,8 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	if (len == -1 || (size_t)len >= sizeof(path))
 		fatal("failed to create path to sandbox profile");
 
-	if ((fd = sanctum_file_open(path)) == -1)
+	if ((fd = sanctum_file_open(path, &st)) == -1)
 		fatal("failed to open sandbox profile '%s'", path);
-
-	if (fstat(fd, &st) == -1)
-		fatal("fstat(%s): %s", path, errno_s);
 
 	if (st.st_size < 0 || st.st_size > 1024 * 1024)
 		fatal("sandbox profile filesize for '%s' is weird", proc->name);

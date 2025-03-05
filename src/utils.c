@@ -17,7 +17,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/shm.h>
-#include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/un.h>
 
@@ -396,17 +395,36 @@ sanctum_inet_mask(void *saddr, u_int32_t mask)
  * Open the given path as read-only and return the fd for it, or -1.
  */
 int
-sanctum_file_open(const char *path)
+sanctum_file_open(const char *path, struct stat *st)
 {
 	int		fd;
+	struct stat	fst;
 
 	PRECOND(path != NULL);
+	/* st is optional */
 
-	if ((fd = open(path, O_RDONLY)) == -1) {
+	if ((fd = open(path, O_RDONLY | O_NOFOLLOW)) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "failed to open '%s': %s", path, errno_s);
 		return (-1);
 	}
+
+	if (fstat(fd, &fst) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to fstat '%s': %s", path, errno_s);
+		(void)close(fd);
+		return (-1);
+	}
+
+	if (!S_ISREG(fst.st_mode)) {
+		sanctum_log(LOG_NOTICE,
+		    "'%s': not a regular file", path);
+		(void)close(fd);
+		return (-1);
+	}
+
+	if (st != NULL)
+		memcpy(st, &fst, sizeof(fst));
 
 	return (fd);
 }
@@ -430,7 +448,7 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	PRECOND(seed != NULL);
 	PRECOND(seed_len == 64);
 
-	if ((fd = sanctum_file_open(path)) == -1)
+	if ((fd = sanctum_file_open(path, NULL)) == -1)
 		return (-1);
 
 	nyfe_zeroize_register(secret, sizeof(secret));
@@ -478,7 +496,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	PRECOND(pkt != NULL);
 	PRECOND(type == SANCTUM_OFFER_TYPE_KEY ||
 	    type == SANCTUM_OFFER_TYPE_AMBRY ||
-	    type == SANCTUM_OFFER_TYPE_INFO);
+	    type == SANCTUM_OFFER_TYPE_INFO ||
+	    type == SANCTUM_OFFER_TYPE_LITURGY);
 
 	op = sanctum_packet_head(pkt);
 
@@ -634,7 +653,7 @@ sanctum_bind_local(struct sockaddr_in *sin)
 	sin->sin_family = AF_INET;
 
 	if (bind(fd, (struct sockaddr *)sin, sizeof(*sin)) == -1)
-		fatal("%s: connect: %s", __func__, errno_s);
+		fatal("%s: bind: %s", __func__, errno_s);
 
 	if ((val = fcntl(fd, F_GETFL, 0)) == -1)
 		fatal("%s: fcntl: %s", __func__, errno_s);
