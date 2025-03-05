@@ -46,9 +46,7 @@
 /* The format string for up/down of a tunnel via the hymn tool. */
 #define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x"
 
-/*
- * The format string for route add via the hymn tool.
- */
+/* The format string for route add via the hymn tool. */
 #define HYMN_FMT_ROUTE_ADD	"hymn route add %s/32 via %" PRIx64 "-%02x-%02x"
 
 static int	bishop_instance_exists(u_int8_t, u_int8_t);
