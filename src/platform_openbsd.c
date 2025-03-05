@@ -368,9 +368,6 @@ openbsd_sandbox_pledge(struct sanctum_proc *proc)
 		 */
 		ret = pledge("stdio", NULL);
 		break;
-	case SANCTUM_PROC_LITURGY:
-		/* XXX - what pledges, it no needs fork+exec? */
-		break;
 	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_SHRINE:
 	case SANCTUM_PROC_PILGRIM:
@@ -378,6 +375,7 @@ openbsd_sandbox_pledge(struct sanctum_proc *proc)
 		ret = pledge("stdio rpath wpath cpath", NULL);
 		break;
 	case SANCTUM_PROC_CONTROL:
+	case SANCTUM_PROC_LITURGY:
 		ret = pledge("stdio", NULL);
 		break;
 	case SANCTUM_PROC_HEAVEN_TX:

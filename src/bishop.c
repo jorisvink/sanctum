@@ -15,14 +15,17 @@
  */
 
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 
 #include <arpa/inet.h>
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <poll.h>
 #include <stdio.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "sanctum.h"
 
