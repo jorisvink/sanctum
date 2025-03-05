@@ -193,7 +193,7 @@ bishop_liturgy_request(struct sanctum_packet *pkt)
 }
 
 /*
- * Let the bishop do a hymn, performing the requested for given tunnel.
+ * Let the bishop do a hymn, performing the requested command on the tunnel.
  */
 static void
 bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
