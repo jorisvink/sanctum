@@ -44,7 +44,7 @@ static struct sanctum_proc_io	*io = NULL;
 static u_int16_t		local_id;
 
 /*
- * Liturgy - Automatic tunnel discovery via cathedrals.
+ * Liturgy - Automatic peer discovery via cathedrals.
  *
  * This process will periodically send out liturgy offers to its configured
  * cathedral and receive peer discover/timeout events in response.
