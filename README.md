@@ -49,16 +49,13 @@ There are several processes that make up a sanctum instance:
 Each process can run as its own user.
 
 Each process is sandboxed and only has access to the system calls
-required to perform its task.
-
-There are two exceptions, guardian (the main process) is not sandboxed
-nor seccomped, and bishop.
+required to perform its task. There are two exceptions, guardian
+(the main process) is not sandboxed nor seccomped, and bishop.
 
 The guardian process is only monitoring its child processes and has no
-other external interfaces.
-
-The bishop process must be privileged due to the fact it is fork+exec'ing
-the hymn configuration tool for setting up new tunnels.
+other external interfaces. The bishop process must be privileged due to
+the fact it is fork+exec'ing the hymn configuration tool for setting up
+new tunnels.
 
 ## Packets
 
