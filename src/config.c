@@ -55,6 +55,7 @@ static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
 static void	config_parse_encapsulation(char *);
+static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
@@ -91,6 +92,7 @@ static const struct {
 	{ "secretdir",		config_parse_secretdir },
 	{ "settings",		config_parse_settings },
 	{ "encapsulation",	config_parse_encapsulation },
+	{ "liturgy_prefix",	config_parse_liturgy_prefix },
 	{ "cathedral_id",	config_parse_cathedral_id },
 	{ "cathedral_flock",	config_parse_cathedral_flock },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
@@ -113,6 +115,8 @@ static const struct {
 	{ "pilgrim",		SANCTUM_PROC_PILGRIM },
 	{ "shrine",		SANCTUM_PROC_SHRINE },
 	{ "cathedral",		SANCTUM_PROC_CATHEDRAL },
+	{ "liturgy",		SANCTUM_PROC_LITURGY },
+	{ "bishop",		SANCTUM_PROC_BISHOP },
 	{ NULL,			0 },
 };
 
@@ -178,7 +182,7 @@ sanctum_config_load(const char *file)
 	if (sanctum->instance[0] == '\0')
 		fatal("no instance name has been set");
 
-	if (sanctum->secret == NULL)
+	if (sanctum->mode != SANCTUM_MODE_LITURGY && sanctum->secret == NULL)
 		fatal("no traffic secret has been set");
 
 	switch (sanctum->mode) {
@@ -187,6 +191,12 @@ sanctum_config_load(const char *file)
 			fatal("cathedral: cannot use tap");
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
+		break;
+	case SANCTUM_MODE_LITURGY:
+		if (sanctum->kek == NULL)
+			fatal("liturgy mode requires a kek path");
+		if (sanctum->liturgy_prefix.sin_addr.s_addr == 0)
+			fatal("no liturgy_prefix has been set");
 		break;
 	case SANCTUM_MODE_TUNNEL:
 		if (sanctum->kek != NULL &&
@@ -212,12 +222,14 @@ sanctum_config_load(const char *file)
 	}
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+	    sanctum->mode != SANCTUM_MODE_LITURGY &&
 	    !(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
 		if (sanctum->tun_ip.sin_addr.s_addr == 0)
 			fatal("no tunnel configuration specified");
 	}
 
-	if (sanctum->mode != SANCTUM_MODE_TUNNEL) {
+	if (sanctum->mode != SANCTUM_MODE_TUNNEL &&
+	    sanctum->mode != SANCTUM_MODE_LITURGY) {
 		if (sanctum->kek != NULL)
 			fatal("kek is only used in tunnel mode");
 	}
@@ -370,6 +382,8 @@ config_parse_mode(char *mode)
 		sanctum->mode = SANCTUM_MODE_SHRINE;
 	} else if (!strcmp(mode, "cathedral")) {
 		sanctum->mode = SANCTUM_MODE_CATHEDRAL;
+	} else if (!strcmp(mode, "liturgy")) {
+		sanctum->mode = SANCTUM_MODE_LITURGY;
 	} else {
 		fatal("unknown mode '%s'", mode);
 	}
@@ -749,6 +763,20 @@ config_parse_encapsulation(char *opt)
 	}
 
 	sanctum->flags |= SANCTUM_FLAG_ENCAPSULATE;
+}
+
+/*
+ * Parse the liturgy_prefix option.
+ */
+static void
+config_parse_liturgy_prefix(char *net)
+{
+	PRECOND(net != NULL);
+
+	sanctum_inet_addr(&sanctum->liturgy_prefix, net);
+
+	if (sanctum->liturgy_prefix.sin_addr.s_addr & 0xffff0000)
+		fatal("liturgy_prefix should be x.x.0.0");
 }
 
 /*

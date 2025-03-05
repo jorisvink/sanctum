@@ -89,7 +89,8 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 		if (sanctum_ring_pending(io->purgatory) == 0)
 			sanctum_proc_suspend(-1);
 
-		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL) {
+		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+		    sanctum->mode != SANCTUM_MODE_LITURGY) {
 			if ((pkt = sanctum_ring_dequeue(io->offer)))
 				purgatory_tx_send_packet(io->crypto, pkt);
 		}

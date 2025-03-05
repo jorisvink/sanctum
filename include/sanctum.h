@@ -141,6 +141,9 @@ extern int daemon(int, int);
 #define SANCTUM_SA_LIFETIME_SOFT	3500
 #define SANCTUM_SA_LIFETIME_HARD	3600
 
+/* The amount of peers per flock. */
+#define SANCTUM_PEERS_PER_FLOCK		255
+
 /* Process types */
 #define SANCTUM_PROC_HEAVEN_RX		1
 #define SANCTUM_PROC_HEAVEN_TX		2
@@ -153,7 +156,9 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_PILGRIM		9
 #define SANCTUM_PROC_SHRINE		10
 #define SANCTUM_PROC_CATHEDRAL		11
-#define SANCTUM_PROC_MAX		12
+#define SANCTUM_PROC_LITURGY		12
+#define SANCTUM_PROC_BISHOP		13
+#define SANCTUM_PROC_MAX		14
 
 /* The half-time window in which offers are valid. */
 #define SANCTUM_OFFER_VALID		5
@@ -169,6 +174,9 @@ extern int daemon(int, int);
 
 /* The magic for NAT detection messages (CIBORIUM). */
 #define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4349424f5249554d
+
+/* The magic for cathedral liturgy messages (LITURGY) */
+#define SANCTUM_CATHEDRAL_LITURGY_MAGIC	0x004C495455524759
 
 /* The KDF label for the cathedral. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
@@ -186,11 +194,13 @@ extern int daemon(int, int);
  *	1) A key offering (between peers)
  *	2) An ambry offering (from cathedral to us)
  *	3) An info offering (from us to cathedral, or cathedral to us)
+ *	4) A liturgy offering (from us to cathedral, or cathedral to us)
  */
 
 #define SANCTUM_OFFER_TYPE_KEY		1
 #define SANCTUM_OFFER_TYPE_AMBRY	2
 #define SANCTUM_OFFER_TYPE_INFO		3
+#define SANCTUM_OFFER_TYPE_LITURGY	4
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -226,6 +236,11 @@ struct sanctum_info_offer {
 	u_int32_t		ambry_generation;
 } __attribute__((packed));
 
+struct sanctum_liturgy_offer {
+	u_int8_t		id;
+	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
+} __attribute__((packed));
+
 struct sanctum_offer_data {
 	u_int8_t		type;
 	u_int64_t		timestamp;
@@ -234,6 +249,7 @@ struct sanctum_offer_data {
 		struct sanctum_key_offer	key;
 		struct sanctum_info_offer	info;
 		struct sanctum_ambry_offer	ambry;
+		struct sanctum_liturgy_offer	liturgy;
 	} offer;
 } __attribute__((packed));
 
@@ -242,6 +258,15 @@ struct sanctum_offer {
 	struct sanctum_offer_data	data;
 	u_int8_t			tag[32];
 } __attribute__((packed));
+
+/*
+ * Data structure passed between liturgy<>bishop to convey the
+ * starting or stopping of sanctum instances.
+ */
+struct sanctum_liturgy {
+	int			present;
+	u_int16_t		instance;
+};
 
 /* Key states. */
 #define SANCTUM_KEY_EMPTY		0
@@ -305,6 +330,7 @@ struct sanctum_proc_io {
 
 	struct sanctum_ring	*offer;
 	struct sanctum_ring	*bless;
+	struct sanctum_ring	*bishop;
 	struct sanctum_ring	*chapel;
 	struct sanctum_ring	*heaven;
 	struct sanctum_ring	*confess;
@@ -471,11 +497,13 @@ struct sanctum_ether {
  * pilgrim - Sanctum will only be able to send encrypted data, not receive.
  * shrine - Sanctum will only be able to receive encrypted data, not send.
  * cathedral - Sanctum acts as a cathedral.
+ * liturgy - Sanctum will run in liturgy mode.
  */
 #define SANCTUM_MODE_TUNNEL		1
 #define SANCTUM_MODE_PILGRIM		2
 #define SANCTUM_MODE_SHRINE		3
 #define SANCTUM_MODE_CATHEDRAL		4
+#define SANCTUM_MODE_LITURGY		5
 
 /*
  * The shared state between processes.
@@ -521,6 +549,9 @@ struct sanctum_state {
 
 	/* The path to the kek, if any (tunnel mode only). */
 	char			*kek;
+
+	/* The network prefix for liturgy (liturgy mode only). */
+	struct sockaddr_in	liturgy_prefix;
 
 	/* The ID to use when talking to a cathedral (tunnel mode only). */
 	u_int32_t		cathedral_id;
@@ -685,12 +716,14 @@ int	sanctum_linux_seccomp(struct sanctum_proc *, int);
 
 /* Worker entry points. */
 void	sanctum_bless(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_bishop(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_chapel(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_shrine(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_pilgrim(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_control(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_confess(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_cathedral(struct sanctum_proc *) __attribute__((noreturn));
+void	sanctum_liturgy(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_heaven_rx(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_heaven_tx(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory_rx(struct sanctum_proc *) __attribute__((noreturn));

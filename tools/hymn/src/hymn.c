@@ -1309,7 +1309,7 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	if (wait == 10) {
-		printf(" no response after 10 seconds\n");
+		printf("no response after 10 seconds\n");
 	} else {
 		printf("done\n");
 	}
@@ -1320,6 +1320,7 @@ hymn_tunnel_down(const char *flock, u_int8_t src, u_int8_t dst)
 {
 	FILE		*fp;
 	pid_t		pid;
+	int		wait;
 	char		path[PATH_MAX], buf[32], *ptr;
 
 	hymn_pid_path(path, sizeof(path), flock, src, dst);
@@ -1345,13 +1346,17 @@ hymn_tunnel_down(const char *flock, u_int8_t src, u_int8_t dst)
 	printf("waiting for %s-%02x-%02x to go down ... ", flock, src, dst);
 	fflush(stdout);
 
-	for (;;) {
+	for (wait = 0; wait < 10; wait++) {
 		if (access(path, R_OK) == -1 && errno == ENOENT)
 			break;
 		sleep(1);
 	}
 
-	printf("done\n");
+	if (wait == 10) {
+		printf("did not exit after 10 seconds\n");
+	} else {
+		printf("done\n");
+	}
 }
 
 static void

@@ -23,6 +23,7 @@ CFLAGS+=-g
 
 SRC=	src/sanctum.c \
 	src/bless.c \
+	src/bishop.c \
 	src/cathedral.c \
 	src/chapel.c \
 	src/confess.c \
@@ -30,6 +31,7 @@ SRC=	src/sanctum.c \
 	src/control.c \
 	src/heaven_rx.c \
 	src/heaven_tx.c \
+	src/liturgy.c \
 	src/proc.c \
 	src/packet.c \
 	src/pool.c \

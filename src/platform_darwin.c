@@ -270,6 +270,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	case SANCTUM_PROC_CONFESS:
 	case SANCTUM_PROC_CONTROL:
 	case SANCTUM_PROC_CATHEDRAL:
+	case SANCTUM_PROC_LITURGY:
 	case SANCTUM_PROC_HEAVEN_TX:
 	case SANCTUM_PROC_HEAVEN_RX:
 	case SANCTUM_PROC_PURGATORY_TX:

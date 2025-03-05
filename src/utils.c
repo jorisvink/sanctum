@@ -496,7 +496,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	PRECOND(pkt != NULL);
 	PRECOND(type == SANCTUM_OFFER_TYPE_KEY ||
 	    type == SANCTUM_OFFER_TYPE_AMBRY ||
-	    type == SANCTUM_OFFER_TYPE_INFO);
+	    type == SANCTUM_OFFER_TYPE_INFO ||
+	    type == SANCTUM_OFFER_TYPE_LITURGY);
 
 	op = sanctum_packet_head(pkt);
 

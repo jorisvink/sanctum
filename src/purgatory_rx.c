@@ -147,6 +147,7 @@ purgatory_rx_recv_packets(int fd)
 	wakeup[SANCTUM_PROC_CHAPEL] = 0;
 	wakeup[SANCTUM_PROC_SHRINE] = 0;
 	wakeup[SANCTUM_PROC_CONFESS] = 0;
+	wakeup[SANCTUM_PROC_LITURGY] = 0;
 	wakeup[SANCTUM_PROC_CATHEDRAL] = 0;
 
 	for (;;) {
@@ -197,6 +198,7 @@ purgatory_rx_recv_packets(int fd)
 		case SANCTUM_PROC_CHAPEL:
 		case SANCTUM_PROC_SHRINE:
 		case SANCTUM_PROC_CATHEDRAL:
+		case SANCTUM_PROC_LITURGY:
 			ret = sanctum_ring_queue(io->chapel, pkt);
 			break;
 		default:
@@ -221,6 +223,9 @@ purgatory_rx_recv_packets(int fd)
 
 	if (wakeup[SANCTUM_PROC_CATHEDRAL])
 		sanctum_proc_wakeup(SANCTUM_PROC_CATHEDRAL);
+
+	if (wakeup[SANCTUM_PROC_LITURGY])
+		sanctum_proc_wakeup(SANCTUM_PROC_LITURGY);
 }
 
 /*
@@ -257,9 +262,16 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 	if (sanctum_packet_crypto_checklen(pkt) == -1)
 		return (-1);
 
-	/* In cathedral mode, we always kick it to the cathedral. */
-	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
+	/*
+	 * In cathedral or liturgy mode we always kick it to
+	 * the relevant processes.
+	 */
+	switch (sanctum->mode) {
+	case SANCTUM_MODE_CATHEDRAL:
 		pkt->target = SANCTUM_PROC_CATHEDRAL;
+		return (0);
+	case SANCTUM_MODE_LITURGY:
+		pkt->target = SANCTUM_PROC_LITURGY;
 		return (0);
 	}
 
