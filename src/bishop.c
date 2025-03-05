@@ -145,9 +145,6 @@ sanctum_bishop(struct sanctum_proc *proc)
 		if (instances[idx] == 0)
 			continue;
 
-		sanctum_log(LOG_NOTICE, "shutting down %02x-%02x",
-		    local_id, idx);
-
 		if (bishop_instance_exists(local_id, idx) != -1 &&
 		    bishop_instance_running(local_id, idx) != -1)
 			bishop_hymn_run("down", local_id, idx);
