@@ -53,7 +53,13 @@
 #define HYMN_KEK		(1 << 4)
 #define HYMN_CATHEDRAL		(1 << 5)
 #define HYMN_IDENTITY		(1 << 6)
-#define HYMN_REQUIRED		(HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
+#define HYMN_PREFIX		(1 << 7)
+
+#define HYMN_REQUIRED		\
+    (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
+
+#define HYMN_REQUIRED_LITURGY	\
+    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX)
 
 struct addr {
 	in_addr_t		ip;
@@ -79,6 +85,7 @@ struct config {
 	u_int64_t		cathedral_flock;
 	u_int16_t		cathedral_nat_port;
 
+	int			is_liturgy;
 	int			peer_cathedral;
 
 	const char		*flock;
@@ -88,6 +95,7 @@ struct config {
 	char			*name;
 	char			*encap;
 	char			*secret;
+	char			*prefix;
 	char			*identity_path;
 
 	struct addrlist		routes;
@@ -111,6 +119,7 @@ static void	usage_del(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
+static void	usage_liturgy(void) __attribute__((noreturn));
 
 static void	hymn_mkdir(const char *, int);
 static void	hymn_unlink(const char *, ...)
@@ -140,6 +149,7 @@ static int	hymn_route(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
 static int	hymn_keygen(int, char **);
+static int	hymn_liturgy(int, char **);
 static int	hymn_restart(int, char **);
 static int	hymn_cathedral(int, char **);
 
@@ -156,6 +166,7 @@ static void	hymn_config_set_name(struct config *, const char *);
 
 static void	hymn_config_parse_tap(struct config *, char *);
 static void	hymn_config_parse_kek(struct config *, char *);
+static void	hymn_config_parse_mode(struct config *, char *);
 static void	hymn_config_parse_peer(struct config *, char *);
 static void	hymn_config_parse_descr(struct config *, char *);
 static void	hymn_config_parse_local(struct config *, char *);
@@ -170,6 +181,7 @@ static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
+static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
 
 static void	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
@@ -209,6 +221,7 @@ static const struct {
 	{ "route",		hymn_route },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
+	{ "liturgy",		hymn_liturgy },
 	{ "restart",		hymn_restart },
 	{ "cathedral",		hymn_cathedral },
 	{ NULL,			NULL },
@@ -220,6 +233,7 @@ static const struct {
 } keywords[] = {
 	{ "tap",		hymn_config_parse_tap },
 	{ "kek",		hymn_config_parse_kek },
+	{ "mode",		hymn_config_parse_mode },
 	{ "peer",		hymn_config_parse_peer },
 	{ "descr",		hymn_config_parse_descr },
 	{ "local",		hymn_config_parse_local },
@@ -233,6 +247,7 @@ static const struct {
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
 	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
 	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
+	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix},
 	{ NULL,			NULL },
 };
 
@@ -246,6 +261,7 @@ usage(void)
 	fprintf(stderr, "  del         - delete an existing tunnel\n");
 	fprintf(stderr, "  down        - kills the given tunnel\n");
 	fprintf(stderr, "  list        - list all configured tunnels\n");
+	fprintf(stderr, "  liturgy     - configure a liturgy\n");
 	fprintf(stderr, "  name        - sets the name for a given tunnel\n");
 	fprintf(stderr, "  status      - show a specific tunnel its info\n");
 	fprintf(stderr, "  restart     - restart a tunnel (down, up)\n");
@@ -318,13 +334,104 @@ fatal(const char *fmt, ...)
 }
 
 static void
+usage_liturgy(void)
+{
+	fprintf(stderr,
+	    "usage: hymn liturgy <flock>-<src> cathedral <ip:port> \\\n");
+	fprintf(stderr, "    identity <32-bit hexint>:<path> kek <path> \\\n");
+	fprintf(stderr, "    prefix <prefix> [natport <port>]\n");
+
+	exit (1);
+
+}
+
+static int
+hymn_liturgy(int argc, char *argv[])
+{
+	int			i;
+	u_int32_t		which;
+	struct config		config;
+	char			*p, *elm[4], confpath[1024];
+
+	if (argc < 8)
+		usage_liturgy();
+
+	hymn_config_init(&config);
+
+	if (hymn_split_string(argv[0], "-", elm, 4) != 2)
+		usage_liturgy();
+
+	argc--;
+	argv++;
+
+	if (argc & 0x01)
+		usage_liturgy();
+
+	which = 0;
+
+	config.is_liturgy = 1;
+	config.src = hymn_number(elm[1], 16, 0, UCHAR_MAX);
+
+	config.flock = elm[0];
+	config.cathedral_flock = hymn_number(config.flock, 16, 0, UINT64_MAX);
+
+	for (i = 0; i < argc; i += 2) {
+		if (!strcmp(argv[i], "cathedral")) {
+			which |= HYMN_CATHEDRAL;
+			hymn_config_set_cathedral(&config, argv[i + 1]);
+		} else if (!strcmp(argv[i], "identity")) {
+			if (config.cathedral_id != 0 ||
+			    config.identity_path != NULL)
+				fatal("duplicate identity");
+			if ((p = strchr(argv[i + 1], ':')) != NULL) {
+				*(p)++ = '\0';
+				if ((config.identity_path = strdup(p)) == NULL)
+					fatal("strdup");
+			}
+			which |= HYMN_IDENTITY;
+			config.cathedral_id = hymn_number(argv[i + 1], 16,
+			    0, UINT_MAX);
+		} else if (!strcmp(argv[i], "kek")) {
+			which |= HYMN_KEK;
+			if (config.kek != NULL)
+				fatal("duplicate kek");
+			if ((config.kek = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
+		} else if (!strcmp(argv[i], "prefix")) {
+			which |= HYMN_PREFIX;
+			if ((config.prefix = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
+		} else if (!strcmp(argv[i], "natport")) {
+			config.cathedral_nat_port = hymn_number(argv[i + 1],
+			    10, 0, USHRT_MAX);
+		} else {
+			printf("unknown keyword '%s'\n", argv[i]);
+			usage_liturgy();
+		}
+	}
+
+	if ((which & HYMN_REQUIRED_LITURGY) != HYMN_REQUIRED_LITURGY)
+		usage_liturgy();
+
+	hymn_conf_path(confpath,
+	    sizeof(confpath), elm[0], config.src, config.dst);
+
+	if (access(confpath, R_OK) != -1)
+		fatal("liturgy %s-%02x exists", config.flock, config.src);
+
+	hymn_config_save(confpath, config.flock, &config);
+
+	return (0);
+}
+
+static void
 usage_add(void)
 {
 	fprintf(stderr,
 	    "usage: hymn add [<flock>-]<src>-<dst> "
 	    "tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
-	    "[peer <ip:port>] [cathedral] <ip:port> \\\n");
+	    "[peer <ip:port>] [cathedral <ip:port>] \\\n");
 	fprintf(stderr, "    [kek <path>] [name <name>] ");
 	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
 	fprintf(stderr, "    [natport <port>] [device [tun | tap]]\n");
@@ -554,6 +661,9 @@ hymn_route(int argc, char *argv[])
 	net = hymn_net_parse(argv[1]);
 	hymn_config_load(path, &config);
 
+	if (config.is_liturgy)
+		fatal("route on a liturgy does not make sense");
+
 	if (config.tap)
 		fatal("route on a tunnel using a tap device makes no sense");
 
@@ -608,6 +718,9 @@ hymn_accept(int argc, char *argv[])
 
 	net = hymn_net_parse(argv[1]);
 	hymn_config_load(path, &config);
+
+	if (config.is_liturgy)
+		fatal("accept on a liturgy does not make sense");
 
 	if (config.tap)
 		fatal("accept on a tunnel using a tap device makes no sense");
@@ -714,12 +827,13 @@ hymn_list(int argc, char *argv[])
 	struct tunnels				list;
 	struct tunnel				*tun;
 	struct sanctum_ctl_status_response	resp;
-	int					normal_tunnels;
 	char					path[PATH_MAX];
+	int					normal_tunnels, seen_liturgy;
 
 	if (argc > 1)
 		fatal("Usage: hymn list [flock]");
 
+	seen_liturgy = 0;
 	normal_tunnels = hymn_tunnel_list(&list);
 
 	if (argc == 0 && normal_tunnels)
@@ -737,13 +851,21 @@ hymn_list(int argc, char *argv[])
 			printf("cathedral tunnels:\n");
 		}
 
+		if (seen_liturgy == 0 && tun->config.is_liturgy) {
+			seen_liturgy = 1;
+			printf("liturgies:\n");
+		}
+
 		printf("    %s-%02x-%02x - ",
 		    tun->config.flock, tun->config.src, tun->config.dst);
+
 		hymn_pid_path(path, sizeof(path),
 		    tun->config.flock, tun->config.src, tun->config.dst);
 
 		if (access(path, R_OK) == -1) {
 			printf("down");
+		} else if (tun->config.is_liturgy) {
+			printf("running");
 		} else {
 			hymn_control_path(path, sizeof(path),
 			    tun->config.flock, tun->config.src,
@@ -1178,7 +1300,11 @@ hymn_tunnel_parse(char *str, const char **flock,
 	} else if (nelm == 3) {
 		*flock = elm[0];
 		*src = hymn_number(elm[1], 16, 0, UCHAR_MAX);
-		*dst = hymn_number(elm[2], 16, 0, UCHAR_MAX);
+
+		if (!strcmp(elm[2], "liturgy"))
+			*dst = 0;
+		else
+			*dst = hymn_number(elm[2], 16, 0, UCHAR_MAX);
 	} else {
 		return (-1);
 	}
@@ -1228,6 +1354,22 @@ hymn_tunnel_list(struct tunnels *list)
 		if (!strcmp(flock, "hymn")) {
 			normal_tunnels++;
 			TAILQ_INSERT_HEAD(list, tun, list);
+		} else if (tun->config.is_liturgy) {
+			TAILQ_FOREACH(entry, list, list) {
+				if (entry->config.cathedral_flock == 0)
+					continue;
+				if (entry->config.is_liturgy == 0)
+					continue;
+				if ((entry->config.cathedral_flock >
+				    tun->config.cathedral_flock) ||
+				    entry->config.src > src) {
+					TAILQ_INSERT_BEFORE(entry, tun, list);
+					break;
+				}
+			}
+
+			if (entry == NULL)
+				TAILQ_INSERT_TAIL(list, tun, list);
 		} else {
 			TAILQ_FOREACH(entry, list, list) {
 				if (entry->config.cathedral_flock == 0)
@@ -1373,10 +1515,12 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	hymn_config_init(&config);
 	hymn_config_load(path, &config);
-
 	hymn_pid_path(path, sizeof(path), flock, src, dst);
+
 	if (access(path, R_OK) == -1)
 		status = "  not active";
+	else if (config.is_liturgy)
+		status = "  running";
 	else
 		status = NULL;
 
@@ -1390,13 +1534,20 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
 
+	if (config.is_liturgy)
+		printf("  liturgy\tyes\n");
+
 	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
 
 	if (config.local.ip != 0)
 		printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 
-	printf("  tunnel\t%s (mtu %u)\n", hymn_ip_mask_str(&config.tun),
-	    config.tun_mtu);
+	if (config.is_liturgy == 0) {
+		printf("  tunnel\t%s (mtu %u)\n",
+		    hymn_ip_mask_str(&config.tun), config.tun_mtu);
+	} else {
+		printf("  prefix\t%s\n", config.prefix);
+	}
 
 	if (config.peer_cathedral) {
 		printf("  cathedral\t%s", hymn_ip_port_str(&config.cathedral));
@@ -1419,7 +1570,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	printf("\n");
 
-	if (config.tap == 0) {
+	if (config.tap == 0 && config.is_liturgy == 0) {
 		printf("  routes\n");
 		if (LIST_EMPTY(&config.routes)) {
 			printf("    none\n");
@@ -1442,7 +1593,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	if (status != NULL) {
 		printf("%s\n", status);
-	} else {
+	} else if (config.is_liturgy == 0) {
 		hymn_dump_ifstat("tx", &resp.tx);
 		hymn_dump_ifstat("rx", &resp.rx);
 	}
@@ -1529,21 +1680,33 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	} else if (strlen(flock) >= 8) {
 		len = 8;
 	} else {
-		fatal("flock has a bad format");
+		fatal("flock '%s' has a bad format", flock);
 	}
 
 	hymn_config_write(fd, "# auto generated, do not edit\n");
-	hymn_config_write(fd, "spi %02x%02x\n", cfg->src, cfg->dst);
-	hymn_config_write(fd, "instance %.*s-%02x-%02x\n",
-	    len, flock, cfg->src, cfg->dst);
+
+	if (cfg->is_liturgy) {
+		hymn_config_write(fd, "mode liturgy\n");
+		hymn_config_write(fd, "spi 0x%02x\n", cfg->src);
+		hymn_config_write(fd, "instance %.*s-liturgy\n", len, flock);
+	} else {
+		hymn_config_write(fd, "spi %02x%02x\n", cfg->src, cfg->dst);
+		hymn_config_write(fd, "instance %.*s-%02x-%02x\n",
+		    len, flock, cfg->src, cfg->dst);
+	}
+
 	hymn_config_write(fd, "pidfile %s/%s-%02x-%02x.pid\n",
 	    HYMN_RUN_PATH, flock, cfg->src, cfg->dst);
 
 	if (cfg->tap == 1)
 		hymn_config_write(fd, "tap yes\n");
 
-	hymn_config_write(fd, "tunnel %s %u\n",
-	    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
+	if (cfg->is_liturgy == 0) {
+		hymn_config_write(fd, "tunnel %s %u\n",
+		    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
+	} else {
+		hymn_config_write(fd, "liturgy_prefix %s\n", cfg->prefix);
+	}
 
 	if (cfg->encap != NULL)
 		hymn_config_write(fd, "encapsulation %s\n", cfg->encap);
@@ -1551,15 +1714,20 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	if (cfg->kek != NULL)
 		hymn_config_write(fd, "kek %s\n", cfg->kek);
 
-	hymn_config_write(fd, "secret %s\n", cfg->secret);
+	if (cfg->is_liturgy == 0)
+		hymn_config_write(fd, "secret %s\n", cfg->secret);
 
 	if (cfg->name != NULL)
 		hymn_config_write(fd, "descr %s\n", cfg->name);
 
 	hymn_config_write(fd, "\n");
-	hymn_config_write(fd, "local %s\n", hymn_ip_port_str(&cfg->local));
 
-	if (cfg->peer_cathedral) {
+	if (cfg->is_liturgy == 0) {
+		hymn_config_write(fd,
+		    "local %s\n", hymn_ip_port_str(&cfg->local));
+	}
+
+	if (cfg->is_liturgy || cfg->peer_cathedral) {
 		hymn_config_write(fd, "cathedral_id %x\n",
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral_flock %" PRIx64 "\n",
@@ -1599,9 +1767,16 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	hymn_config_write(fd, "run purgatory-tx as %s\n", user);
 
 	hymn_config_write(fd, "\n");
-	hymn_config_write(fd, "run control as root\n");
-	hymn_config_write(fd, "control /tmp/%s-%02x-%02x.control root\n",
-	    flock, cfg->src, cfg->dst);
+
+	if (cfg->is_liturgy == 0) {
+		hymn_config_write(fd, "run control as root\n");
+		hymn_config_write(fd,
+		    "control /tmp/%s-%02x-%02x.control root\n",
+		    flock, cfg->src, cfg->dst);
+	} else {
+		hymn_config_write(fd, "run liturgy as %s\n", user);
+		hymn_config_write(fd, "run bishop as root\n");
+	}
 
 	hymn_config_write(fd, "\n");
 	hymn_config_write(fd, "run bless as root\n");
@@ -1716,6 +1891,13 @@ hymn_config_parse_kek(struct config *cfg, char *kek)
 }
 
 static void
+hymn_config_parse_mode(struct config *cfg, char *mode)
+{
+	if (!strcmp(mode, "liturgy"))
+		cfg->is_liturgy = 1;
+}
+
+static void
 hymn_config_parse_secret(struct config *cfg, char *secret)
 {
 	if (cfg->secret != NULL)
@@ -1767,6 +1949,16 @@ static void
 hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
 {
 	cfg->cathedral_nat_port = hymn_number(natport, 10, 0, USHRT_MAX);
+}
+
+static void
+hymn_config_parse_liturgy_prefix(struct config *cfg, char *prefix)
+{
+	if (cfg->prefix != NULL)
+		fatal("duplicate liturgy_prefix");
+
+	if ((cfg->prefix = strdup(prefix)) == NULL)
+		fatal("strdup");
 }
 
 static void
