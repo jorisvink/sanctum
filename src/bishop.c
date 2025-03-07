@@ -101,7 +101,7 @@ sanctum_bishop(struct sanctum_proc *proc)
 	if (pipe(hymn_pipe) == -1)
 		fatal("pipe: %s", errno_s);
 
-	for (idx = 0; idx < SANCTUM_PEERS_PER_FLOCK; idx++) {
+	for (idx = 1; idx < SANCTUM_PEERS_PER_FLOCK; idx++) {
 		if (idx == local_id)
 			continue;
 
@@ -136,7 +136,7 @@ sanctum_bishop(struct sanctum_proc *proc)
 
 	sanctum_log(LOG_NOTICE, "shutting down running instances");
 
-	for (idx = 0; idx < SANCTUM_PEERS_PER_FLOCK; idx++) {
+	for (idx = 1; idx < SANCTUM_PEERS_PER_FLOCK; idx++) {
 		if (idx == local_id)
 			continue;
 

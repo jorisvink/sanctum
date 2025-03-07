@@ -200,7 +200,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	lit = &op->data.offer.liturgy;
-	for (id = 0; id < SANCTUM_PEERS_PER_FLOCK; id++) {
+	for (id = 1; id < SANCTUM_PEERS_PER_FLOCK; id++) {
 		if (id == local_id)
 			continue;
 
