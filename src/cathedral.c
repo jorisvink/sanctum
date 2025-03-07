@@ -166,7 +166,7 @@ static void	cathedral_tunnel_prune(struct flockent *);
 static int	cathedral_tunnel_forward(struct sanctum_packet *,
 		    int, u_int32_t, u_int64_t);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
-		    struct sanctum_info_offer *, u_int32_t, u_int32_t *);
+		    u_int8_t, u_int32_t, u_int32_t *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -471,6 +471,7 @@ static void
 cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
     u_int64_t now, int nat, int catacomb)
 {
+	u_int8_t			tid;
 	struct sanctum_offer		*op;
 	struct tunnel			*tun;
 	struct sanctum_info_offer	*info;
@@ -489,8 +490,12 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	info->tunnel = be16toh(info->tunnel);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
-	if (cathedral_tunnel_update_allowed(flock, info, id, &bw) == -1)
+	tid = info->tunnel >> 8;
+	if (cathedral_tunnel_update_allowed(flock, tid, id, &bw) == -1) {
+		sanctum_log(LOG_NOTICE, "%" PRIx64 ":%02x is not tied to %08x",
+		    flock->id, tid, id);
 		return;
+	}
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
 		if (nat) {
@@ -563,8 +568,14 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
 
 	id = be32toh(op->hdr.spi);
-
 	lit = &op->data.offer.liturgy;
+
+	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
+		sanctum_log(LOG_NOTICE, "%" PRIx64 ":%02x is not tied to %08x",
+		    flock->id, lit->id, id);
+		return;
+	}
+
 	LIST_FOREACH(entry, &flock->liturgies, list) {
 		if (entry->id == lit->id)
 			break;
@@ -662,22 +673,23 @@ cathedral_offer_federate(struct flockent *flock, struct sanctum_packet *update)
 }
 
 /*
- * Check if a given combination of key id and spi are allowed to
- * update the connection information for the given tunnel.
+ * Check if the given tunnel id (tid) in the provided flock should be
+ * allowed to send us data by checking the key id that was used to
+ * verify the packet.
  */
 static int
-cathedral_tunnel_update_allowed(struct flockent *flock,
-    struct sanctum_info_offer *info, u_int32_t id, u_int32_t *bw)
+cathedral_tunnel_update_allowed(struct flockent *flock, u_int8_t tid,
+    u_int32_t id, u_int32_t *bw)
 {
 	struct allow		*allow;
 
 	PRECOND(flock != NULL);
-	PRECOND(info != NULL);
-	PRECOND(bw != NULL);
+	/* bw is optional */
 
 	LIST_FOREACH(allow, &flock->allows, list) {
-		if (allow->id == id && (allow->spi == info->tunnel >> 8)) {
-			*bw = allow->bw;
+		if (allow->id == id && (allow->spi == tid)) {
+			if (bw != NULL)
+				*bw = allow->bw;
 			return (0);
 		}
 	}
