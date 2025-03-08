@@ -513,8 +513,8 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
 		sanctum_log(LOG_INFO,
-		    "%" PRIx64 ":%04x discovered (%u mbit/sec)",
-		    flock->id, info->tunnel, bw);
+		    "%" PRIx64 ":%04x discovered (%u mbit/sec) (%d)",
+		    flock->id, info->tunnel, bw, catacomb);
 	 }
 
 	if (catacomb == 0 && nat == 0) {
