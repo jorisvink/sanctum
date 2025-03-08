@@ -731,8 +731,6 @@ cathedral_forward_offer(struct sanctum_packet *pkt, struct flockent *flock,
 		return (-1);
 	}
 
-	sanctum_log(LOG_INFO, "%s: 0x%04x (0x%08x)", __func__, id, spi);
-
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
 	pkt->addr.sin_addr.s_addr = tunnel->ip;
