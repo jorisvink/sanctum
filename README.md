@@ -206,6 +206,9 @@ run heaven-tx as _heaven
 run purgatory-rx as _purgatory
 run purgatory-tx as _purgatory
 
+# Run the bishop as privileged root.
+run bishop as root
+
 # Run chapel for the key exchange as yet another user.
 run chapel as _chapel
 ```

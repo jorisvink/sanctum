@@ -164,12 +164,18 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	u_int8_t			id;
 	struct sanctum_offer		*op;
 	struct sanctum_liturgy_offer	*lit;
+	u_int64_t			magic;
 	struct nyfe_agelas		cipher;
 
 	if (pkt->length < sizeof(*op))
 		return;
 
 	op = sanctum_packet_head(pkt);
+	magic = be64toh(op->hdr.magic);
+
+	if (magic != SANCTUM_CATHEDRAL_LITURGY_MAGIC)
+		return;
+
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
@@ -194,7 +200,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	lit = &op->data.offer.liturgy;
-	for (id = 0; id < SANCTUM_PEERS_PER_FLOCK; id++) {
+	for (id = 1; id < SANCTUM_PEERS_PER_FLOCK; id++) {
 		if (id == local_id)
 			continue;
 

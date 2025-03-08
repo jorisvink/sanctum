@@ -244,4 +244,6 @@ vicar_read_passphrase(void *buf, size_t len)
 		fatal("tcsetattr: %s", strerror(errno));
 
 	fprintf(stderr, "\n");
+
+	(void)close(fd);
 }

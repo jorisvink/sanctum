@@ -64,6 +64,8 @@ struct tunnel {
 	u_int16_t		port;
 	int			peerinfo;
 	int			federated;
+	u_int32_t		rx_active;
+	u_int32_t		rx_pending;
 
 	/* leaky bucket for bw handling. */
 	u_int32_t		limit;
@@ -162,11 +164,13 @@ static void	cathedral_liturgy_send(struct flockent *,
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_prune(struct flockent *);
-
-static int	cathedral_tunnel_forward(struct sanctum_packet *,
-		    int, u_int32_t, u_int64_t);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
-		    struct sanctum_info_offer *, u_int32_t, u_int32_t *);
+		    u_int8_t, u_int32_t, u_int32_t *);
+
+static int	cathedral_forward_data(struct sanctum_packet *,
+		    u_int32_t, u_int64_t);
+static int	cathedral_forward_offer(struct sanctum_packet *,
+		    struct flockent *, u_int32_t);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -263,10 +267,11 @@ sanctum_cathedral(struct sanctum_proc *proc)
 static void
 cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 {
+	u_int64_t			fid;
 	struct tunnel			*srv;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_offer_hdr	*offer;
-	int				exchange;
+	struct flockent			*flock;
 	u_int32_t			seq, spi;
 
 	PRECOND(pkt != NULL);
@@ -316,25 +321,19 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 
 			offer = sanctum_packet_head(pkt);
 			spi = be32toh(offer->spi);
+			fid = be64toh(offer->flock);
 
-			/*
-			 * We have to swap src and dst in the spi for
-			 * the forward to work here.
-			 */
-			spi = (u_int32_t)(be16toh(spi >> 16)) << 16 |
-			    (spi & 0x0000ffff);
+			if ((flock = cathedral_flock_lookup(fid)) == NULL) {
+				sanctum_packet_release(pkt);
+				return;
+			}
 
-			/*
-			 * Indicate this is an exchange so it does not
-			 * get thrown away by the bandwidth limiter.
-			 */
-			exchange = 1;
+			if (cathedral_forward_offer(pkt, flock, spi) == -1)
+				sanctum_packet_release(pkt);
 		} else {
-			exchange = 0;
+			if (cathedral_forward_data(pkt, spi, now) == -1)
+				sanctum_packet_release(pkt);
 		}
-
-		if (cathedral_tunnel_forward(pkt, exchange, spi, now) == -1)
-			sanctum_packet_release(pkt);
 	}
 }
 
@@ -471,6 +470,7 @@ static void
 cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
     u_int64_t now, int nat, int catacomb)
 {
+	u_int8_t			tid;
 	struct sanctum_offer		*op;
 	struct tunnel			*tun;
 	struct sanctum_info_offer	*info;
@@ -489,8 +489,12 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	info->tunnel = be16toh(info->tunnel);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
-	if (cathedral_tunnel_update_allowed(flock, info, id, &bw) == -1)
+	tid = info->tunnel >> 8;
+	if (cathedral_tunnel_update_allowed(flock, tid, id, &bw) == -1) {
+		sanctum_log(LOG_NOTICE, "%" PRIx64 ":%02x is not tied to %08x",
+		    flock->id, tid, id);
 		return;
+	}
 
 	if ((tun = cathedral_tunnel_lookup(flock, info->tunnel)) == NULL) {
 		if (nat) {
@@ -503,13 +507,14 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		if ((tun = calloc(1, sizeof(*tun))) == NULL)
 			fatal("calloc failed");
 
+		tun->id = info->tunnel;
 		tun->limit = (bw / 8) * 1024 * 1024;
 		tun->drain_per_ms = tun->limit / 1000;
 
 		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
 		sanctum_log(LOG_INFO,
-		    "%" PRIx64 ":%04x discovered (%u mbit/sec)",
-		    flock->id, info->tunnel, bw);
+		    "%" PRIx64 ":%04x discovered (%u mbit/sec) (%d)",
+		    flock->id, info->tunnel, bw, catacomb);
 	 }
 
 	if (catacomb == 0 && nat == 0) {
@@ -528,9 +533,11 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		}
 	} else {
 		tun->age = now;
-		tun->id = info->tunnel;
 		tun->port = pkt->addr.sin_port;
 		tun->ip = pkt->addr.sin_addr.s_addr;
+
+		tun->rx_active = info->rx_active;
+		tun->rx_pending = info->rx_pending;
 
 		if (catacomb == 0) {
 			info->tunnel = htobe16(info->tunnel);
@@ -563,8 +570,14 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
 
 	id = be32toh(op->hdr.spi);
-
 	lit = &op->data.offer.liturgy;
+
+	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
+		sanctum_log(LOG_NOTICE, "%" PRIx64 ":%02x is not tied to %08x",
+		    flock->id, lit->id, id);
+		return;
+	}
+
 	LIST_FOREACH(entry, &flock->liturgies, list) {
 		if (entry->id == lit->id)
 			break;
@@ -662,22 +675,23 @@ cathedral_offer_federate(struct flockent *flock, struct sanctum_packet *update)
 }
 
 /*
- * Check if a given combination of key id and spi are allowed to
- * update the connection information for the given tunnel.
+ * Check if the given tunnel id (tid) in the provided flock should be
+ * allowed to send us data by checking the key id that was used to
+ * verify the packet.
  */
 static int
-cathedral_tunnel_update_allowed(struct flockent *flock,
-    struct sanctum_info_offer *info, u_int32_t id, u_int32_t *bw)
+cathedral_tunnel_update_allowed(struct flockent *flock, u_int8_t tid,
+    u_int32_t id, u_int32_t *bw)
 {
 	struct allow		*allow;
 
 	PRECOND(flock != NULL);
-	PRECOND(info != NULL);
-	PRECOND(bw != NULL);
+	/* bw is optional */
 
 	LIST_FOREACH(allow, &flock->allows, list) {
-		if (allow->id == id && (allow->spi == info->tunnel >> 8)) {
-			*bw = allow->bw;
+		if (allow->id == id && (allow->spi == tid)) {
+			if (bw != NULL)
+				*bw = allow->bw;
 			return (0);
 		}
 	}
@@ -686,30 +700,79 @@ cathedral_tunnel_update_allowed(struct flockent *flock,
 }
 
 /*
- * Forward the given packet to the correct tunnel endpoint if possible.
- * We do not check the bandwidth limiter if the packet contained in pkt
- * is an actual key offer for an exchange.
+ * Forward a key offer packet towards the correct peer.
  */
 static int
-cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
-    u_int32_t spi, u_int64_t now)
+cathedral_forward_offer(struct sanctum_packet *pkt, struct flockent *flock,
+    u_int32_t spi)
 {
 	u_int16_t		id;
+	struct tunnel		*tunnel;
+	u_int8_t		src, dst;
+
+	PRECOND(pkt != NULL);
+	PRECOND(flock != NULL);
+
+	id = spi >> 16;
+
+	src = id >> 8;
+	dst = id & 0xff;
+
+	id = ((u_int16_t)dst << 8) | src;
+
+	LIST_FOREACH(tunnel, &flock->tunnels, list) {
+		if (tunnel->id == id)
+			break;
+	}
+
+	if (tunnel == NULL) {
+		sanctum_log(LOG_INFO,
+		    "%" PRIx64 ":%04x not not found for offer", flock->id, id);
+		return (-1);
+	}
+
+	sanctum_log(LOG_INFO, "%s: 0x%04x (0x%08x)", __func__, id, spi);
+
+	pkt->addr.sin_family = AF_INET;
+	pkt->addr.sin_port = tunnel->port;
+	pkt->addr.sin_addr.s_addr = tunnel->ip;
+
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+		return (-1);
+
+	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+
+	return (0);
+}
+
+/*
+ * Forward the data packet towards the correct peer after applying
+ * a bandwidth limitation on it.
+ */
+static int
+cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
+{
 	u_int32_t		drain;
 	u_int64_t		delta;
 	struct flockent		*flock;
 	struct tunnel		*tunnel;
 
 	PRECOND(pkt != NULL);
-	PRECOND(exchange == 0 || exchange == 1);
 
-	id = spi >> 16;
-
-	/* XXX - very much not optimal. */
+	/*
+	 * XXX - for now this exhaustive search works unless we start
+	 * talking large volumes of traffic. If it becomes clear we
+	 * are bottlenecking we should rewrite this. But until then,
+	 * this very much will do.
+	 */
 	LIST_FOREACH(flock, &flocks, list) {
 		LIST_FOREACH(tunnel, &flock->tunnels, list) {
-			if (tunnel->ip == pkt->addr.sin_addr.s_addr &&
-			    tunnel->port == pkt->addr.sin_port)
+			if ((tunnel->rx_active != 0 &&
+			    tunnel->rx_active == spi) ||
+			    (tunnel->rx_pending != 0 &&
+			    tunnel->rx_pending == spi))
 				break;
 		}
 
@@ -717,17 +780,10 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 			break;
 	}
 
-	if (flock == NULL)
+	if (flock == NULL) {
+		sanctum_log(LOG_INFO, "tunnel for spi 0x%08x not found", spi);
 		return (-1);
-
-	LIST_FOREACH(tunnel, &flock->tunnels, list) {
-		if (tunnel->id != id)
-			continue;
-		break;
 	}
-
-	if (tunnel == NULL)
-		return (-1);
 
 	if (tunnel->limit != 0) {
 		delta = now - tunnel->last_drain;
@@ -741,7 +797,7 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 			}
 		}
 
-		if (exchange == 0 && tunnel->current >= tunnel->limit)
+		if (tunnel->current >= tunnel->limit)
 			return (-1);
 
 		tunnel->current += pkt->length;
@@ -757,6 +813,7 @@ cathedral_tunnel_forward(struct sanctum_packet *pkt, int exchange,
 		return (-1);
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+
 	return (0);
 }
 

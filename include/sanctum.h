@@ -234,6 +234,9 @@ struct sanctum_info_offer {
 
 	u_int16_t		tunnel;
 	u_int32_t		ambry_generation;
+
+	u_int32_t		rx_active;
+	u_int32_t		rx_pending;
 } __attribute__((packed));
 
 struct sanctum_liturgy_offer {
