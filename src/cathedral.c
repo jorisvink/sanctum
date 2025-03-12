@@ -557,6 +557,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	u_int32_t			id;
 	struct sanctum_offer		*op;
 	struct sanctum_liturgy_offer	*lit;
+	u_int16_t			group;
 	struct liturgy			*entry;
 
 	PRECOND(pkt != NULL);
@@ -568,7 +569,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	id = be32toh(op->hdr.spi);
 	lit = &op->data.offer.liturgy;
-	lit->group = be16toh(lit->group);
+	group = be16toh(lit->group);
 
 	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
 		sanctum_log(LOG_NOTICE, "%" PRIx64 ":%02x is not tied to %08x",
@@ -589,14 +590,14 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
 	}
 
-	if (entry->age == 0 || entry->group != lit->group) {
+	if (entry->age == 0 || entry->group != group) {
 		sanctum_log(LOG_INFO,
 		    "liturgy for %" PRIx64 ":%02x (%04x) (%d)",
-		    flock->id, lit->id, lit->group, catacomb);
+		    flock->id, lit->id, group, catacomb);
 	}
 
 	entry->age = now;
-	entry->group = lit->group;
+	entry->group = group;
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
