@@ -84,13 +84,13 @@ struct config {
 	u_int32_t		cathedral_id;
 	u_int64_t		cathedral_flock;
 	u_int16_t		cathedral_nat_port;
+	u_int16_t		group;
 
+	int			tap;
 	int			is_liturgy;
 	int			peer_cathedral;
 
 	const char		*flock;
-
-	int			tap;
 	char			*kek;
 	char			*name;
 	char			*encap;
@@ -181,6 +181,8 @@ static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
+
+static void	hymn_config_parse_liturgy_group(struct config *, char *);
 static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
 
 static void	hymn_ctl_status(const char *,
@@ -247,7 +249,8 @@ static const struct {
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
 	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
 	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
-	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix},
+	{ "liturgy_group",	hymn_config_parse_liturgy_group },
+	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix },
 	{ NULL,			NULL },
 };
 
@@ -1535,7 +1538,8 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  name\t\t%s\n", config.name);
 
 	if (config.is_liturgy)
-		printf("  liturgy\tyes\n");
+		printf("  liturgy\tyes (%04x)\n", config.group);
+
 
 	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
 
@@ -1545,8 +1549,6 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	if (config.is_liturgy == 0) {
 		printf("  tunnel\t%s (mtu %u)\n",
 		    hymn_ip_mask_str(&config.tun), config.tun_mtu);
-	} else {
-		printf("  prefix\t%s\n", config.prefix);
 	}
 
 	if (config.peer_cathedral) {
@@ -1706,6 +1708,7 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
 	} else {
 		hymn_config_write(fd, "liturgy_prefix %s\n", cfg->prefix);
+		hymn_config_write(fd, "liturgy_group 0x%04x\n", cfg->group);
 	}
 
 	if (cfg->encap != NULL)
@@ -1952,6 +1955,12 @@ static void
 hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
 {
 	cfg->cathedral_nat_port = hymn_number(natport, 10, 0, USHRT_MAX);
+}
+
+static void
+hymn_config_parse_liturgy_group(struct config *cfg, char *group)
+{
+	cfg->group = hymn_number(group, 10, 0, USHRT_MAX);
 }
 
 static void

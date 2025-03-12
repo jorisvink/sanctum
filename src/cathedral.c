@@ -95,6 +95,7 @@ struct liturgy {
 	u_int64_t		age;
 	u_int16_t		id;
 	u_int16_t		port;
+	u_int16_t		group;
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -287,10 +288,6 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	} else if ((spi == (SANCTUM_CATHEDRAL_NAT_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_CATHEDRAL_NAT_MAGIC & 0xffffffff))) {
 		cathedral_offer_handle(pkt, now, 1, 0);
-		sanctum_packet_release(pkt);
-	} else if ((spi == (SANCTUM_CATHEDRAL_LITURGY_MAGIC >> 32)) &&
-	    (seq == (SANCTUM_CATHEDRAL_LITURGY_MAGIC & 0xffffffff))) {
-		cathedral_offer_handle(pkt, now, 0, 0);
 		sanctum_packet_release(pkt);
 	} else if ((spi == (CATHEDRAL_CATACOMB_MAGIC >> 32)) &&
 	    (seq == (CATHEDRAL_CATACOMB_MAGIC & 0xffffffff))) {
@@ -571,6 +568,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	id = be32toh(op->hdr.spi);
 	lit = &op->data.offer.liturgy;
+	lit->group = be16toh(lit->group);
 
 	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
 		sanctum_log(LOG_NOTICE, "%" PRIx64 ":%02x is not tied to %08x",
@@ -589,12 +587,17 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 		entry->id = lit->id;
 		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
+	}
 
-		sanctum_log(LOG_INFO, "liturgy for %" PRIx64 ":%02x (%d)",
-		    flock->id, lit->id, catacomb);
+	if (entry->age == 0 || entry->group != lit->group) {
+		sanctum_log(LOG_INFO,
+		    "liturgy for %" PRIx64 ":%02x (%04x) (%d)",
+		    flock->id, lit->id, lit->group, catacomb);
 	}
 
 	entry->age = now;
+	entry->group = lit->group;
+
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
 
@@ -882,8 +885,8 @@ cathedral_tunnel_expire(u_int64_t now)
 
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
 				sanctum_log(LOG_INFO,
-				    "liturgy %" PRIx64 ":%02x removed",
-				    flock->id, liturgy->id);
+				    "liturgy %" PRIx64 ":%02x (%04x) removed",
+				    flock->id, liturgy->group, liturgy->id);
 				LIST_REMOVE(liturgy, list);
 				free(liturgy);
 			}
@@ -976,11 +979,13 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 		return;
 
 	op = sanctum_offer_init(pkt, id,
-	    SANCTUM_CATHEDRAL_LITURGY_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
+	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
 
 	lit = &op->data.offer.liturgy;
+	lit->group = htobe16(src->group);
+
 	LIST_FOREACH(entry, &flock->liturgies, list) {
-		if (entry != src)
+		if (entry != src && entry->group == src->group)
 			lit->peers[entry->id] = 1;
 	}
 
