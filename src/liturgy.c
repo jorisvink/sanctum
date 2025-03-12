@@ -122,11 +122,13 @@ liturgy_offer_send(void)
 		return;
 
 	op = sanctum_offer_init(pkt, sanctum->cathedral_id,
-	    SANCTUM_CATHEDRAL_LITURGY_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
+	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
 	op->hdr.flock = htobe64(sanctum->cathedral_flock);
 
 	lit = &op->data.offer.liturgy;
+
 	lit->id = local_id;
+	lit->group = htobe16(sanctum->liturgy_group);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
@@ -173,7 +175,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 	magic = be64toh(op->hdr.magic);
 
-	if (magic != SANCTUM_CATHEDRAL_LITURGY_MAGIC)
+	if (magic != SANCTUM_CATHEDRAL_MAGIC)
 		return;
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
@@ -200,14 +202,17 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	lit = &op->data.offer.liturgy;
+	lit->group = be16toh(lit->group);
+
+	if (lit->group != sanctum->liturgy_group)
+		return;
+
 	for (id = 1; id < SANCTUM_PEERS_PER_FLOCK; id++) {
 		if (id == local_id)
 			continue;
 
-		if (lit->peers[id] != 0 && lit->peers[id] != 1) {
-			sanctum_log(LOG_INFO, "cathedral sent bad data");
+		if (lit->peers[id] != 0 && lit->peers[id] != 1)
 			continue;
-		}
 
 		liturgy_bishop_inform(id, lit->peers[id]);
 	}

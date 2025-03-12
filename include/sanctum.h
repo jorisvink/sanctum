@@ -175,9 +175,6 @@ extern int daemon(int, int);
 /* The magic for NAT detection messages (CIBORIUM). */
 #define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4349424f5249554d
 
-/* The magic for cathedral liturgy messages (LITURGY) */
-#define SANCTUM_CATHEDRAL_LITURGY_MAGIC	0x004C495455524759
-
 /* The KDF label for the cathedral. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
 
@@ -241,6 +238,7 @@ struct sanctum_info_offer {
 
 struct sanctum_liturgy_offer {
 	u_int8_t		id;
+	u_int16_t		group;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
 } __attribute__((packed));
 
@@ -555,6 +553,9 @@ struct sanctum_state {
 
 	/* The network prefix for liturgy (liturgy mode only). */
 	struct sockaddr_in	liturgy_prefix;
+
+	/* The group to join in liturgy mode (liturgy mode only). */
+	u_int16_t		liturgy_group;
 
 	/* The ID to use when talking to a cathedral (tunnel mode only). */
 	u_int32_t		cathedral_id;

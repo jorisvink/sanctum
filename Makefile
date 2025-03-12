@@ -3,7 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=sanctum
-LIBNYFE=nyfe/libnyfe.a
+LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
 VERSION=$(OBJDIR)/version.c
 
 DESTDIR?=
@@ -115,7 +115,7 @@ install: $(INSTALL_TARGETS)
 
 install-bin: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
-	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
+	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/
 	$(MAKE) -C tools/hymn install
 	$(MAKE) -C tools/ambry install
 	$(MAKE) -C tools/vicar install

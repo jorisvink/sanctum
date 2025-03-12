@@ -40,7 +40,7 @@ $(OBJDIR):
 
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
-	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/$(BIN)
+	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/
 
 uninstall:
 	rm -f $(DESTDIR)$(INSTALL_DIR)/$(BIN)

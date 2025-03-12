@@ -55,6 +55,7 @@ static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
 static void	config_parse_encapsulation(char *);
+static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_flock(char *);
@@ -92,6 +93,7 @@ static const struct {
 	{ "secretdir",		config_parse_secretdir },
 	{ "settings",		config_parse_settings },
 	{ "encapsulation",	config_parse_encapsulation },
+	{ "liturgy_group",	config_parse_liturgy_group },
 	{ "liturgy_prefix",	config_parse_liturgy_prefix },
 	{ "cathedral_id",	config_parse_cathedral_id },
 	{ "cathedral_flock",	config_parse_cathedral_flock },
@@ -768,6 +770,18 @@ config_parse_encapsulation(char *opt)
 	}
 
 	sanctum->flags |= SANCTUM_FLAG_ENCAPSULATE;
+}
+
+/*
+ * Parse the liturgy_group option.
+ */
+static void
+config_parse_liturgy_group(char *group)
+{
+	PRECOND(group != NULL);
+
+	if (sscanf(group, "%hx", &sanctum->liturgy_group) != 1)
+		fatal("liturgy_group <16-bit hex value>");
 }
 
 /*
