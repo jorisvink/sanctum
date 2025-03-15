@@ -537,6 +537,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		tun->rx_pending = info->rx_pending;
 
 		if (catacomb == 0) {
+			tun->federated = 0;
 			info->tunnel = htobe16(info->tunnel);
 			cathedral_offer_federate(flock, pkt);
 		} else {
