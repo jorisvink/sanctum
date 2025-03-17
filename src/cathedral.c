@@ -732,7 +732,7 @@ cathedral_forward_offer(struct sanctum_packet *pkt, struct flockent *flock,
 
 	if (tunnel == NULL) {
 		sanctum_log(LOG_INFO,
-		    "%" PRIx64 ":%04x not not found for offer", flock->id, id);
+		    "%" PRIx64 ":%04x not found for offer", flock->id, id);
 		return (-1);
 	}
 
