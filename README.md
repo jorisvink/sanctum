@@ -9,7 +9,7 @@ Sanctum 1:1
 ## About
 
 This is a very small, reviewable, capable, experimental and fully privilege
-seperated VPN daemon capable of transporting encrypted network traffic
+separated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
 **WARNING: This code uses an experimental AEAD cipher based on
