@@ -734,6 +734,7 @@ void	sanctum_purgatory_rx(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory_tx(struct sanctum_proc *) __attribute__((noreturn));
 
 /* The cipher goo. */
+void	sanctum_cipher_init(void);
 size_t	sanctum_cipher_overhead(void);
 void	sanctum_cipher_cleanup(void *);
 void	*sanctum_cipher_setup(struct sanctum_key *);

@@ -12,7 +12,7 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
-CIPHER?=openssl-aes-gcm
+CIPHER?=libsodium-aes-gcm
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
@@ -53,10 +53,10 @@ ifeq ("$(JUMBO_FRAMES)", "1")
 	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
 endif
 
-ifeq ("$(CIPHER)", "openssl-aes-gcm")
-	CFLAGS+=$(shell pkg-config openssl --cflags)
-	LDFLAGS+=$(shell pkg-config openssl --libs)
-	SRC+=src/openssl_aes_gcm.c
+ifeq ("$(CIPHER)", "libsodium-aes-gcm")
+	CFLAGS+=$(shell pkg-config libsodium --cflags)
+	LDFLAGS+=$(shell pkg-config libsodium --libs)
+	SRC+=src/libsodium_aes_gcm.c
 else ifeq ("$(CIPHER)", "intel-aes-gcm")
 	CFLAGS+=$(shell pkg-config libisal_crypto --cflags)
 	LDFLAGS+=$(shell pkg-config libisal_crypto --libs)

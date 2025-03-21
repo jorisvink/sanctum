@@ -113,7 +113,7 @@ You can select what cipher to use by specifying a CIPHER environment
 variable at compile time with either:
 
 - nyfe-agelas (Agelas as provided by Nyfe).
-- openssl-aes-gcm (AES256-GCM via OpenSSL its low level API).
+- libsodium-aes-gcm (AES256-GCM via libsodium).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 
 ## Unidirectional tunnels
@@ -147,7 +147,7 @@ Please read docs/cathedral.md for more.
 
 ## Building
 
-A default build requires pkg-config and libssl-dev.
+A default build requires pkg-config and libsodium.
 
 ```
 $ git clone https://github.com/jorisvink/sanctum

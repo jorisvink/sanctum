@@ -53,6 +53,14 @@ struct cipher_agelas {
 const char	*sanctum_cipher = "nyfe-agelas";
 
 /*
+ * Perform any one-time cipher initialization.
+ */
+void
+sanctum_cipher_init(void)
+{
+}
+
+/*
  * Setup the cipher.
  */
 void *

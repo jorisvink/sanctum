@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,41 +14,36 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * AES-GCM support via OpenSSL its libcrypto.
- *
- * Since OpenSSL doesn't know what its users actually want we
- * have to disable some deprecated warning vomit.
- */
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 #include <sys/types.h>
-
-#include <openssl/aes.h>
-#include <openssl/modes.h>
 
 #include <stdio.h>
 
+#include <sodium.h>
+
 #include "sanctum.h"
 
-#define CIPHER_AES_GCM_TAG_SIZE		16
-
 /*
- * The local cipher state.
+ * State structure, we only need to hold the key here.
  */
 struct cipher_aes_gcm {
-	AES_KEY			key;
-	GCM128_CONTEXT		*gcm;
+	crypto_aead_aes256gcm_state	ctx;
 };
 
 /* The cipher indicator for -v. */
-const char	*sanctum_cipher = "openssl-aes-gcm";
+const char	*sanctum_cipher = "libsodium-aes-gcm";
 
 /*
- * Setup the AES-GCM cipher by running key expansion first on the
- * given AES key.
- *
- * Then initialising a GCM128_CONTEXT with said key.
+ * Perform any one-time cipher initialization.
+ */
+void
+sanctum_cipher_init(void)
+{
+	if (sodium_init() == -1)
+		fatal("failed to initialize libsodium");
+}
+
+/*
+ * Setup the cipher for use in bless and confess.
  */
 void *
 sanctum_cipher_setup(struct sanctum_key *key)
@@ -62,24 +57,20 @@ sanctum_cipher_setup(struct sanctum_key *key)
 
 	nyfe_zeroize_register(cipher, sizeof(*cipher));
 
-	if (AES_set_encrypt_key(key->key, 256, &cipher->key) != 0)
-		fatal("AES_set_encrypt_key: failed");
-
-	if ((cipher->gcm = CRYPTO_gcm128_new(&cipher->key,
-	    (block128_f)AES_encrypt)) == NULL)
-		fatal("CRYPTO_gcm128_new: failed");
+	if (crypto_aead_aes256gcm_beforenm(&cipher->ctx, key->key) == -1)
+		fatal("failed to do key expansion");
 
 	return (cipher);
 }
 
 /*
- * Returns the overhead for AES-GCM. In this case it's the
- * 16 byte tag.
+ * Returns the overhead for AES-GCM.
+ * In this case it's the 16 byte tag.
  */
 size_t
 sanctum_cipher_overhead(void)
 {
-	return (CIPHER_AES_GCM_TAG_SIZE);
+	return (crypto_aead_aes256gcm_ABYTES);
 }
 
 /*
@@ -90,78 +81,63 @@ void
 sanctum_cipher_encrypt(void *arg, const void *nonce, size_t nonce_len,
     const void *aad, size_t aad_len, struct sanctum_packet *pkt)
 {
+	unsigned long long	mlen;
+	u_int8_t		*data;
 	struct cipher_aes_gcm	*cipher;
-	u_int8_t		*data, *tag;
 
 	PRECOND(arg != NULL);
 	PRECOND(nonce != NULL);
+	PRECOND(nonce_len == crypto_aead_aes256gcm_NPUBBYTES);
 	PRECOND(aad != NULL);
 	PRECOND(pkt != NULL);
 
-	VERIFY(pkt->length + CIPHER_AES_GCM_TAG_SIZE < sizeof(pkt->buf));
+	VERIFY(pkt->length + crypto_aead_aes256gcm_ABYTES < sizeof(pkt->buf));
 
 	cipher = arg;
-
+	mlen = pkt->length;
 	data = sanctum_packet_data(pkt);
-	tag = data + pkt->length;
 
-	CRYPTO_gcm128_setiv(cipher->gcm, nonce, nonce_len);
+	if (crypto_aead_aes256gcm_encrypt_afternm(data, &mlen, data, mlen,
+	    aad, aad_len, NULL, nonce, &cipher->ctx) == -1)
+		return;
 
-	if (CRYPTO_gcm128_aad(cipher->gcm, aad, aad_len) != 0)
-		fatal("CRYPTO_gcm128_aad failed");
-
-	if (CRYPTO_gcm128_encrypt(cipher->gcm, data, data, pkt->length) != 0)
-		fatal("CRYPTO_gcm128_encrypt failed");
-
-	CRYPTO_gcm128_tag(cipher->gcm, tag, CIPHER_AES_GCM_TAG_SIZE);
-
-	pkt->length += CIPHER_AES_GCM_TAG_SIZE;
+	pkt->length += crypto_aead_aes256gcm_ABYTES;
 }
 
 /*
- * Verify and decrypts a given packet.
+ * Decrypt and verify a packet, returns -1 on error or 0 on success.
  */
 int
 sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
     const void *aad, size_t aad_len, struct sanctum_packet *pkt)
 {
+	size_t			len;
+	u_int8_t		*data;
 	struct cipher_aes_gcm	*cipher;
-	size_t			ctlen, len;
-	u_int8_t		*data, *tag;
 
 	PRECOND(arg != NULL);
 	PRECOND(nonce != NULL);
+	PRECOND(nonce_len == crypto_aead_aes256gcm_NPUBBYTES);
 	PRECOND(aad != NULL);
 	PRECOND(pkt != NULL);
 
 	if (pkt->length <
-	    sizeof(struct sanctum_ipsec_hdr) + CIPHER_AES_GCM_TAG_SIZE)
+	    sizeof(struct sanctum_ipsec_hdr) + crypto_aead_aes256gcm_ABYTES)
 		return (-1);
 
 	cipher = arg;
+	data = sanctum_packet_data(pkt);
 	len = pkt->length - sizeof(struct sanctum_ipsec_hdr);
 
-	data = sanctum_packet_data(pkt);
-	tag = &data[len - CIPHER_AES_GCM_TAG_SIZE];
-	ctlen = tag - data;
-
-	CRYPTO_gcm128_setiv(cipher->gcm, nonce, nonce_len);
-
-	if (CRYPTO_gcm128_aad(cipher->gcm, aad, aad_len) != 0)
-		fatal("CRYPTO_gcm128_aad failed");
-
-	if (CRYPTO_gcm128_decrypt(cipher->gcm, data, data, ctlen) != 0)
-		fatal("CRYPTO_gcm128_decrypt failed");
-
-	if (CRYPTO_gcm128_finish(cipher->gcm, tag,
-	    CIPHER_AES_GCM_TAG_SIZE) != 0)
+	if (crypto_aead_aes256gcm_decrypt_afternm(data, NULL, NULL,
+	    data, len, aad, aad_len, nonce, &cipher->ctx) == -1)
 		return (-1);
 
 	return (0);
 }
 
 /*
- * Cleanup the AES-GCM cipher states.
+ * Cleanup and wipe the cipher state.
  */
 void
 sanctum_cipher_cleanup(void *arg)
@@ -172,8 +148,6 @@ sanctum_cipher_cleanup(void *arg)
 
 	cipher = arg;
 
-	CRYPTO_gcm128_release(cipher->gcm);
 	nyfe_zeroize(cipher, sizeof(*cipher));
-
 	free(cipher);
 }
