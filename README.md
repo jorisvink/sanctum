@@ -8,7 +8,7 @@ Sanctum 1:1
 
 ## About
 
-This is a very small, reviewable, capable, experimental and fully privilege
+This is a very small, reviewable, capable, and fully privilege
 separated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
@@ -16,6 +16,11 @@ Due to its privilege separated design, sanctum guarantees that
 all of its important assets are separated from the processes
 that talk to the internet or handle non-cryptography related
 things.
+
+Additionally when making use of sanctum's cathedrals one can
+get full end-to-end encrypted and peer-to-peer tunnels that
+are able to traverse NAT, allowing your devices to talk to
+each other directly no matter where they are.
 
 ### Mythology
 
@@ -51,7 +56,7 @@ required to perform its task. There are two exceptions, guardian
 The guardian process is only monitoring its child processes and has no
 other external interfaces. The bishop process must be privileged due to
 the fact it is fork+exec'ing the hymn configuration tool for setting up
-new tunnels.
+new tunnels (only if using liturgy mode).
 
 ## Packets
 
@@ -98,7 +103,7 @@ The encrypted traffic is encapsulated with ESP in tunnel mode, using
 incrementing 64-bit sequence numbers. The traffic is encrypted with
 AES256-GCM and are encrypted under keys exchanged as described above.
 
-In both cases a 96-bit nonce constructed as follows is used:
+The 96-bit nonce constructed as follows is used:
 
 ```
 nonce = 32-bit salt from key exchange || 64-bit packet counter
@@ -123,7 +128,7 @@ but will never receive a **TX** key from its peer.
 
 This allows one-way traffic to flow from a pilgrim to the shrine
 with a strong guarantee that the shrine cannot send data back
-(there are no keys).
+(there are no keys nor are there any processes to do so).
 
 ## Cathedrals
 
