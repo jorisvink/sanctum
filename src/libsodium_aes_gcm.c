@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,35 +14,23 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * AES-GCM via the Intel "ISA-L_crypto" library.
- */
-
 #include <sys/types.h>
 
-#include <isa-l_crypto.h>
 #include <stdio.h>
+
+#include <sodium.h>
 
 #include "sanctum.h"
 
 /*
- * The local cipher state.
+ * State structure, we only need to hold the key here.
  */
 struct cipher_aes_gcm {
-	struct gcm_key_data		key;
-	struct gcm_context_data		gcm;
-};
-
-/*
- * The functions we use needs non const pointers for ivs so we do a dirty.
- */
-union deconst {
-	void		*p;
-	const void	*cp;
+	crypto_aead_aes256gcm_state	ctx;
 };
 
 /* The cipher indicator for -v. */
-const char	*sanctum_cipher = "intel-aes-gcm";
+const char	*sanctum_cipher = "libsodium-aes-gcm";
 
 /*
  * Perform any one-time cipher initialization.
@@ -50,6 +38,8 @@ const char	*sanctum_cipher = "intel-aes-gcm";
 void
 sanctum_cipher_init(void)
 {
+	if (sodium_init() == -1)
+		fatal("failed to initialize libsodium");
 }
 
 /*
@@ -66,7 +56,9 @@ sanctum_cipher_setup(struct sanctum_key *key)
 		fatal("failed to allocate cipher context");
 
 	nyfe_zeroize_register(cipher, sizeof(*cipher));
-	aes_gcm_pre_256(key->key, &cipher->key);
+
+	if (crypto_aead_aes256gcm_beforenm(&cipher->ctx, key->key) == -1)
+		fatal("failed to do key expansion");
 
 	return (cipher);
 }
@@ -91,9 +83,10 @@ sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 
 	ctx = cipher->ctx;
 
-	aes_gcm_enc_256(&ctx->key, &ctx->gcm, cipher->ct, cipher->pt,
-	    cipher->data_len, cipher->nonce, cipher->aad, cipher->aad_len,
-	    cipher->tag, SANCTUM_TAG_LENGTH);
+	if (crypto_aead_aes256gcm_encrypt_detached_afternm(cipher->ct,
+	    cipher->tag, NULL, cipher->pt, cipher->data_len, cipher->aad,
+	    cipher->aad_len, NULL, cipher->nonce, &ctx->ctx) == -1)
+		fatal("libsodium encrypt failed");
 }
 
 /*
@@ -104,7 +97,6 @@ int
 sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 {
 	struct cipher_aes_gcm	*ctx;
-	u_int8_t		tag[SANCTUM_TAG_LENGTH];
 
 	PRECOND(cipher != NULL);
 
@@ -117,18 +109,16 @@ sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 
 	ctx = cipher->ctx;
 
-	aes_gcm_dec_256(&ctx->key, &ctx->gcm, cipher->pt, cipher->ct,
-	    cipher->data_len, cipher->nonce, cipher->aad, cipher->aad_len,
-	    tag, sizeof(tag));
-
-	if (nyfe_mem_cmp(cipher->tag, tag, sizeof(tag)))
+	if (crypto_aead_aes256gcm_decrypt_detached_afternm(cipher->pt,
+	    NULL, cipher->ct, cipher->data_len, cipher->tag, cipher->aad,
+	    cipher->aad_len, cipher->nonce, &ctx->ctx) == -1)
 		return (-1);
 
 	return (0);
 }
 
 /*
- * Cleanup the cipher states.
+ * Cleanup and wipe the cipher state.
  */
 void
 sanctum_cipher_cleanup(void *arg)

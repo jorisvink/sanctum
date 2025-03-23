@@ -9,12 +9,8 @@ Sanctum 1:1
 ## About
 
 This is a very small, reviewable, capable, experimental and fully privilege
-seperated VPN daemon capable of transporting encrypted network traffic
+separated VPN daemon capable of transporting encrypted network traffic
 between two peers.
-
-**WARNING: This code uses an experimental AEAD cipher based on
-Keccak-f[1600,24] to provide confidentiality and integrity
-for transmitted session keys during the key exchange.**
 
 Due to its privilege separated design, sanctum guarantees that
 all of its important assets are separated from the processes
@@ -84,7 +80,7 @@ interface without passing the encryption process.
 
 A sanctum instance is responsible for sending its **RX** key to
 the other side. It does this by periodically generating a new
-key uniformly at random and wrapping it with a secret derived
+key uniformly at random and encrypting it with a secret derived
 from the underlying shared secret between both parties.
 
 See docs/crypto.md for details on the session key and shared secrets.
@@ -99,9 +95,8 @@ the Ambry distribution to update shared secrets.
 ## Traffic
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
-incrementing 64-bit sequence numbers. The traffic is either encrypted
-with AES256-GCM or Agelas and are encrypted under keys exchanged as described
-above.
+incrementing 64-bit sequence numbers. The traffic is encrypted with
+AES256-GCM and are encrypted under keys exchanged as described above.
 
 In both cases a 96-bit nonce constructed as follows is used:
 
@@ -112,8 +107,7 @@ nonce = 32-bit salt from key exchange || 64-bit packet counter
 You can select what cipher to use by specifying a CIPHER environment
 variable at compile time with either:
 
-- nyfe-agelas (Agelas as provided by Nyfe).
-- openssl-aes-gcm (AES256-GCM via OpenSSL its low level API).
+- libsodium-aes-gcm (AES256-GCM via libsodium, default, most portable).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 
 ## Unidirectional tunnels
@@ -147,7 +141,7 @@ Please read docs/cathedral.md for more.
 
 ## Building
 
-A default build requires pkg-config and libssl-dev.
+A default build requires pkg-config and libsodium.
 
 ```
 $ git clone https://github.com/jorisvink/sanctum

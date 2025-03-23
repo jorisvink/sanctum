@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -188,16 +188,15 @@ bless_packet_process(struct sanctum_packet *pkt)
 	u_int32_t			spi;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
+	struct sanctum_cipher		cipher;
 	size_t				overhead, offset;
 	u_int8_t			nonce[12], aad[12], *data;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
 
-	/* Erase key if requested. */
 	sanctum_key_erase("TX", io->tx, &state);
 
-	/* Install any pending TX key first. */
 	if (sanctum_key_install(io->tx, &state) != -1) {
 		sanctum_atomic_write(&sanctum->tx.pkt, 0);
 		sanctum_atomic_write(&sanctum->tx.bytes, 0);
@@ -205,16 +204,11 @@ bless_packet_process(struct sanctum_packet *pkt)
 		sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 	}
 
-	/* If we don't have a cipher state, we shall not submit. */
 	if (state.cipher == NULL) {
 		sanctum_packet_release(pkt);
 		return;
 	}
 
-	/*
-	 * If we reached max number of packets that can be transmitted,
-	 * or the SA is too old, we do not submit.
-	 */
 	if (state.seqnr >= SANCTUM_SA_PACKET_HARD || (now > state.age &&
 	    (now - state.age) >= SANCTUM_SA_LIFETIME_HARD)) {
 		sanctum_log(LOG_NOTICE,
@@ -232,16 +226,13 @@ bless_packet_process(struct sanctum_packet *pkt)
 		sanctum_log(LOG_NOTICE, "TX SA active (spi=%08x)", state.spi);
 	}
 
-	/* Belts and suspenders. */
-	overhead = sizeof(*hdr) + sizeof(*tail) + sanctum_cipher_overhead();
-
+	overhead = sizeof(*hdr) + sizeof(*tail) + SANCTUM_TAG_LENGTH;
 	if ((pkt->length + overhead < pkt->length) ||
 	    (pkt->length + overhead > sizeof(pkt->buf))) {
 		sanctum_packet_release(pkt);
 		return;
 	}
 
-	/* Apply TFC padding if requested. */
 	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
 	    pkt->length < sanctum->tun_mtu) {
 		offset = pkt->length;
@@ -250,7 +241,6 @@ bless_packet_process(struct sanctum_packet *pkt)
 		nyfe_mem_zero(&data[offset], pkt->length - offset);
 	}
 
-	/* Fill in ESP header and tail. */
 	hdr = sanctum_packet_head(pkt);
 	tail = sanctum_packet_tail(pkt);
 
@@ -259,14 +249,10 @@ bless_packet_process(struct sanctum_packet *pkt)
 	hdr->esp.seq = htobe32(hdr->pn & 0xffffffff);
 	hdr->pn = htobe64(hdr->pn);
 
-	/* We don't pad, RFC says its a SHOULD not a MUST. */
 	tail->pad = 0;
 	tail->next = pkt->next;
-
-	/* Tail is included in the plaintext. */
 	pkt->length += sizeof(*tail);
 
-	/* Prepare the nonce and aad. */
 	memcpy(nonce, &state.salt, sizeof(state.salt));
 	memcpy(&nonce[sizeof(state.salt)], &hdr->pn, sizeof(hdr->pn));
 
@@ -274,17 +260,29 @@ bless_packet_process(struct sanctum_packet *pkt)
 	memcpy(aad, &spi, sizeof(spi));
 	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
 
-	/* Do the cipher dance. */
-	sanctum_cipher_encrypt(state.cipher, nonce, sizeof(nonce),
-	    aad, sizeof(aad), pkt);
+	cipher.aad = aad;
+	cipher.aad_len = sizeof(aad);
 
-	/* Account for the header. */
+	cipher.nonce = nonce;
+	cipher.nonce_len = sizeof(nonce);
+
+	cipher.ctx = state.cipher;
+	cipher.data_len = pkt->length;
+
+	cipher.pt = sanctum_packet_data(pkt);
+	cipher.ct = sanctum_packet_data(pkt);
+	cipher.tag = sanctum_packet_tail(pkt);
+
+	sanctum_cipher_encrypt(&cipher);
+
+	VERIFY(pkt->length + SANCTUM_TAG_LENGTH < sizeof(pkt->buf));
+	pkt->length += SANCTUM_TAG_LENGTH;
+
 	VERIFY(pkt->length + sizeof(*hdr) < sizeof(pkt->buf));
-
 	pkt->length += sizeof(*hdr);
+
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
-	/* Send it into purgatory. */
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
 	} else {

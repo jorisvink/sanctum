@@ -56,8 +56,10 @@ extern int daemon(int, int);
 #define be64toh(x)		OSSwapBigToHostInt64(x)
 #endif
 
+#include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
 #include "sanctum_ctl.h"
+
 #include "libnyfe.h"
 
 /* A few handy macros. */
@@ -120,12 +122,6 @@ extern int daemon(int, int);
 #else
 #error "unsupported architecture"
 #endif
-
-/* Length of our symmetrical keys, in bytes. */
-#define SANCTUM_KEY_LENGTH		32
-
-/* Length for an encapsulation key in hex. */
-#define SANCTUM_ENCAP_HEX_LEN		(SANCTUM_KEY_LENGTH * 2)
 
 /* ESP next_proto value for a heartbeat. */
 #define SANCTUM_PACKET_HEARTBEAT	0xfc
@@ -257,7 +253,7 @@ struct sanctum_offer_data {
 struct sanctum_offer {
 	struct sanctum_offer_hdr	hdr;
 	struct sanctum_offer_data	data;
-	u_int8_t			tag[32];
+	u_int8_t			tag[SANCTUM_TAG_LENGTH];
 } __attribute__((packed));
 
 /*
@@ -275,16 +271,6 @@ struct sanctum_liturgy {
 #define SANCTUM_KEY_PENDING		2
 #define SANCTUM_KEY_INSTALLING		3
 #define SANCTUM_KEY_ERASE		4
-
-/*
- * Used to swap TX / RX keys between chapel and encrypt and decrypt processes.
- */
-struct sanctum_key {
-	volatile u_int32_t	spi;
-	volatile u_int32_t	salt;
-	volatile int		state;
-	u_int8_t		key[SANCTUM_KEY_LENGTH];
-};
 
 /*
  * An SA context with an SPI, salt, sequence number and underlying cipher.
@@ -689,11 +675,12 @@ int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
 int	sanctum_cipher_kdf(const char *, const char *,
-	    struct nyfe_agelas *cipher, void *, size_t);
+	    struct sanctum_key *, void *, size_t);
+void	sanctum_offer_nonce(u_int8_t *, size_t);
 void	sanctum_offer_tfc(struct sanctum_packet *);
-void	sanctum_offer_encrypt(struct nyfe_agelas *, struct sanctum_offer *);
+void	sanctum_offer_encrypt(struct sanctum_key *, struct sanctum_offer *);
 void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
-int	sanctum_offer_decrypt(struct nyfe_agelas *,
+int	sanctum_offer_decrypt(struct sanctum_key *,
 	    struct sanctum_offer *, int);
 void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
 	    u_int32_t, const void *, size_t);
@@ -732,14 +719,5 @@ void	sanctum_heaven_rx(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_heaven_tx(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory_rx(struct sanctum_proc *) __attribute__((noreturn));
 void	sanctum_purgatory_tx(struct sanctum_proc *) __attribute__((noreturn));
-
-/* The cipher goo. */
-size_t	sanctum_cipher_overhead(void);
-void	sanctum_cipher_cleanup(void *);
-void	*sanctum_cipher_setup(struct sanctum_key *);
-void	sanctum_cipher_encrypt(void *, const void *, size_t, const void *,
-	    size_t, struct sanctum_packet *);
-int	sanctum_cipher_decrypt(void *, const void *, size_t, const void *,
-	    size_t, struct sanctum_packet *);
 
 #endif

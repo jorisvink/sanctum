@@ -214,7 +214,7 @@ pilgrim_offer_encrypt(u_int64_t now)
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct sanctum_key_offer	*key;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(offer != NULL);
 

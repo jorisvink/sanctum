@@ -9,8 +9,6 @@ DESTDIR?=
 PREFIX?=/usr/local
 INSTALL_DIR=$(PREFIX)/bin
 
-SRC=	src/ambry.c
-
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
@@ -25,12 +23,16 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
+CFLAGS+=$(shell pkg-config libsodium --cflags)
+LDFLAGS+=$(shell pkg-config libsodium --libs)
+
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 endif
 
-OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
+OBJS=	$(OBJDIR)/ambry.o \
+	$(OBJDIR)/libsodium_aes_gcm.o
 
 $(BIN): $(OBJDIR) $(OBJS) $(LIBNYFE)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
@@ -48,7 +50,10 @@ uninstall:
 $(LIBNYFE):
 	$(MAKE) -C ../../nyfe
 
-$(OBJDIR)/%.o: src/%.c
+$(OBJDIR)/ambry.o: src/ambry.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR)/libsodium_aes_gcm.o: ../../src/libsodium_aes_gcm.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

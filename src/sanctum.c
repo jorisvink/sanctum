@@ -115,6 +115,7 @@ main(int argc, char *argv[])
 	sanctum_platform_init();
 	sanctum_proc_init(argv);
 	sanctum_packet_init();
+	sanctum_cipher_init();
 
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)

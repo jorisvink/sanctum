@@ -116,7 +116,7 @@ liturgy_offer_send(void)
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct sanctum_liturgy_offer	*lit;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
@@ -167,7 +167,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	struct sanctum_offer		*op;
 	struct sanctum_liturgy_offer	*lit;
 	u_int64_t			magic;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	if (pkt->length < sizeof(*op))
 		return;

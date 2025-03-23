@@ -1,5 +1,21 @@
 # Cryptographic description
 
+## Algorithm
+
+The algorithm used to provide confidentiality and integrity for
+user traffic and management traffic is AES256-GCM.
+
+For user traffic, unique session keys (defined below) are used in both
+directions with a 64-bit packet counter used to construct the nonce
+value (in combination with a unique salt). The ESP header and tail are
+included in the AAD.
+
+For management traffic, unique encryption keys are derived from the
+shared secret (defined below) per packet. In this case because the
+keys are freshly derived the nonces used in this construction
+are fixed as there is no risk for (key, nonce) pair re-use
+in this specific scenario.
+
 ## Keys
 
 Sanctum uses several different secrets and keys to provide
@@ -36,14 +52,6 @@ used to prevent traffic analysis. This key is available in purgatory-rx
 and purgatory-tx, but does not need to be explicitly wiped from other
 processes due to its nature.
 
-## Wrapping algorithm
-
-The algorithm used to provide confidentiality and integrity for
-key offers, cathedral messages or wrapped Ambries is Agelas,
-an AEAD cipher based on Keccak-1600.
-
-Note that this is highly experimental.
-
 ## The shared secret (SS)
 
 The shared secret is a 256-bit symmetrical key shared between two peers
@@ -58,9 +66,11 @@ Session keys are 256-bit symmetrical keys selected uniformly at random
 when generated and are created by both peers when no previous session
 exists or, when a session has sent too many packets or is 1 hour old.
 
+These SK's are encrypted with keys derived from the SS and are exchanged
+between both peers.
+
 Once the session keys have been exchanged they are used to provide
-traffic confidentiality and integrity using either AES256-GCM or Agelas,
-depending on how Sanctum was compiled (defaulting to AES256-GCM).
+traffic confidentiality and integrity using AES256-GCM.
 
 ```
 derive_key(seed):
@@ -69,7 +79,7 @@ derive_key(seed):
     return wk
 
 Key offer:
-    now  = seconds since boot, 64-bit
+    now  = wall time in seconds, 64-bit
     sk   = session key selected uniformly at random, 256-bit
     id   = unique sanctum ID selected uniformly at random at start, 64-bit
     salt = salt for nonce construction, selected uniformly at random, 32-bit
@@ -85,7 +95,7 @@ Key offer:
 
     header = magic || spi || seed
     encdata = id || salt || now || internal_seed || sk || internal_tag
-    encdata = Agelas(dk, aad=header, encdata)
+    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
 
     send(header || encdata)
 ```
@@ -115,7 +125,7 @@ ambry:
     tag = the authentication tag for the wrapped data
     key = the new SS, selected uniformly at random, 256-bit
 
-    ambry = Agelas(dk, aad=tunnel || seed, key)
+    ambry = AES256-GCM(dk, nonce=1, aad=tunnel || seed, key)
 ```
 
 ## Cathedral secret (CS)
@@ -152,7 +162,7 @@ Peer to cathedral notify message:
 
     header = magic || spi || seed
     encdata = id || salt || now || internal_seed || key || internal_tag
-    encdata = Agelas(dk, aad=header, encdata)
+    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
 
     send(header || encdata)
 
@@ -171,7 +181,7 @@ Cathedral to peer ambry message:
 
     header = magic || spi || se
     encdata = id || salt || now || internal_seed || sk || internal_tag
-    encdata = Agelas(dk, aad=header, encdata)
+    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
 
     send(header || encdata)
 ```

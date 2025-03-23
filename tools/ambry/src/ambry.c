@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
 #include "libnyfe.h"
 
@@ -238,14 +239,16 @@ static void
 ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
     u_int16_t tunnel, u_int32_t gen)
 {
-	int			fd;
-	struct nyfe_kmac256	kdf;
-	struct entry		entry;
-	struct nyfe_agelas	cipher;
-	u_int8_t		okm_len;
-	char			path[1024];
-	u_int8_t		kek[SANCTUM_AMBRY_KEK_LEN];
-	u_int8_t		okm[SANCTUM_AMBRY_OKM_LEN];
+	int				fd;
+	struct nyfe_kmac256		kdf;
+	struct sanctum_key		okm;
+	struct sanctum_ambry_aad	aad;
+	struct entry			entry;
+	struct sanctum_cipher		cipher;
+	u_int8_t			okm_len;
+	char				path[1024];
+	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
+	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
 	if (len != sizeof(entry.key))
 		fatal("len != entry.key");
@@ -253,10 +256,11 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 	ambry_kek_path(path, sizeof(path), id);
 	fd = nyfe_file_open(path, NYFE_FILE_READ);
 
-	nyfe_zeroize_register(okm, sizeof(okm));
 	nyfe_zeroize_register(kek, sizeof(kek));
+	nyfe_zeroize_register(&okm, sizeof(okm));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(&entry, sizeof(entry));
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	entry.tunnel = htons(tunnel);
 	nyfe_memcpy(entry.key, key, len);
@@ -267,7 +271,7 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 
 	(void)close(fd);
 
-	okm_len = SANCTUM_AMBRY_OKM_LEN;
+	okm_len = sizeof(okm.key);
 
 	nyfe_kmac256_init(&kdf, kek, sizeof(kek),
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
@@ -275,19 +279,32 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 
 	nyfe_kmac256_update(&kdf, &okm_len, sizeof(okm_len));
 	nyfe_kmac256_update(&kdf, entry.seed, sizeof(entry.seed));
-	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
+	nyfe_kmac256_final(&kdf, okm.key, sizeof(okm.key));
 	nyfe_zeroize(&kdf, sizeof(kdf));
 
-	nyfe_agelas_init(&cipher, okm, sizeof(okm));
-	nyfe_zeroize(okm, sizeof(okm));
+	cipher.ctx = sanctum_cipher_setup(&okm);
+	nyfe_zeroize(&okm, sizeof(okm));
 
-	gen = htonl(gen);
-	nyfe_agelas_aad(&cipher, &gen, sizeof(gen));
-	nyfe_agelas_aad(&cipher, entry.seed, sizeof(entry.seed));
-	nyfe_agelas_aad(&cipher, &entry.tunnel, sizeof(entry.tunnel));
+	aad.tunnel = entry.tunnel;
+	aad.generation = htonl(gen);
+	nyfe_memcpy(aad.seed, entry.seed, sizeof(entry.seed));
 
-	nyfe_agelas_encrypt(&cipher, entry.key, entry.key, sizeof(entry.key));
-	nyfe_agelas_authenticate(&cipher, entry.tag, sizeof(entry.tag));
+	nyfe_mem_zero(nonce, sizeof(nonce));
+	nonce[SANCTUM_NONCE_LENGTH - 1] = 0x01;
+
+	cipher.aad = &aad;
+	cipher.aad_len = sizeof(aad);
+
+	cipher.nonce = nonce;
+	cipher.nonce_len = sizeof(nonce);
+
+	cipher.pt = entry.key;
+	cipher.ct = entry.key;
+	cipher.tag = &entry.tag[0];
+	cipher.data_len = sizeof(entry.key);
+
+	sanctum_cipher_encrypt(&cipher);
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	nyfe_file_write(out, &entry, sizeof(entry));
 	nyfe_zeroize(&entry, sizeof(entry));

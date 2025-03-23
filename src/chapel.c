@@ -346,7 +346,7 @@ chapel_cathedral_send_info(u_int64_t magic)
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct sanctum_info_offer	*info;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(magic == SANCTUM_CATHEDRAL_MAGIC ||
 	    (magic == SANCTUM_CATHEDRAL_NAT_MAGIC &&
@@ -404,7 +404,7 @@ static void
 chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 {
 	struct sanctum_offer		*op;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->length >= sizeof(*op));
@@ -524,10 +524,11 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	int				fd;
 	u_int8_t			len;
 	struct nyfe_kmac256		kdf;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		key;
+	struct sanctum_ambry_aad	aad;
+	struct sanctum_cipher		cipher;
 	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
-	u_int8_t			tag[SANCTUM_AMBRY_TAG_LEN];
-	u_int8_t			okm[SANCTUM_AMBRY_OKM_LEN];
+	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
 	PRECOND(ambry != NULL);
 	PRECOND(sanctum->kek != NULL);
@@ -536,7 +537,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 		return;
 
 	nyfe_zeroize_register(kek, sizeof(kek));
-	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(&key, sizeof(key));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
@@ -548,28 +549,39 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
 	nyfe_zeroize(kek, sizeof(kek));
 
-	len = SANCTUM_AMBRY_OKM_LEN;
+	len = sizeof(key.key);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ambry->seed, sizeof(ambry->seed));
-	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
+	nyfe_kmac256_final(&kdf, key.key, sizeof(key.key));
 	nyfe_zeroize(&kdf, sizeof(kdf));
 
-	nyfe_agelas_init(&cipher, okm, sizeof(okm));
-	nyfe_zeroize(okm, sizeof(okm));
+	cipher.ctx = sanctum_cipher_setup(&key);
+	nyfe_zeroize(&key, sizeof(key));
 
-	nyfe_agelas_aad(&cipher, &ambry->generation, sizeof(ambry->generation));
-	nyfe_agelas_aad(&cipher, ambry->seed, sizeof(ambry->seed));
-	nyfe_agelas_aad(&cipher, &ambry->tunnel, sizeof(ambry->tunnel));
+	aad.tunnel = ambry->tunnel;
+	aad.generation = ambry->generation;
+	nyfe_memcpy(aad.seed, ambry->seed, sizeof(ambry->seed));
 
-	nyfe_agelas_decrypt(&cipher,
-	    ambry->key, ambry->key, sizeof(ambry->key));
-	nyfe_agelas_authenticate(&cipher, tag, sizeof(tag));
-	nyfe_zeroize(&cipher, sizeof(cipher));
+	cipher.aad = &aad;
+	cipher.aad_len = sizeof(aad);
 
-	if (nyfe_mem_cmp(ambry->tag, tag, sizeof(tag))) {
+	sanctum_offer_nonce(nonce, sizeof(nonce));
+	cipher.nonce_len = sizeof(nonce);
+	cipher.nonce = nonce;
+
+	cipher.pt = ambry->key;
+	cipher.ct = ambry->key;
+	cipher.tag = &ambry->tag[0];
+	cipher.data_len = sizeof(ambry->key);
+
+	if (sanctum_cipher_decrypt(&cipher) == -1) {
+		sanctum_cipher_cleanup(cipher.ctx);
 		sanctum_log(LOG_NOTICE, "ambry integrity check failed");
 		return;
 	}
+
+	sanctum_cipher_cleanup(cipher.ctx);
+	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	chapel_ambry_write(ambry, now);
 }
@@ -726,7 +738,7 @@ chapel_offer_encrypt(u_int64_t now)
 	struct sanctum_offer		*op;
 	struct sanctum_key_offer	*key;
 	struct sanctum_packet		*pkt;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(offer != NULL);
 
@@ -797,7 +809,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_key_offer	*key;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);

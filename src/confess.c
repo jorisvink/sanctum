@@ -246,7 +246,10 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	struct ip			*ip;
 	struct sanctum_ipsec_hdr	*hdr;
 	struct sanctum_ipsec_tail	*tail;
-	u_int8_t			nonce[12], aad[12];
+	size_t				ctlen;
+	struct sanctum_cipher		cipher;
+	u_int8_t			aad[12], *data;
+	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
 	PRECOND(sa != NULL);
 	PRECOND(pkt != NULL);
@@ -261,6 +264,11 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (confess_arwin_check(sa, hdr) == -1)
 		return (-1);
 
+	if (pkt->length < sizeof(*hdr) + sizeof(*tail) + SANCTUM_TAG_LENGTH)
+		return (-1);
+
+	ctlen = pkt->length - sizeof(*hdr) - SANCTUM_TAG_LENGTH;
+
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
 	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
 
@@ -268,8 +276,22 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	memcpy(aad, &spi, sizeof(spi));
 	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
 
-	if (sanctum_cipher_decrypt(sa->cipher, nonce, sizeof(nonce),
-	    aad, sizeof(aad), pkt) == -1)
+	cipher.aad = aad;
+	cipher.aad_len = sizeof(aad);
+
+	cipher.nonce = nonce;
+	cipher.nonce_len = sizeof(nonce);
+
+	cipher.data_len = ctlen;
+	cipher.ctx = sa->cipher;
+
+	data = sanctum_packet_data(pkt);
+
+	cipher.pt = data;
+	cipher.ct = data;
+	cipher.tag = data + ctlen;
+
+	if (sanctum_cipher_decrypt(&cipher) == -1)
 		return (-1);
 
 	hdr->pn = be64toh(hdr->pn);
@@ -289,7 +311,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	/* The length was checked earlier by the caller. */
 	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
 	pkt->length -= sizeof(struct sanctum_ipsec_tail);
-	pkt->length -= sanctum_cipher_overhead();
+	pkt->length -= SANCTUM_TAG_LENGTH;
 
 	tail = sanctum_packet_tail(pkt);
 	if (tail->pad != 0)

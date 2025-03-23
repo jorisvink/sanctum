@@ -130,7 +130,7 @@ static void
 shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 {
 	struct sanctum_offer		*op;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(pkt != NULL);
 	PRECOND(io != NULL);

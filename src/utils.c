@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -435,16 +435,16 @@ sanctum_file_open(const char *path, struct stat *st)
  */
 int
 sanctum_cipher_kdf(const char *path, const char *label,
-    struct nyfe_agelas *cipher, void *seed, size_t seed_len)
+    struct sanctum_key *key, void *seed, size_t seed_len)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
-	u_int8_t			okm[64], secret[SANCTUM_KEY_LENGTH];
+	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
 	PRECOND(path != NULL);
 	PRECOND(label != NULL);
-	PRECOND(cipher != NULL);
+	PRECOND(key != NULL);
 	PRECOND(seed != NULL);
 	PRECOND(seed_len == 64);
 
@@ -463,23 +463,38 @@ sanctum_cipher_kdf(const char *path, const char *label,
 
 	(void)close(fd);
 
-	nyfe_zeroize_register(okm, sizeof(okm));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 
-	len = 64;
+	len = sizeof(key->key);
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
 	nyfe_zeroize(secret, sizeof(secret));
 
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, seed, seed_len);
-	nyfe_kmac256_final(&kdf, okm, sizeof(okm));
+	nyfe_kmac256_final(&kdf, key->key, sizeof(key->key));
 	nyfe_zeroize(&kdf, sizeof(kdf));
 
-	nyfe_agelas_init(cipher, okm, sizeof(okm));
-	nyfe_zeroize(&okm, sizeof(okm));
-
 	return (0);
+}
+
+/*
+ * Return a nonce containing a single 0x01 byte to the caller.
+ * We use this for key offers, cathedral messages and ambries.
+ *
+ * This might look scary but this does not lead to (key, nonce) pair re-use
+ * under a stream cipher as the keys for these type of messages are uniquely
+ * derived per message. Don't blindly copy this idiom unless you know what
+ * you are doing.
+ */
+void
+sanctum_offer_nonce(u_int8_t *nonce, size_t nonce_len)
+{
+	PRECOND(nonce != NULL);
+	PRECOND(nonce_len == SANCTUM_NONCE_LENGTH);
+
+	nyfe_mem_zero(nonce, nonce_len);
+	nonce[nonce_len - 1] = 0x01;
 }
 
 /*
@@ -516,17 +531,33 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 
 /*
  * Encrypt and authenticate a sanctum_offer data structure.
- * Note: does not zeroize the cipher, this is the caller its responsibility.
+ * Note: does not zeroize the key, this is the caller its responsibility.
  */
 void
-sanctum_offer_encrypt(struct nyfe_agelas *cipher, struct sanctum_offer *op)
+sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)
 {
-	PRECOND(cipher != NULL);
+	struct sanctum_cipher	cipher;
+	u_int8_t		nonce[SANCTUM_NONCE_LENGTH];
+
+	PRECOND(key != NULL);
 	PRECOND(op != NULL);
 
-	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_encrypt(cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(cipher, op->tag, sizeof(op->tag));
+	cipher.ctx = sanctum_cipher_setup(key);
+
+	cipher.aad = &op->hdr;
+	cipher.aad_len = sizeof(op->hdr);
+
+	sanctum_offer_nonce(nonce, sizeof(nonce));
+	cipher.nonce_len = sizeof(nonce);
+	cipher.nonce = nonce;
+
+	cipher.pt = &op->data;
+	cipher.ct = &op->data;
+	cipher.tag = &op->tag[0];
+	cipher.data_len = sizeof(op->data);
+
+	sanctum_cipher_encrypt(&cipher);
+	sanctum_cipher_cleanup(cipher.ctx);
 }
 
 /*
@@ -553,7 +584,7 @@ sanctum_offer_tfc(struct sanctum_packet *pkt)
 		pkt->length = sanctum->tun_mtu +
 		    sizeof(struct sanctum_ipsec_hdr) +
 		    sizeof(struct sanctum_ipsec_tail) +
-		    sanctum_cipher_overhead();
+		    SANCTUM_TAG_LENGTH;
 		data = sanctum_packet_head(pkt);
 		nyfe_random_bytes(&data[offset], pkt->length - offset);
 	}
@@ -561,25 +592,40 @@ sanctum_offer_tfc(struct sanctum_packet *pkt)
 
 /*
  * Verify and decrypt a sanctum_offer packet.
- * Note: does not zeroize the cipher, this is the caller its responsibility.
+ * Note: does not zeroize the key, this is the caller its responsibility.
  */
 int
-sanctum_offer_decrypt(struct nyfe_agelas *cipher,
+sanctum_offer_decrypt(struct sanctum_key *key,
     struct sanctum_offer *op, int valid)
 {
 	struct timespec		ts;
-	u_int8_t		tag[32];
+	struct sanctum_cipher	cipher;
+	u_int8_t		nonce[SANCTUM_NONCE_LENGTH];
 
-	PRECOND(cipher != NULL);
+	PRECOND(key != NULL);
 	PRECOND(op != NULL);
 	PRECOND(valid > 0);
 
-	nyfe_agelas_aad(cipher, &op->hdr, sizeof(op->hdr));
-	nyfe_agelas_decrypt(cipher, &op->data, &op->data, sizeof(op->data));
-	nyfe_agelas_authenticate(cipher, tag, sizeof(tag));
+	cipher.ctx = sanctum_cipher_setup(key);
 
-	if (nyfe_mem_cmp(op->tag, tag, sizeof(op->tag)))
+	cipher.aad = &op->hdr;
+	cipher.aad_len = sizeof(op->hdr);
+
+	sanctum_offer_nonce(nonce, sizeof(nonce));
+	cipher.nonce_len = sizeof(nonce);
+	cipher.nonce = nonce;
+
+	cipher.ct = &op->data;
+	cipher.pt = &op->data;
+	cipher.tag = &op->tag[0];
+	cipher.data_len = sizeof(op->data);
+
+	if (sanctum_cipher_decrypt(&cipher) == -1) {
+		sanctum_cipher_cleanup(cipher.ctx);
 		return (-1);
+	}
+
+	sanctum_cipher_cleanup(cipher.ctx);
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = be64toh(op->data.timestamp);
