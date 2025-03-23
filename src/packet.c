@@ -122,7 +122,7 @@ sanctum_packet_crypto_checklen(struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 
 	if (pkt->length < sizeof(struct sanctum_ipsec_hdr) +
-	    sizeof(struct sanctum_ipsec_tail) + sanctum_cipher_overhead())
+	    sizeof(struct sanctum_ipsec_tail) + SANCTUM_TAG_LENGTH)
 		return (-1);
 
 	return (0);

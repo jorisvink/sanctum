@@ -43,7 +43,7 @@ sanctum_cipher_init(void)
 }
 
 /*
- * Setup the cipher for use in bless and confess.
+ * Setup the cipher for use.
  */
 void *
 sanctum_cipher_setup(struct sanctum_key *key)
@@ -64,73 +64,54 @@ sanctum_cipher_setup(struct sanctum_key *key)
 }
 
 /*
- * Returns the overhead for AES-GCM.
- * In this case it's the 16 byte tag.
- */
-size_t
-sanctum_cipher_overhead(void)
-{
-	return (crypto_aead_aes256gcm_ABYTES);
-}
-
-/*
- * Encrypt the packet data.
- * Automatically adds the integrity tag at the end of the ciphertext.
+ * Encrypt and authenticate some data in combination with the given nonce
+ * aad, etc.
  */
 void
-sanctum_cipher_encrypt(void *arg, const void *nonce, size_t nonce_len,
-    const void *aad, size_t aad_len, struct sanctum_packet *pkt)
+sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 {
-	unsigned long long	mlen;
-	u_int8_t		*data;
-	struct cipher_aes_gcm	*cipher;
+	struct cipher_aes_gcm	*ctx;
 
-	PRECOND(arg != NULL);
-	PRECOND(nonce != NULL);
-	PRECOND(nonce_len == crypto_aead_aes256gcm_NPUBBYTES);
-	PRECOND(aad != NULL);
-	PRECOND(pkt != NULL);
+	PRECOND(cipher != NULL);
 
-	VERIFY(pkt->length + crypto_aead_aes256gcm_ABYTES < sizeof(pkt->buf));
+	VERIFY(cipher->pt != NULL);
+	VERIFY(cipher->ct != NULL);
+	VERIFY(cipher->tag != NULL);
+	VERIFY(cipher->aad != NULL);
+	VERIFY(cipher->nonce != NULL);
+	VERIFY(cipher->nonce_len == SANCTUM_NONCE_LENGTH);
 
-	cipher = arg;
-	mlen = pkt->length;
-	data = sanctum_packet_data(pkt);
+	ctx = cipher->ctx;
 
-	if (crypto_aead_aes256gcm_encrypt_afternm(data, &mlen, data, mlen,
-	    aad, aad_len, NULL, nonce, &cipher->ctx) == -1)
-		return;
-
-	pkt->length += crypto_aead_aes256gcm_ABYTES;
+	if (crypto_aead_aes256gcm_encrypt_detached_afternm(cipher->ct,
+	    cipher->tag, NULL, cipher->pt, cipher->data_len, cipher->aad,
+	    cipher->aad_len, NULL, cipher->nonce, &ctx->ctx) == -1)
+		fatal("libsodium encrypt failed");
 }
 
 /*
- * Decrypt and verify a packet, returns -1 on error or 0 on success.
+ * Decrypt and authenticate some data in combination with the given nonce,
+ * aad etc. Returns -1 if the data was unable to be authenticated.
  */
 int
-sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
-    const void *aad, size_t aad_len, struct sanctum_packet *pkt)
+sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 {
-	size_t			len;
-	u_int8_t		*data;
-	struct cipher_aes_gcm	*cipher;
+	struct cipher_aes_gcm	*ctx;
 
-	PRECOND(arg != NULL);
-	PRECOND(nonce != NULL);
-	PRECOND(nonce_len == crypto_aead_aes256gcm_NPUBBYTES);
-	PRECOND(aad != NULL);
-	PRECOND(pkt != NULL);
+	PRECOND(cipher != NULL);
 
-	if (pkt->length <
-	    sizeof(struct sanctum_ipsec_hdr) + crypto_aead_aes256gcm_ABYTES)
-		return (-1);
+	VERIFY(cipher->pt != NULL);
+	VERIFY(cipher->ct != NULL);
+	VERIFY(cipher->tag != NULL);
+	VERIFY(cipher->aad != NULL);
+	VERIFY(cipher->nonce != NULL);
+	VERIFY(cipher->nonce_len == SANCTUM_NONCE_LENGTH);
 
-	cipher = arg;
-	data = sanctum_packet_data(pkt);
-	len = pkt->length - sizeof(struct sanctum_ipsec_hdr);
+	ctx = cipher->ctx;
 
-	if (crypto_aead_aes256gcm_decrypt_afternm(data, NULL, NULL,
-	    data, len, aad, aad_len, nonce, &cipher->ctx) == -1)
+	if (crypto_aead_aes256gcm_decrypt_detached_afternm(cipher->pt,
+	    NULL, cipher->ct, cipher->data_len, cipher->tag, cipher->aad,
+	    cipher->aad_len, cipher->nonce, &ctx->ctx) == -1)
 		return (-1);
 
 	return (0);

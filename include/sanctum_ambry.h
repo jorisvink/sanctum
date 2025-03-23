@@ -24,16 +24,22 @@
 #define SANCTUM_AMBRY_SEED_LEN		64
 
 /* Length of a KEK used for an Ambry. */
-#define SANCTUM_AMBRY_KEK_LEN		32
+#define SANCTUM_AMBRY_KEK_LEN		SANCTUM_KEY_LENGTH
 
 /* Length of the key carried in an Ambry. */
-#define SANCTUM_AMBRY_KEY_LEN		32
-
-/* Length of OKM to generate. */
-#define SANCTUM_AMBRY_OKM_LEN		64
+#define SANCTUM_AMBRY_KEY_LEN		SANCTUM_KEY_LENGTH
 
 /* Length of an authentication tag for an Ambry. */
-#define SANCTUM_AMBRY_TAG_LEN		32
+#define SANCTUM_AMBRY_TAG_LEN		SANCTUM_TAG_LENGTH
+
+/*
+ * The ambry AAD data.
+ */
+struct sanctum_ambry_aad {
+	u_int16_t	tunnel;
+	u_int32_t	generation;
+	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
+} __attribute__((packed));
 
 /*
  * The ambry header, just 4 bytes that denotes the generation.

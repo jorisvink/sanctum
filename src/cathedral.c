@@ -51,7 +51,7 @@
 #define CATHEDRAL_CATACOMB_LABEL	"SANCTUM.CATHEDRAL.CATACOMB"
 
 /* The length of an ambry bundle. */
-#define CATHEDRAL_AMBRY_BUNDLE_LEN	8486416
+#define CATHEDRAL_AMBRY_BUNDLE_LEN	7441936
 
 /*
  * A known tunnel and its endpoint, or a federated cathedral.
@@ -382,7 +382,7 @@ cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
     struct sockaddr_in *sin)
 {
 	struct sanctum_offer		*op;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 
 	PRECOND(secret != NULL);
 	PRECOND(pkt != NULL);
@@ -425,7 +425,7 @@ static int
 cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
     u_int32_t id, int catacomb)
 {
-	struct nyfe_agelas	cipher;
+	struct sanctum_key	cipher;
 	const char		*label;
 	char			*secret, path[1024];
 
@@ -618,7 +618,7 @@ cathedral_offer_federate(struct flockent *flock, struct sanctum_packet *update)
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	u_int8_t			*ptr;
-	struct nyfe_agelas		cipher;
+	struct sanctum_key		cipher;
 	struct tunnel			*tunnel;
 
 	PRECOND(flock != NULL);

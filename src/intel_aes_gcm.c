@@ -25,8 +25,6 @@
 
 #include "sanctum.h"
 
-#define CIPHER_AES_GCM_TAG_SIZE		16
-
 /*
  * The local cipher state.
  */
@@ -55,7 +53,7 @@ sanctum_cipher_init(void)
 }
 
 /*
- * Setup the cipher.
+ * Setup the cipher for use.
  */
 void *
 sanctum_cipher_setup(struct sanctum_key *key)
@@ -74,79 +72,56 @@ sanctum_cipher_setup(struct sanctum_key *key)
 }
 
 /*
- * Returns the overhead for AES-GCM. In this case it's the
- * 16 byte tag.
- */
-size_t
-sanctum_cipher_overhead(void)
-{
-	return (CIPHER_AES_GCM_TAG_SIZE);
-}
-
-/*
- * Encrypt the packet data.
- * Automatically adds the integrity tag at the end of the ciphertext.
+ * Encrypt and authenticate some data in combination with the given nonce
+ * aad, etc.
  */
 void
-sanctum_cipher_encrypt(void *arg, const void *nonce, size_t nonce_len,
-    const void *aad, size_t aad_len, struct sanctum_packet *pkt)
+sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 {
-	union deconst		nptr;
-	struct cipher_aes_gcm	*cipher;
-	u_int8_t		*data, *tag;
+	struct cipher_aes_gcm	*ctx;
 
-	PRECOND(arg != NULL);
-	PRECOND(nonce != NULL);
-	PRECOND(aad != NULL);
-	PRECOND(pkt != NULL);
+	PRECOND(cipher != NULL);
 
-	VERIFY(pkt->length + CIPHER_AES_GCM_TAG_SIZE < sizeof(pkt->buf));
+	VERIFY(cipher->pt != NULL);
+	VERIFY(cipher->ct != NULL);
+	VERIFY(cipher->tag != NULL);
+	VERIFY(cipher->aad != NULL);
+	VERIFY(cipher->nonce != NULL);
+	VERIFY(cipher->nonce_len == SANCTUM_NONCE_LENGTH);
 
-	cipher = arg;
-	nptr.cp = nonce;
+	ctx = cipher->ctx;
 
-	data = sanctum_packet_data(pkt);
-	tag = data + pkt->length;
-
-	aes_gcm_enc_256(&cipher->key, &cipher->gcm, data, data,
-	    pkt->length, nptr.p, aad, aad_len, tag, CIPHER_AES_GCM_TAG_SIZE);
-
-	pkt->length += CIPHER_AES_GCM_TAG_SIZE;
+	aes_gcm_enc_256(&ctx->key, &ctx->gcm, cipher->ct, cipher->pt,
+	    cipher->data_len, cipher->nonce, cipher->aad, cipher->aad_len,
+	    cipher->tag, SANCTUM_TAG_LENGTH);
 }
 
 /*
- * Decrypt and verify a packet.
+ * Decrypt and authenticate some data in combination with the given nonce,
+ * aad etc. Returns -1 if the data was unable to be authenticated.
  */
 int
-sanctum_cipher_decrypt(void *arg, const void *nonce, size_t nonce_len,
-    const void *aad, size_t aad_len, struct sanctum_packet *pkt)
+sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 {
-	union deconst		nptr;
-	struct cipher_aes_gcm	*cipher;
-	size_t			ctlen, len;
-	u_int8_t		*data, *tag, calc[CIPHER_AES_GCM_TAG_SIZE];
+	struct cipher_aes_gcm	*ctx;
+	u_int8_t		tag[SANCTUM_TAG_LENGTH];
 
-	PRECOND(arg != NULL);
-	PRECOND(nonce != NULL);
-	PRECOND(aad != NULL);
-	PRECOND(pkt != NULL);
+	PRECOND(cipher != NULL);
 
-	if (pkt->length <
-	    sizeof(struct sanctum_ipsec_hdr) + CIPHER_AES_GCM_TAG_SIZE)
-		return (-1);
+	VERIFY(cipher->pt != NULL);
+	VERIFY(cipher->ct != NULL);
+	VERIFY(cipher->tag != NULL);
+	VERIFY(cipher->aad != NULL);
+	VERIFY(cipher->nonce != NULL);
+	VERIFY(cipher->nonce_len == SANCTUM_NONCE_LENGTH);
 
-	cipher = arg;
-	nptr.cp = nonce;
-	len = pkt->length - sizeof(struct sanctum_ipsec_hdr);
+	ctx = cipher->ctx;
 
-	data = sanctum_packet_data(pkt);
-	tag = &data[len - CIPHER_AES_GCM_TAG_SIZE];
-	ctlen = tag - data;
+	aes_gcm_dec_256(&ctx->key, &ctx->gcm, cipher->pt, cipher->ct,
+	    cipher->data_len, cipher->nonce, cipher->aad, cipher->aad_len,
+	    tag, sizeof(tag));
 
-	aes_gcm_dec_256(&cipher->key, &cipher->gcm, data, data,
-	    ctlen, nptr.p, aad, aad_len, calc, sizeof(calc));
-
-	if (nyfe_mem_cmp(tag, calc, sizeof(calc)))
+	if (nyfe_mem_cmp(cipher->tag, tag, sizeof(tag)))
 		return (-1);
 
 	return (0);
