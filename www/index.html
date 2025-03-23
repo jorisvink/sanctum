@@ -106,10 +106,10 @@ a, a:visited {
     </p>
 
     <p>
-        Using the <strong>CIPHER</strong> environment variable you can however
-        change traffic encryption to use <a href="https://github.com/jorisvink/sanctum/blob/master/nyfe/src/agelas.c" target="_blank">Agelas</a>,
-        which is an experimental duplex-sponge AEAD cipher based on the
-        Keccak-p[1600,24] permutation.
+        For management traffic unique encryption keys are derived from the
+        shared secret per message. In this case because the keys are freshly
+        derived the nonces used in this construction are fixed as there is no
+        risk for (key, nonce) pair re-use in this specific scenario.
     </p>
 
     <h2>Key exchange</h2>
@@ -128,9 +128,7 @@ a, a:visited {
     </p>
 
     <p>
-        The underlying algorithm for wrapping the generated session key is
-        the AEAD duplex-sponge stream cipher mentioned earlier. The entire
-        key derivation and offer process is as follows:
+        The entire key derivation and offer process is as follows:
     </p>
 
 <pre>
@@ -151,7 +149,7 @@ a, a:visited {
         header = magic || spi || seed
         encdata = id || now || key || salt
 
-        encdata = Agelas(wk, aad=header, encdata)
+        encdata = AES256-GCM(wk, nonce=1, aad=header, encdata)
         send(header || encdata)
 </pre>
 
