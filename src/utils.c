@@ -532,6 +532,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 /*
  * Encrypt and authenticate a sanctum_offer data structure.
  * Note: does not zeroize the key, this is the caller its responsibility.
+ * Note: do not call this with the same key twice, the given key shall
+ * be derived using sanctum_cipher_kdf() first.
  */
 void
 sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)
