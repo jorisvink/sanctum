@@ -61,6 +61,7 @@ static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
+static void	config_parse_cathedral_p2p_sync(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
@@ -99,6 +100,7 @@ static const struct {
 	{ "cathedral_flock",	config_parse_cathedral_flock },
 	{ "cathedral_secret",	config_parse_cathedral_secret },
 	{ "cathedral_nat_port",	config_parse_cathedral_nat_port },
+	{ "cathedral_p2p_sync",	config_parse_cathedral_p2p_sync },
 	{ NULL,			NULL },
 };
 
@@ -661,6 +663,23 @@ config_parse_cathedral_nat_port(char *opt)
 
 	if (sscanf(opt, "%hu", &sanctum->cathedral_nat_port) != 1)
 		fatal("spi <16-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_p2p_sync configuration option.
+ */
+static void
+config_parse_cathedral_p2p_sync(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_P2P_SYNC;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags &= ~SANCTUM_FLAG_CATHEDRAL_P2P_SYNC;
+	} else {
+		fatal("invalid value '%s' for cathedral_p2p_sync", opt);
+	}
 }
 
 /*

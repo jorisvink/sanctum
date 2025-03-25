@@ -477,6 +477,9 @@ struct sanctum_ether {
 /* If we should create a tap device instead of a tun device. */
 #define SANCTUM_FLAG_USE_TAP		(1 << 6)
 
+/* P2P federated sync is enabled in a cathedral. */
+#define SANCTUM_FLAG_CATHEDRAL_P2P_SYNC	(1 << 7)
+
 /*
  * The modes in which sanctum can run.
  *
