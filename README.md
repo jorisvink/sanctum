@@ -85,7 +85,7 @@ interface without passing the encryption process.
 
 A sanctum instance is responsible for sending its **RX** key to
 the other side. It does this by periodically generating a new
-key uniformly at random and encrypting it with a secret derived
+key uniformly at random and encrypting it with a key derived
 from the underlying shared secret between both parties.
 
 See docs/crypto.md for details on the session key and shared secrets.
