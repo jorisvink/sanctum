@@ -729,8 +729,8 @@ chapel_offer_create(u_int64_t now, const char *reason)
 }
 
 /*
- * Generate a new encrypted packet containing our current offer for
- * our peer and submit it via the purgatory process.
+ * Generate a new encrypted packet containing our current key offer
+ * for our peer and submit it via the purgatory process.
  */
 static void
 chapel_offer_encrypt(u_int64_t now)
