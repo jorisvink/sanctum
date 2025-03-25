@@ -530,18 +530,34 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		}
 	} else {
 		tun->age = now;
-		tun->port = pkt->addr.sin_port;
-		tun->ip = pkt->addr.sin_addr.s_addr;
-
 		tun->rx_active = info->rx_active;
 		tun->rx_pending = info->rx_pending;
 
-		if (catacomb == 0) {
+		if (catacomb) {
+			tun->federated = 1;
+			tun->ip = info->peer_ip;
+			tun->peerinfo = info->id;
+			tun->port = info->peer_port;
+		} else {
 			tun->federated = 0;
+			tun->port = pkt->addr.sin_port;
+			tun->ip = pkt->addr.sin_addr.s_addr;
+
+			if (tun->peerinfo)
+				info->id = 1;
+			else
+				info->id = 0;
+
+			if (tun->peerinfo) {
+				info->peer_ip = tun->ip;
+				info->peer_port = tun->port;
+			} else {
+				info->peer_port = sanctum->local.sin_port;
+				info->peer_ip = sanctum->local.sin_addr.s_addr;
+			}
+
 			info->tunnel = htobe16(info->tunnel);
 			cathedral_offer_federate(flock, pkt);
-		} else {
-			tun->federated = 1;
 		}
 	}
 }
@@ -932,9 +948,6 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	if ((peer = cathedral_tunnel_lookup(flock, tunnel)) == NULL)
 		return;
 
-	if (peer->federated == 1)
-		return;
-
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
@@ -945,7 +958,7 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	info->local_port = sin->sin_port;
 	info->local_ip = sin->sin_addr.s_addr;
 
-	if (peer->peerinfo) {
+	if (peer->peerinfo || peer->federated) {
 		info->peer_ip = peer->ip;
 		info->peer_port = peer->port;
 	} else {
