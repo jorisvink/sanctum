@@ -67,6 +67,10 @@ struct tunnel {
 	u_int32_t		rx_active;
 	u_int32_t		rx_pending;
 
+	/* p2p sync */
+	u_int32_t		p2p_ip;
+	u_int16_t		p2p_port;
+
 	/* leaky bucket for bw handling. */
 	u_int32_t		limit;
 	u_int32_t		current;
@@ -467,6 +471,7 @@ static void
 cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
     u_int64_t now, int nat, int catacomb)
 {
+	struct in_addr			in;
 	u_int8_t			tid;
 	struct sanctum_offer		*op;
 	struct tunnel			*tun;
@@ -521,12 +526,29 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (nat) {
+		if (tun->federated) {
+			sanctum_log(LOG_INFO,
+			    "%" PRIx64 ":%04x NAT for federated tunnel",
+			    flock->id, info->tunnel);
+			return;
+		}
+
 		if ((tun->ip == pkt->addr.sin_addr.s_addr &&
 		    tun->port != pkt->addr.sin_port) ||
 		    tun->ip != pkt->addr.sin_addr.s_addr) {
+			tun->p2p_ip = 0;
+			tun->p2p_port = 0;
 			tun->peerinfo = 0;
+			sanctum_log(LOG_INFO,
+			    "%" PRIx64 ":%04x NAT not suitable use p2p",
+			    flock->id, info->tunnel);
 		} else {
 			tun->peerinfo = 1;
+			tun->p2p_port = pkt->addr.sin_port;
+			tun->p2p_ip = pkt->addr.sin_addr.s_addr;
+			sanctum_log(LOG_INFO,
+			    "%" PRIx64 ":%04x NAT suitable for p2p",
+			    flock->id, info->tunnel);
 		}
 
 		return;
@@ -536,35 +558,27 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	tun->rx_active = info->rx_active;
 	tun->rx_pending = info->rx_pending;
 
+	tun->port = pkt->addr.sin_port;
+	tun->ip = pkt->addr.sin_addr.s_addr;
+
 	if (catacomb) {
 		tun->federated = 1;
-		if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) &&
-		    info->peer_ip != 0 && info->peer_port != 0) {
-			tun->ip = info->peer_ip;
-			tun->peerinfo = info->id;
-			tun->port = info->peer_port;
-		} else {
-			tun->port = pkt->addr.sin_port;
-			tun->ip = pkt->addr.sin_addr.s_addr;
-		}
+		tun->peerinfo = info->id;
+		tun->p2p_ip = info->peer_ip;
+		tun->p2p_port = info->peer_port;
+
+		in.s_addr = tun->p2p_ip;
+		sanctum_log(LOG_INFO,
+		    "%" PRIx64 ":%04x federated update p2p address %s:%u",
+		    flock->id, info->tunnel,
+		    inet_ntoa(in), be16toh(tun->p2p_port));
 	} else {
 		tun->federated = 0;
-		tun->port = pkt->addr.sin_port;
-		tun->ip = pkt->addr.sin_addr.s_addr;
 
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) {
-			if (tun->peerinfo)
-				info->id = 1;
-			else
-				info->id = 0;
-
-			if (tun->peerinfo) {
-				info->peer_ip = tun->ip;
-				info->peer_port = tun->port;
-			} else {
-				info->peer_port = sanctum->local.sin_port;
-				info->peer_ip = sanctum->local.sin_addr.s_addr;
-			}
+			info->id = tun->peerinfo;
+			info->peer_ip = tun->ip;
+			info->peer_port = tun->port;
 		} else {
 			info->id = 0;
 			info->peer_ip = 0;
@@ -976,9 +990,9 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	info->local_port = sin->sin_port;
 	info->local_ip = sin->sin_addr.s_addr;
 
-	if (peer->peerinfo || peer->federated) {
-		info->peer_ip = peer->ip;
-		info->peer_port = peer->port;
+	if (peer->peerinfo) {
+		info->peer_ip = peer->p2p_ip;
+		info->peer_port = peer->p2p_port;
 	} else {
 		info->peer_port = sanctum->local.sin_port;
 		info->peer_ip = sanctum->local.sin_addr.s_addr;
