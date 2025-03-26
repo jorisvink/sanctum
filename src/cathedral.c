@@ -471,7 +471,6 @@ static void
 cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
     u_int64_t now, int nat, int catacomb)
 {
-	struct in_addr			in;
 	u_int8_t			tid;
 	struct sanctum_offer		*op;
 	struct tunnel			*tun;
@@ -539,16 +538,10 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			tun->p2p_ip = 0;
 			tun->p2p_port = 0;
 			tun->peerinfo = 0;
-			sanctum_log(LOG_INFO,
-			    "%" PRIx64 ":%04x NAT not suitable use p2p",
-			    flock->id, info->tunnel);
 		} else {
 			tun->peerinfo = 1;
 			tun->p2p_port = pkt->addr.sin_port;
 			tun->p2p_ip = pkt->addr.sin_addr.s_addr;
-			sanctum_log(LOG_INFO,
-			    "%" PRIx64 ":%04x NAT suitable for p2p",
-			    flock->id, info->tunnel);
 		}
 
 		return;
@@ -566,12 +559,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		tun->peerinfo = info->id;
 		tun->p2p_ip = info->peer_ip;
 		tun->p2p_port = info->peer_port;
-
-		in.s_addr = tun->p2p_ip;
-		sanctum_log(LOG_INFO,
-		    "%" PRIx64 ":%04x federated update p2p address %s:%u",
-		    flock->id, info->tunnel,
-		    inet_ntoa(in), be16toh(tun->p2p_port));
 	} else {
 		tun->federated = 0;
 
