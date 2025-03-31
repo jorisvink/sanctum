@@ -115,9 +115,9 @@ variable at compile time with either:
 - libsodium-aes-gcm (AES256-GCM via libsodium, default, most portable).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 
-## Unidirectional tunnels
+## One-directional tunnels
 
-Sanctum supports unidirectional tunnels, this is called the pilgrim
+Sanctum supports one-directional tunnels, this is called the pilgrim
 or shrine mode.
 
 In pilgrim mode, sanctum will be able to send encrypted traffic to its
