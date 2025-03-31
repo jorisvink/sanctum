@@ -217,7 +217,7 @@ struct sanctum_ambry_offer {
 } __attribute__((packed));
 
 struct sanctum_info_offer {
-	u_int32_t		id;
+	u_int32_t		flags;
 
 	u_int32_t		peer_ip;
 	u_int16_t		peer_port;
@@ -230,6 +230,8 @@ struct sanctum_info_offer {
 
 	u_int32_t		rx_active;
 	u_int32_t		rx_pending;
+
+	u_int64_t		instance;
 } __attribute__((packed));
 
 struct sanctum_liturgy_offer {

@@ -62,6 +62,7 @@ struct tunnel {
 	u_int32_t		ip;
 	u_int64_t		age;
 	u_int16_t		port;
+	u_int64_t		instance;
 	int			peerinfo;
 	int			federated;
 	u_int32_t		rx_active;
@@ -488,6 +489,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 
 	info = &op->data.offer.info;
 	info->tunnel = be16toh(info->tunnel);
+	info->instance = be64toh(info->instance);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
 	tid = info->tunnel >> 8;
@@ -509,6 +511,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			fatal("calloc failed");
 
 		tun->id = info->tunnel;
+		tun->instance = info->instance;
 		tun->limit = (bw / 8) * 1024 * 1024;
 		tun->drain_per_ms = tun->limit / 1000;
 
@@ -518,7 +521,11 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		    flock->id, info->tunnel, bw, catacomb);
 	 }
 
-	if (catacomb == 0 && nat == 0) {
+	if (info->instance != tun->instance) {
+		tun->peerinfo = 0;
+		sanctum_log(LOG_INFO, "%" PRIx64 ":%04x peer restart detected",
+		    flock->id, info->tunnel);
+	} else if (catacomb == 0 && nat == 0) {
 		cathedral_ambry_send(flock, info, &pkt->addr, id);
 		if (tun->peerinfo)
 			cathedral_info_send(flock, info, &pkt->addr, id);
@@ -551,28 +558,32 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	tun->rx_active = info->rx_active;
 	tun->rx_pending = info->rx_pending;
 
+	tun->instance = info->instance;
 	tun->port = pkt->addr.sin_port;
 	tun->ip = pkt->addr.sin_addr.s_addr;
 
 	if (catacomb) {
 		tun->federated = 1;
-		tun->peerinfo = info->id;
+		tun->peerinfo = info->flags;
 		tun->p2p_ip = info->peer_ip;
 		tun->p2p_port = info->peer_port;
 	} else {
 		tun->federated = 0;
 
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) {
-			info->id = tun->peerinfo;
 			info->peer_ip = tun->ip;
 			info->peer_port = tun->port;
+			info->flags = tun->peerinfo;
 		} else {
-			info->id = 0;
+			info->flags = 0;
 			info->peer_ip = 0;
 			info->peer_port = 0;
 		}
 
 		info->tunnel = htobe16(info->tunnel);
+		info->instance = htobe64(info->instance);
+		info->ambry_generation = htobe32(info->ambry_generation);
+
 		cathedral_offer_federate(flock, pkt);
 	}
 }
@@ -977,7 +988,18 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	info->local_port = sin->sin_port;
 	info->local_ip = sin->sin_addr.s_addr;
 
-	if (peer->peerinfo) {
+	/*
+	 * Sanctum does not share any internal ip addresses with the cathedral
+	 * and thus the cathedral cannot determine if they would be able to
+	 * use those internal ones to communicate when coming from the same
+	 * external ip.
+	 *
+	 * This means that two peers sharing the same external ip need to
+	 * relay their traffic, otherwise their fw/gw will be unhappy when
+	 * they start sending traffic to its external ip from an internal
+	 * interface, which is usually going to be the case.
+	 */
+	if (peer->peerinfo && peer->p2p_ip != sin->sin_addr.s_addr) {
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {

@@ -360,6 +360,7 @@ chapel_cathedral_send_info(u_int64_t magic)
 	op->hdr.flock = htobe64(sanctum->cathedral_flock);
 
 	info = &op->data.offer.info;
+	info->instance = htobe64(local_id);
 	info->tunnel = htobe16(sanctum->tun_spi);
 	info->ambry_generation = htobe32(ambry_generation);
 	info->rx_active = sanctum_atomic_read(&sanctum->rx.spi);
