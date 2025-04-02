@@ -182,6 +182,10 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 				    inet_ntoa(peer.sin_addr), errno_s);
 				break;
 			}
+			if (errno == ENETDOWN) {
+				sanctum_log(LOG_INFO, "network is down");
+				break;
+			}
 			fatal("sendto: %s", errno_s);
 		}
 		break;
