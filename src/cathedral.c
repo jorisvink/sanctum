@@ -44,6 +44,9 @@
 /* The interval at which we check if settings changed. */
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
+/* The interval at which we send remembrances to peers. */
+#define CATHEDRAL_REMEMBRANCE_NEXT	(25 * 1000)
+
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
 
@@ -60,8 +63,9 @@ struct tunnel {
 	/* tunnel information. */
 	u_int32_t		id;
 	u_int32_t		ip;
-	u_int64_t		age;
 	u_int16_t		port;
+	u_int64_t		age;
+	u_int64_t		update;
 	u_int64_t		instance;
 	int			peerinfo;
 	int			federated;
@@ -167,6 +171,8 @@ static void	cathedral_info_send(struct flockent *,
 		    u_int32_t);
 static void	cathedral_liturgy_send(struct flockent *,
 		    struct liturgy *, struct sockaddr_in *, u_int32_t);
+static void	cathedral_remembrance_send(struct flockent *,
+		    struct sockaddr_in *, u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_prune(struct flockent *);
@@ -183,6 +189,9 @@ static struct sanctum_proc_io	*io = NULL;
 
 /* The list of federation cathedrals we can forward too. */
 static LIST_HEAD(, tunnel)	federations;
+
+/* The current number of configured active federations. */
+static u_int8_t			federation_count = 0;
 
 /* The list of configured flocks (congregations). */
 static LIST_HEAD(, flockent)	flocks;
@@ -304,9 +313,8 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 
 		if (srv == NULL) {
 			sanctum_log(LOG_INFO,
-			    "CATACOMB update from unknown cathedral %s:%u",
-			    inet_ntoa(pkt->addr.sin_addr),
-			    be16toh(pkt->addr.sin_port));
+			    "CATACOMB update from unknown cathedral %s",
+			    sanctum_inet_string(&pkt->addr));
 			sanctum_packet_release(pkt);
 			return;
 		}
@@ -510,6 +518,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		if ((tun = calloc(1, sizeof(*tun))) == NULL)
 			fatal("calloc failed");
 
+		tun->update = now;
 		tun->id = info->tunnel;
 		tun->instance = info->instance;
 		tun->limit = (bw / 8) * 1024 * 1024;
@@ -527,8 +536,15 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		    flock->id, info->tunnel);
 	} else if (catacomb == 0 && nat == 0) {
 		cathedral_ambry_send(flock, info, &pkt->addr, id);
+
 		if (tun->peerinfo)
 			cathedral_info_send(flock, info, &pkt->addr, id);
+
+		if (now >= tun->update &&
+		    (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
+			tun->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+			cathedral_remembrance_send(flock, &pkt->addr, id);
+		}
 	}
 
 	if (nat) {
@@ -1052,6 +1068,52 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 }
 
 /*
+ * Send a list of all our currently configured federated cathedrals.
+ * We include ourselves in this in the first slot of the response.
+ */
+static void
+cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
+    u_int32_t id)
+{
+	int					idx;
+	struct sanctum_offer			*op;
+	struct sanctum_packet			*pkt;
+	struct sanctum_remembrance_offer	*list;
+	struct tunnel				*cathedral;
+	char					secret[1024];
+
+	PRECOND(flock != NULL);
+	PRECOND(sin != NULL);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	op = sanctum_offer_init(pkt, id,
+	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_REMEMBRANCE);
+
+	idx = 1;
+	list = &op->data.offer.remembrance;
+
+	list->ports[0] = sanctum->local.sin_port;
+	list->ips[0] = sanctum->local.sin_addr.s_addr;
+
+	LIST_FOREACH(cathedral, &federations, list) {
+		if (idx >= SANCTUM_CATHEDRALS_MAX)
+			fatal("how did you configure too many cathedrals?");
+
+		list->ips[idx] = cathedral->ip;
+		list->ports[idx] = cathedral->port;
+
+		idx++;
+	}
+
+	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
+
+	if (cathedral_offer_send(secret, pkt, sin) == -1)
+		sanctum_packet_release(pkt);
+}
+
+/*
  * Check if we should send an ambry to the peer by checking if its
  * ambry generation mismatches from the one we have loaded.
  *
@@ -1251,6 +1313,7 @@ cathedral_settings_reload(void)
 	}
 
 	flock = NULL;
+	federation_count = 0;
 	LIST_INIT(&federations);
 
 	while ((kw = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
@@ -1330,6 +1393,11 @@ cathedral_settings_federate(const char *option)
 
 	PRECOND(option != NULL);
 
+	if (federation_count >= SANCTUM_CATHEDRALS_MAX - 1) {
+		sanctum_log(LOG_NOTICE, "too many configured federations");
+		return;
+	}
+
 	if (sscanf(option, "%15s %hu", ip, &port) != 2) {
 		sanctum_log(LOG_NOTICE,
 		    "format error '%s' in federate-to", option);
@@ -1355,6 +1423,8 @@ cathedral_settings_federate(const char *option)
 	tunnel->ip = sin.sin_addr.s_addr;
 
 	sanctum_log(LOG_INFO, "federating to %s:%u", ip, port);
+
+	federation_count++;
 	LIST_INSERT_HEAD(&federations, tunnel, list);
 }
 

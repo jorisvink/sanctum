@@ -20,6 +20,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,12 +50,15 @@ struct rx_offer {
 };
 
 static void	chapel_peer_check(u_int64_t);
+static void	chapel_cathedrals_remembrance(void);
+
+static void	chapel_cathedral_next(void);
 static void	chapel_cathedral_notify(u_int64_t);
 static void	chapel_cathedral_send_info(u_int64_t);
-
 static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_packet(struct sanctum_packet *, u_int64_t);
+static void	chapel_cathedral_remembrance(struct sanctum_offer *, u_int64_t);
 
 static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
 static void	chapel_ambry_unwrap(struct sanctum_ambry_offer *, u_int64_t);
@@ -84,6 +88,12 @@ static u_int64_t		offer_next = 0;
 
 /* The next time we update the cathedral. */
 static u_int64_t		cathedral_next = 0;
+
+/* The last time we heard from our current cathedral. */
+static u_int64_t		cathedral_last = 0;
+
+/* The current index into the cathedrals remembrance list. */
+static u_int8_t			cathedral_idx = 0;
 
 /* Current offer TTL and next send intervals. */
 static u_int64_t		offer_ttl = 5;
@@ -135,6 +145,11 @@ sanctum_chapel(struct sanctum_proc *proc)
 	running = 1;
 	last_rtime = 0;
 	delay_check = 0;
+	cathedral_last = sanctum_atomic_read(&sanctum->uptime);
+
+	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
+	    sanctum->cathedral_remembrance != NULL)
+		chapel_cathedrals_remembrance();
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -170,8 +185,18 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 		last_rtime = ts.tv_sec;
 
-		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)
+		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+			if (cathedral_last != 0 &&
+			    (now - cathedral_last) >= 30) {
+				sanctum_log(LOG_INFO,
+				    "cathedral %s is unresponsive",
+				    sanctum_inet_string(&sanctum->cathedral));
+				cathedral_last = now;
+				chapel_cathedral_next();
+			}
+
 			chapel_cathedral_notify(now);
+		}
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
 			chapel_packet_handle(pkt, now);
@@ -316,6 +341,30 @@ chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 }
 
 /*
+ * Select the next cathedral from our remembrance list, if we had one.
+ */
+static void
+chapel_cathedral_next(void)
+{
+	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
+
+	if (sanctum->cathedral_remembrance == NULL)
+		return;
+
+	if (sanctum->cathedrals[0].sin_addr.s_addr == 0)
+		return;
+
+	cathedral_idx = (cathedral_idx + 1) & (SANCTUM_CATHEDRALS_MAX - 1);
+	if (sanctum->cathedrals[cathedral_idx].sin_addr.s_addr == 0)
+		cathedral_idx = 0;
+
+	sanctum->cathedral = sanctum->cathedrals[cathedral_idx];
+
+	sanctum_log(LOG_INFO, "switching to cathedral %s",
+	    sanctum_inet_string(&sanctum->cathedral));
+}
+
+/*
  * Check if it is time we notify our cathedral about the tunnel we
  * are configured to carry.
  */
@@ -366,6 +415,9 @@ chapel_cathedral_send_info(u_int64_t magic)
 	info->rx_active = sanctum_atomic_read(&sanctum->rx.spi);
 	info->rx_pending = sanctum_atomic_read(&sanctum->rx_pending);
 
+	if (sanctum->cathedral_remembrance != NULL)
+		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
+
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
@@ -412,6 +464,7 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
 
+	cathedral_last = now;
 	op = sanctum_packet_head(pkt);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
@@ -437,10 +490,59 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	case SANCTUM_OFFER_TYPE_INFO:
 		chapel_cathedral_p2p(op, now);
 		break;
+	case SANCTUM_OFFER_TYPE_REMEMBRANCE:
+		chapel_cathedral_remembrance(op, now);
+		break;
 	default:
 		sanctum_log(LOG_NOTICE, "bad offer type from cathedral (%u)",
 		    op->data.type);
 		break;
+	}
+}
+
+/*
+ * We received a list of all cathedrals from the one we are currently
+ * talking too. We save the list for later if a path for it was
+ * configured, otherwise this is just ignored.
+ */
+static void
+chapel_cathedral_remembrance(struct sanctum_offer *op, u_int64_t now)
+{
+	int					fd, i;
+	struct sanctum_remembrance_offer	*list;
+
+	PRECOND(op != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
+
+	if (sanctum->cathedral_remembrance == NULL) {
+		sanctum_log(LOG_NOTICE,
+		    "cathedral sent an unsolicited remembrance");
+		return;
+	}
+
+	if ((fd = open(sanctum->cathedral_remembrance,
+	    O_CREAT | O_TRUNC | O_WRONLY, 0500)) == -1) {
+		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
+		    sanctum->cathedral_remembrance, errno_s);
+		return;
+	}
+
+	cathedral_idx = 0;
+	list = &op->data.offer.remembrance;
+
+	for (i = 0; i < SANCTUM_CATHEDRALS_MAX; i++) {
+		if (list->ips[i] == 0 || list->ports[i] == 0)
+			break;
+		sanctum->cathedrals[i].sin_port = list->ports[i];
+		sanctum->cathedrals[i].sin_addr.s_addr = list->ips[i];
+	}
+
+	nyfe_file_write(fd, list->ips, sizeof(list->ips));
+	nyfe_file_write(fd, list->ports, sizeof(list->ports));
+
+	if (close(fd) == -1) {
+		sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
+		    sanctum->cathedral_remembrance, errno_s);
 	}
 }
 
@@ -889,4 +991,46 @@ chapel_erase(struct sanctum_key *state, u_int32_t spi)
 	if (!sanctum_atomic_cas_simple(&state->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
 		fatal("failed to swap key state to erase");
+}
+
+/*
+ * Load previously stored cathedrals from the configured cathedral_remembrance
+ * file. This should only be called when we have a cathedral configured and a
+ * remembrance file was configured.
+ */
+static void
+chapel_cathedrals_remembrance(void)
+{
+	int		fd, i;
+	u_int32_t	ips[SANCTUM_CATHEDRALS_MAX];
+	u_int16_t	ports[SANCTUM_CATHEDRALS_MAX];
+
+	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
+	PRECOND(sanctum->cathedral_remembrance != NULL);
+
+	nyfe_mem_zero(&sanctum->cathedrals, sizeof(sanctum->cathedrals));
+
+	fd = sanctum_file_open(sanctum->cathedral_remembrance, NULL);
+	if (fd == -1)
+		return;
+
+	if (nyfe_file_read(fd, ips, sizeof(ips)) != sizeof(ips) ||
+	    nyfe_file_read(fd, ports, sizeof(ports)) != sizeof(ports)) {
+		sanctum_log(LOG_NOTICE,
+		    "ignoring malformed cathedral_remembrance file");
+		goto cleanup;
+	}
+
+	for (i = 0; i < SANCTUM_CATHEDRALS_MAX; i++) {
+		if (ips[i] == 0 || ports[i] == 0)
+			break;
+
+		sanctum->cathedrals[i].sin_port = ports[i];
+		sanctum->cathedrals[i].sin_addr.s_addr = ips[i];
+	}
+
+	sanctum_log(LOG_INFO, "%d cathedrals in remembrance", i);
+
+cleanup:
+	(void)close(fd);
 }

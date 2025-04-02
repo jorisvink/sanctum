@@ -62,6 +62,7 @@ static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_cathedral_p2p_sync(char *);
+static void	config_parse_cathedral_remembrance(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
@@ -74,33 +75,34 @@ static const struct {
 	const char		*option;
 	void			(*cb)(char *);
 } keywords[] = {
-	{ "kek",		config_parse_kek },
-	{ "spi",		config_parse_spi },
-	{ "tap",		config_parse_tap },
-	{ "tfc",		config_parse_tfc },
-	{ "mode",		config_parse_mode },
-	{ "peer",		config_parse_peer },
-	{ "local",		config_parse_local },
-	{ "route",		config_parse_route },
-	{ "run",		config_parse_runas },
-	{ "descr",		config_parse_descr },
-	{ "accept",		config_parse_accept },
-	{ "tunnel",		config_parse_tunnel },
-	{ "secret",		config_parse_secret },
-	{ "control",		config_parse_control },
-	{ "pidfile",		config_parse_pidfile },
-	{ "instance",		config_parse_instance },
-	{ "cathedral",		config_parse_cathedral },
-	{ "secretdir",		config_parse_secretdir },
-	{ "settings",		config_parse_settings },
-	{ "encapsulation",	config_parse_encapsulation },
-	{ "liturgy_group",	config_parse_liturgy_group },
-	{ "liturgy_prefix",	config_parse_liturgy_prefix },
-	{ "cathedral_id",	config_parse_cathedral_id },
-	{ "cathedral_flock",	config_parse_cathedral_flock },
-	{ "cathedral_secret",	config_parse_cathedral_secret },
-	{ "cathedral_nat_port",	config_parse_cathedral_nat_port },
-	{ "cathedral_p2p_sync",	config_parse_cathedral_p2p_sync },
+	{ "kek",			config_parse_kek },
+	{ "spi",			config_parse_spi },
+	{ "tap",			config_parse_tap },
+	{ "tfc",			config_parse_tfc },
+	{ "mode",			config_parse_mode },
+	{ "peer",			config_parse_peer },
+	{ "local",			config_parse_local },
+	{ "route",			config_parse_route },
+	{ "run",			config_parse_runas },
+	{ "descr",			config_parse_descr },
+	{ "accept",			config_parse_accept },
+	{ "tunnel",			config_parse_tunnel },
+	{ "secret",			config_parse_secret },
+	{ "control",			config_parse_control },
+	{ "pidfile",			config_parse_pidfile },
+	{ "instance",			config_parse_instance },
+	{ "cathedral",			config_parse_cathedral },
+	{ "secretdir",			config_parse_secretdir },
+	{ "settings",			config_parse_settings },
+	{ "encapsulation",		config_parse_encapsulation },
+	{ "liturgy_group",		config_parse_liturgy_group },
+	{ "liturgy_prefix",		config_parse_liturgy_prefix },
+	{ "cathedral_id",		config_parse_cathedral_id },
+	{ "cathedral_flock",		config_parse_cathedral_flock },
+	{ "cathedral_secret",		config_parse_cathedral_secret },
+	{ "cathedral_nat_port",		config_parse_cathedral_nat_port },
+	{ "cathedral_p2p_sync",		config_parse_cathedral_p2p_sync },
+	{ "cathedral_remembrance",	config_parse_cathedral_remembrance },
 	{ NULL,			NULL },
 };
 
@@ -651,6 +653,21 @@ config_parse_cathedral_id(char *opt)
 
 	if (sscanf(opt, "%x", &sanctum->cathedral_id) != 1)
 		fatal("cathedral_id <32-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_remembrance configuration option.
+ */
+static void
+config_parse_cathedral_remembrance(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->cathedral_remembrance != NULL)
+		fatal("cathedral_remembrance already specified");
+
+	if ((sanctum->cathedral_remembrance = strdup(opt)) == NULL)
+		fatal("strdup");
 }
 
 /*
