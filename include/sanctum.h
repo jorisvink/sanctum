@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -177,6 +177,9 @@ extern int daemon(int, int);
 /* The KDF label for traffic encapsulation. */
 #define SANCTUM_ENCAP_LABEL		"SANCTUM.ENCAP.KDF"
 
+/* The maximum number of federated cathedrals we can have. */
+#define SANCTUM_CATHEDRALS_MAX		32
+
 /*
  * Packets used when doing key offering or cathedral forward registration.
  *
@@ -188,12 +191,14 @@ extern int daemon(int, int);
  *	2) An ambry offering (from cathedral to us)
  *	3) An info offering (from us to cathedral, or cathedral to us)
  *	4) A liturgy offering (from us to cathedral, or cathedral to us)
+ *	5) A remembrance offering (from cathedral to us)
  */
 
 #define SANCTUM_OFFER_TYPE_KEY		1
 #define SANCTUM_OFFER_TYPE_AMBRY	2
 #define SANCTUM_OFFER_TYPE_INFO		3
 #define SANCTUM_OFFER_TYPE_LITURGY	4
+#define SANCTUM_OFFER_TYPE_REMEMBRANCE	5
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -216,8 +221,15 @@ struct sanctum_ambry_offer {
 	u_int8_t		tag[SANCTUM_AMBRY_TAG_LEN];
 } __attribute__((packed));
 
+struct sanctum_remembrance_offer {
+	u_int32_t		ips[SANCTUM_CATHEDRALS_MAX];
+	u_int16_t		ports[SANCTUM_CATHEDRALS_MAX];
+} __attribute__((packed));
+
+#define SANCTUM_INFO_FLAG_REMEMBRANCE	(1 << 0)
+
 struct sanctum_info_offer {
-	u_int32_t		id;
+	u_int32_t		flags;
 
 	u_int32_t		peer_ip;
 	u_int16_t		peer_port;
@@ -230,6 +242,8 @@ struct sanctum_info_offer {
 
 	u_int32_t		rx_active;
 	u_int32_t		rx_pending;
+
+	u_int64_t		instance;
 } __attribute__((packed));
 
 struct sanctum_liturgy_offer {
@@ -243,10 +257,11 @@ struct sanctum_offer_data {
 	u_int64_t		timestamp;
 
 	union {
-		struct sanctum_key_offer	key;
-		struct sanctum_info_offer	info;
-		struct sanctum_ambry_offer	ambry;
-		struct sanctum_liturgy_offer	liturgy;
+		struct sanctum_key_offer		key;
+		struct sanctum_info_offer		info;
+		struct sanctum_ambry_offer		ambry;
+		struct sanctum_liturgy_offer		liturgy;
+		struct sanctum_remembrance_offer	remembrance;
 	} offer;
 } __attribute__((packed));
 
@@ -258,7 +273,7 @@ struct sanctum_offer {
 
 /*
  * Data structure passed between liturgy<>bishop to convey the
- * starting or stopping of sanctum instances.
+ * starting or stopping of sanctum instances when in liturgy mode.
  */
 struct sanctum_liturgy {
 	int			present;
@@ -477,6 +492,9 @@ struct sanctum_ether {
 /* If we should create a tap device instead of a tun device. */
 #define SANCTUM_FLAG_USE_TAP		(1 << 6)
 
+/* P2P federated sync is enabled in a cathedral. */
+#define SANCTUM_FLAG_CATHEDRAL_P2P_SYNC	(1 << 7)
+
 /*
  * The modes in which sanctum can run.
  *
@@ -508,8 +526,11 @@ struct sanctum_state {
 	/* The local address from the configuration. */
 	struct sockaddr_in	local;
 
-	/* The cathedral remote address (tunnel mode only). */
+	/* The current selected cathedral remote address (tunnel mode only). */
 	struct sockaddr_in	cathedral;
+
+	/* All cathedrals in remembrance (tunnel mode only). */
+	struct sockaddr_in	cathedrals[SANCTUM_CATHEDRALS_MAX];
 
 	/* Our own public ip:port (when cathedral is in use only). */
 	volatile u_int32_t	local_ip;
@@ -551,6 +572,9 @@ struct sanctum_state {
 
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
+
+	/* The cathedral remembrance path (tunnel mode only). */
+	char			*cathedral_remembrance;
 
 	/* The cathedral nat discovery port (tunnel and cathedral only). */
 	u_int16_t		cathedral_nat_port;
@@ -656,6 +680,8 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
+void	sanctum_cathedrals_load(void);
+void	sanctum_cathedrals_save(void);
 int	sanctum_file_open(const char *, struct stat *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
@@ -685,6 +711,7 @@ int	sanctum_offer_decrypt(struct sanctum_key *,
 void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
 	    u_int32_t, const void *, size_t);
 
+const char		*sanctum_inet_string(struct sockaddr_in *);
 struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
 			    u_int32_t, u_int64_t, u_int8_t);
 

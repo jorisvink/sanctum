@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -88,6 +88,7 @@ struct config {
 
 	int			tap;
 	int			is_liturgy;
+	int			remembrance;
 	int			peer_cathedral;
 
 	const char		*flock;
@@ -120,6 +121,8 @@ static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
+static void	usage_cathedral(void) __attribute__((noreturn));
+static void	usage_remembrance(void) __attribute__((noreturn));
 
 static void	hymn_mkdir(const char *, int);
 static void	hymn_unlink(const char *, ...)
@@ -152,6 +155,7 @@ static int	hymn_keygen(int, char **);
 static int	hymn_liturgy(int, char **);
 static int	hymn_restart(int, char **);
 static int	hymn_cathedral(int, char **);
+static int	hymn_remembrance(int, char **);
 
 static void	hymn_config_init(struct config *);
 static void	hymn_config_write(int, const char *, ...)
@@ -226,6 +230,7 @@ static const struct {
 	{ "liturgy",		hymn_liturgy },
 	{ "restart",		hymn_restart },
 	{ "cathedral",		hymn_cathedral },
+	{ "remembrance",	hymn_remembrance },
 	{ NULL,			NULL },
 };
 
@@ -267,6 +272,7 @@ usage(void)
 	fprintf(stderr, "  liturgy     - configure a liturgy\n");
 	fprintf(stderr, "  name        - sets the name for a given tunnel\n");
 	fprintf(stderr, "  status      - show a specific tunnel its info\n");
+	fprintf(stderr, "  remembrance - toggle remembrance on given tunnel\n");
 	fprintf(stderr, "  restart     - restart a tunnel (down, up)\n");
 	fprintf(stderr, "  route       - modify tunnel routing rules\n");
 	fprintf(stderr, "  up          - starts the given tunnel\n");
@@ -970,7 +976,7 @@ static void
 usage_cathedral(void)
 {
 	fprintf(stderr, "usage: hymn cathedral ");
-	fprintf(stderr, "[name | [<flock>-]<src>-<dst>] [ip:port]\n");
+	fprintf(stderr, "[name | <flock>-<src>-<dst>] [ip:port]\n");
 
 	exit(1);
 }
@@ -1007,6 +1013,59 @@ hymn_cathedral(int argc, char *argv[])
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x cathedral modified to %s\n",
+	    flock, src, dst, argv[1]);
+
+	return (0);
+}
+
+static void
+usage_remembrance(void)
+{
+	fprintf(stderr, "usage: hymn remembrance ");
+	fprintf(stderr, "[name | <flock>-<src>-<dst>] [on | off]\n");
+
+	exit(1);
+}
+
+static int
+hymn_remembrance(int argc, char *argv[])
+{
+	const char		*flock;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_remembrance();
+
+	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+		usage_remembrance();
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	if (config.peer_cathedral != 1)
+		fatal("remembrance only makes sense on cathedral tunnels");
+
+	if (!strcmp(argv[1], "on")) {
+		config.remembrance = 1;
+	} else if (!strcmp(argv[1], "off")) {
+		config.remembrance = 0;
+	} else {
+		usage_remembrance();
+	}
+
+	config.src = src;
+	config.dst = dst;
+
+	if ((config.flock = strdup(flock)) == NULL)
+		fatal("strdup");
+
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x remembrance turned %s\n",
 	    flock, src, dst, argv[1]);
 
 	return (0);
@@ -1743,6 +1802,14 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 			    "cathedral_secret /etc/hymn/id-%x\n",
 			    cfg->cathedral_id);
 		}
+
+		if (cfg->remembrance) {
+			hymn_config_write(fd, "cathedral_remembrance ");
+			hymn_config_write(fd,
+			    "/etc/hymn/%s-%02x-%02x.remembrance\n",
+			    flock, cfg->src, cfg->dst);
+		}
+
 		hymn_config_write(fd, "cathedral_nat_port %u\n",
 		    cfg->cathedral_nat_port);
 		hymn_config_write(fd, "cathedral ");

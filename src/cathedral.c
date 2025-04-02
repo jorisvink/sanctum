@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -44,6 +44,9 @@
 /* The interval at which we check if settings changed. */
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
+/* The interval at which we send remembrances to peers. */
+#define CATHEDRAL_REMEMBRANCE_NEXT	(25 * 1000)
+
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
 
@@ -60,12 +63,18 @@ struct tunnel {
 	/* tunnel information. */
 	u_int32_t		id;
 	u_int32_t		ip;
-	u_int64_t		age;
 	u_int16_t		port;
+	u_int64_t		age;
+	u_int64_t		update;
+	u_int64_t		instance;
 	int			peerinfo;
 	int			federated;
 	u_int32_t		rx_active;
 	u_int32_t		rx_pending;
+
+	/* p2p sync */
+	u_int32_t		p2p_ip;
+	u_int16_t		p2p_port;
 
 	/* leaky bucket for bw handling. */
 	u_int32_t		limit;
@@ -162,6 +171,8 @@ static void	cathedral_info_send(struct flockent *,
 		    u_int32_t);
 static void	cathedral_liturgy_send(struct flockent *,
 		    struct liturgy *, struct sockaddr_in *, u_int32_t);
+static void	cathedral_remembrance_send(struct flockent *,
+		    struct sockaddr_in *, u_int32_t);
 
 static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_prune(struct flockent *);
@@ -178,6 +189,9 @@ static struct sanctum_proc_io	*io = NULL;
 
 /* The list of federation cathedrals we can forward too. */
 static LIST_HEAD(, tunnel)	federations;
+
+/* The current number of configured active federations. */
+static u_int8_t			federation_count = 0;
 
 /* The list of configured flocks (congregations). */
 static LIST_HEAD(, flockent)	flocks;
@@ -299,9 +313,8 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 
 		if (srv == NULL) {
 			sanctum_log(LOG_INFO,
-			    "CATACOMB update from unknown cathedral %s:%u",
-			    inet_ntoa(pkt->addr.sin_addr),
-			    be16toh(pkt->addr.sin_port));
+			    "CATACOMB update from unknown cathedral %s",
+			    sanctum_inet_string(&pkt->addr));
 			sanctum_packet_release(pkt);
 			return;
 		}
@@ -484,6 +497,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 
 	info = &op->data.offer.info;
 	info->tunnel = be16toh(info->tunnel);
+	info->instance = be64toh(info->instance);
 	info->ambry_generation = be32toh(info->ambry_generation);
 
 	tid = info->tunnel >> 8;
@@ -504,7 +518,9 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		if ((tun = calloc(1, sizeof(*tun))) == NULL)
 			fatal("calloc failed");
 
+		tun->update = now;
 		tun->id = info->tunnel;
+		tun->instance = info->instance;
 		tun->limit = (bw / 8) * 1024 * 1024;
 		tun->drain_per_ms = tun->limit / 1000;
 
@@ -514,35 +530,77 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		    flock->id, info->tunnel, bw, catacomb);
 	 }
 
-	if (catacomb == 0 && nat == 0) {
+	if (info->instance != tun->instance) {
+		tun->peerinfo = 0;
+		sanctum_log(LOG_INFO, "%" PRIx64 ":%04x peer restart detected",
+		    flock->id, info->tunnel);
+	} else if (catacomb == 0 && nat == 0) {
 		cathedral_ambry_send(flock, info, &pkt->addr, id);
+
 		if (tun->peerinfo)
 			cathedral_info_send(flock, info, &pkt->addr, id);
+
+		if (now >= tun->update &&
+		    (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
+			tun->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+			cathedral_remembrance_send(flock, &pkt->addr, id);
+		}
 	}
 
 	if (nat) {
+		if (tun->federated) {
+			sanctum_log(LOG_INFO,
+			    "%" PRIx64 ":%04x NAT for federated tunnel",
+			    flock->id, info->tunnel);
+			return;
+		}
+
 		if ((tun->ip == pkt->addr.sin_addr.s_addr &&
 		    tun->port != pkt->addr.sin_port) ||
 		    tun->ip != pkt->addr.sin_addr.s_addr) {
+			tun->p2p_ip = 0;
+			tun->p2p_port = 0;
 			tun->peerinfo = 0;
 		} else {
 			tun->peerinfo = 1;
+			tun->p2p_port = pkt->addr.sin_port;
+			tun->p2p_ip = pkt->addr.sin_addr.s_addr;
 		}
+
+		return;
+	}
+
+	tun->age = now;
+	tun->rx_active = info->rx_active;
+	tun->rx_pending = info->rx_pending;
+
+	tun->instance = info->instance;
+	tun->port = pkt->addr.sin_port;
+	tun->ip = pkt->addr.sin_addr.s_addr;
+
+	if (catacomb) {
+		tun->federated = 1;
+		tun->peerinfo = info->flags;
+		tun->p2p_ip = info->peer_ip;
+		tun->p2p_port = info->peer_port;
 	} else {
-		tun->age = now;
-		tun->port = pkt->addr.sin_port;
-		tun->ip = pkt->addr.sin_addr.s_addr;
+		tun->federated = 0;
 
-		tun->rx_active = info->rx_active;
-		tun->rx_pending = info->rx_pending;
-
-		if (catacomb == 0) {
-			tun->federated = 0;
-			info->tunnel = htobe16(info->tunnel);
-			cathedral_offer_federate(flock, pkt);
+		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) {
+			info->peer_ip = tun->ip;
+			info->peer_port = tun->port;
+			info->flags = tun->peerinfo;
 		} else {
-			tun->federated = 1;
+			info->flags = 0;
+			info->peer_ip = 0;
+			info->peer_port = 0;
 		}
+
+		info->tunnel = htobe16(info->tunnel);
+		info->instance = htobe64(info->instance);
+		info->ambry_generation = htobe32(info->ambry_generation);
+
+		cathedral_offer_federate(flock, pkt);
 	}
 }
 
@@ -932,7 +990,8 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	if ((peer = cathedral_tunnel_lookup(flock, tunnel)) == NULL)
 		return;
 
-	if (peer->federated == 1)
+	if (peer->federated &&
+	    !(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC))
 		return;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
@@ -945,9 +1004,20 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 	info->local_port = sin->sin_port;
 	info->local_ip = sin->sin_addr.s_addr;
 
-	if (peer->peerinfo) {
-		info->peer_ip = peer->ip;
-		info->peer_port = peer->port;
+	/*
+	 * Sanctum does not share any internal ip addresses with the cathedral
+	 * and thus the cathedral cannot determine if they would be able to
+	 * use those internal ones to communicate when coming from the same
+	 * external ip.
+	 *
+	 * This means that two peers sharing the same external ip need to
+	 * relay their traffic, otherwise their fw/gw will be unhappy when
+	 * they start sending traffic to its external ip from an internal
+	 * interface, which is usually going to be the case.
+	 */
+	if (peer->peerinfo && peer->p2p_ip != sin->sin_addr.s_addr) {
+		info->peer_ip = peer->p2p_ip;
+		info->peer_port = peer->p2p_port;
 	} else {
 		info->peer_port = sanctum->local.sin_port;
 		info->peer_ip = sanctum->local.sin_addr.s_addr;
@@ -989,6 +1059,52 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	LIST_FOREACH(entry, &flock->liturgies, list) {
 		if (entry != src && entry->group == src->group)
 			lit->peers[entry->id] = 1;
+	}
+
+	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
+
+	if (cathedral_offer_send(secret, pkt, sin) == -1)
+		sanctum_packet_release(pkt);
+}
+
+/*
+ * Send a list of all our currently configured federated cathedrals.
+ * We include ourselves in this in the first slot of the response.
+ */
+static void
+cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
+    u_int32_t id)
+{
+	int					idx;
+	struct sanctum_offer			*op;
+	struct sanctum_packet			*pkt;
+	struct sanctum_remembrance_offer	*list;
+	struct tunnel				*cathedral;
+	char					secret[1024];
+
+	PRECOND(flock != NULL);
+	PRECOND(sin != NULL);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	op = sanctum_offer_init(pkt, id,
+	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_REMEMBRANCE);
+
+	idx = 1;
+	list = &op->data.offer.remembrance;
+
+	list->ports[0] = sanctum->local.sin_port;
+	list->ips[0] = sanctum->local.sin_addr.s_addr;
+
+	LIST_FOREACH(cathedral, &federations, list) {
+		if (idx >= SANCTUM_CATHEDRALS_MAX)
+			fatal("how did you configure too many cathedrals?");
+
+		list->ips[idx] = cathedral->ip;
+		list->ports[idx] = cathedral->port;
+
+		idx++;
 	}
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
@@ -1197,6 +1313,7 @@ cathedral_settings_reload(void)
 	}
 
 	flock = NULL;
+	federation_count = 0;
 	LIST_INIT(&federations);
 
 	while ((kw = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
@@ -1276,6 +1393,11 @@ cathedral_settings_federate(const char *option)
 
 	PRECOND(option != NULL);
 
+	if (federation_count >= SANCTUM_CATHEDRALS_MAX - 1) {
+		sanctum_log(LOG_NOTICE, "too many configured federations");
+		return;
+	}
+
 	if (sscanf(option, "%15s %hu", ip, &port) != 2) {
 		sanctum_log(LOG_NOTICE,
 		    "format error '%s' in federate-to", option);
@@ -1301,6 +1423,8 @@ cathedral_settings_federate(const char *option)
 	tunnel->ip = sin.sin_addr.s_addr;
 
 	sanctum_log(LOG_INFO, "federating to %s:%u", ip, port);
+
+	federation_count++;
 	LIST_INSERT_HEAD(&federations, tunnel, list);
 }
 

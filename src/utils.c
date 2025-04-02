@@ -392,6 +392,25 @@ sanctum_inet_mask(void *saddr, u_int32_t mask)
 }
 
 /*
+ * Returns the given struct sockaddr_in as a human string in ip:port format.
+ */
+const char *
+sanctum_inet_string(struct sockaddr_in *sin)
+{
+	int		len;
+	static char	buf[48];
+
+	PRECOND(sin != NULL);
+
+	len = snprintf(buf, sizeof(buf), "%s:%u",
+	    inet_ntoa(sin->sin_addr), be16toh(sin->sin_port));
+	if (len == -1 || (size_t)len >= sizeof(buf))
+		fatal("snprintf on inet addr failed");
+
+	return (buf);
+}
+
+/*
  * Open the given path as read-only and return the fd for it, or -1.
  */
 int
@@ -512,7 +531,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	PRECOND(type == SANCTUM_OFFER_TYPE_KEY ||
 	    type == SANCTUM_OFFER_TYPE_AMBRY ||
 	    type == SANCTUM_OFFER_TYPE_INFO ||
-	    type == SANCTUM_OFFER_TYPE_LITURGY);
+	    type == SANCTUM_OFFER_TYPE_LITURGY ||
+	    type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
 
 	op = sanctum_packet_head(pkt);
 
@@ -532,6 +552,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 /*
  * Encrypt and authenticate a sanctum_offer data structure.
  * Note: does not zeroize the key, this is the caller its responsibility.
+ * Note: do not call this with the same key twice, the given key shall
+ * be derived using sanctum_cipher_kdf() first.
  */
 void
 sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)

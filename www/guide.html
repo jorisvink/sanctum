@@ -85,28 +85,19 @@ For this example we will use the following parameters:
 
 <h3>Building</h3>
 <p>
+Make sure you read the README.md to see what dependencies you want.
+</p>
+
+<p>
 On both client and server:
 
 <pre>
 $ git clone https://github.com/jorisvink/sanctum
 $ cd sanctum
+$ less README.md
 $ make
 # make install
 </pre>
-</p>
-
-<p>
-Using the CIPHER environment variable, one can control what AEAD cipher is
-used for traffic protection. By default it is AES256-GCM using the low
-level OpenSSL APIs.
-</p>
-
-<p>
-Other alternatives are:
-<ul>
-<li>nyfe-agelas - The duplex-sponge based AEAD cipher.</li>
-<li>intel-aes-gcm - AES256-GCM using the libisal_crypto library from intel.</li>
-</ul>
 </p>
 
 <h3>Environment</h3>

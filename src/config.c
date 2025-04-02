@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -61,6 +61,8 @@ static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
+static void	config_parse_cathedral_p2p_sync(char *);
+static void	config_parse_cathedral_remembrance(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
@@ -73,32 +75,34 @@ static const struct {
 	const char		*option;
 	void			(*cb)(char *);
 } keywords[] = {
-	{ "kek",		config_parse_kek },
-	{ "spi",		config_parse_spi },
-	{ "tap",		config_parse_tap },
-	{ "tfc",		config_parse_tfc },
-	{ "mode",		config_parse_mode },
-	{ "peer",		config_parse_peer },
-	{ "local",		config_parse_local },
-	{ "route",		config_parse_route },
-	{ "run",		config_parse_runas },
-	{ "descr",		config_parse_descr },
-	{ "accept",		config_parse_accept },
-	{ "tunnel",		config_parse_tunnel },
-	{ "secret",		config_parse_secret },
-	{ "control",		config_parse_control },
-	{ "pidfile",		config_parse_pidfile },
-	{ "instance",		config_parse_instance },
-	{ "cathedral",		config_parse_cathedral },
-	{ "secretdir",		config_parse_secretdir },
-	{ "settings",		config_parse_settings },
-	{ "encapsulation",	config_parse_encapsulation },
-	{ "liturgy_group",	config_parse_liturgy_group },
-	{ "liturgy_prefix",	config_parse_liturgy_prefix },
-	{ "cathedral_id",	config_parse_cathedral_id },
-	{ "cathedral_flock",	config_parse_cathedral_flock },
-	{ "cathedral_secret",	config_parse_cathedral_secret },
-	{ "cathedral_nat_port",	config_parse_cathedral_nat_port },
+	{ "kek",			config_parse_kek },
+	{ "spi",			config_parse_spi },
+	{ "tap",			config_parse_tap },
+	{ "tfc",			config_parse_tfc },
+	{ "mode",			config_parse_mode },
+	{ "peer",			config_parse_peer },
+	{ "local",			config_parse_local },
+	{ "route",			config_parse_route },
+	{ "run",			config_parse_runas },
+	{ "descr",			config_parse_descr },
+	{ "accept",			config_parse_accept },
+	{ "tunnel",			config_parse_tunnel },
+	{ "secret",			config_parse_secret },
+	{ "control",			config_parse_control },
+	{ "pidfile",			config_parse_pidfile },
+	{ "instance",			config_parse_instance },
+	{ "cathedral",			config_parse_cathedral },
+	{ "secretdir",			config_parse_secretdir },
+	{ "settings",			config_parse_settings },
+	{ "encapsulation",		config_parse_encapsulation },
+	{ "liturgy_group",		config_parse_liturgy_group },
+	{ "liturgy_prefix",		config_parse_liturgy_prefix },
+	{ "cathedral_id",		config_parse_cathedral_id },
+	{ "cathedral_flock",		config_parse_cathedral_flock },
+	{ "cathedral_secret",		config_parse_cathedral_secret },
+	{ "cathedral_nat_port",		config_parse_cathedral_nat_port },
+	{ "cathedral_p2p_sync",		config_parse_cathedral_p2p_sync },
+	{ "cathedral_remembrance",	config_parse_cathedral_remembrance },
 	{ NULL,			NULL },
 };
 
@@ -652,6 +656,21 @@ config_parse_cathedral_id(char *opt)
 }
 
 /*
+ * Parse the cathedral_remembrance configuration option.
+ */
+static void
+config_parse_cathedral_remembrance(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->cathedral_remembrance != NULL)
+		fatal("cathedral_remembrance already specified");
+
+	if ((sanctum->cathedral_remembrance = strdup(opt)) == NULL)
+		fatal("strdup");
+}
+
+/*
  * Parse the cathedral_nat_port configuration option.
  */
 static void
@@ -661,6 +680,23 @@ config_parse_cathedral_nat_port(char *opt)
 
 	if (sscanf(opt, "%hu", &sanctum->cathedral_nat_port) != 1)
 		fatal("spi <16-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_p2p_sync configuration option.
+ */
+static void
+config_parse_cathedral_p2p_sync(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_P2P_SYNC;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags &= ~SANCTUM_FLAG_CATHEDRAL_P2P_SYNC;
+	} else {
+		fatal("invalid value '%s' for cathedral_p2p_sync", opt);
+	}
 }
 
 /*

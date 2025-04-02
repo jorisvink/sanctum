@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -180,6 +180,10 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 				sanctum_log(LOG_INFO,
 				    "host %s unreachable (%s)",
 				    inet_ntoa(peer.sin_addr), errno_s);
+				break;
+			}
+			if (errno == ENETDOWN) {
+				sanctum_log(LOG_INFO, "network is down");
 				break;
 			}
 			fatal("sendto: %s", errno_s);
