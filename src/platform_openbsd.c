@@ -379,7 +379,7 @@ openbsd_sandbox_pledge(struct sanctum_proc *proc)
 		ret = pledge("stdio unix inet", NULL);
 		break;
 	case SANCTUM_PROC_LITURGY:
-		ret = pledge("stdio", NULL);
+		ret = pledge("stdio rpath", NULL);
 		break;
 	case SANCTUM_PROC_HEAVEN_TX:
 	case SANCTUM_PROC_HEAVEN_RX:
