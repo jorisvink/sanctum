@@ -416,6 +416,7 @@ hymn_liturgy(int argc, char *argv[])
 			config.cathedral_nat_port = hymn_number(argv[i + 1],
 			    10, 0, USHRT_MAX);
 		} else if (!strcmp(argv[i], "group")) {
+			which |= HYMN_GROUP;
 			config.group = hymn_number(argv[i + 1], 16,
 			    0, USHRT_MAX);
 		} else {
