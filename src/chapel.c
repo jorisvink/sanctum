@@ -37,6 +37,9 @@
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
+/* The time in seconds until we consider a cathedraled timed out. */
+#define CHAPEL_CATHEDRAL_TIMEOUT	30
+
 /*
  * An RX offer we send to our peer (meaning the peer can use this key as
  * a TX key and we will be able to decrypt traffic with it).
@@ -52,8 +55,8 @@ struct rx_offer {
 static void	chapel_peer_check(u_int64_t);
 static void	chapel_cathedrals_remembrance(void);
 
-static void	chapel_cathedral_next(void);
 static void	chapel_cathedral_notify(u_int64_t);
+static void	chapel_cathedral_timeout(u_int64_t);
 static void	chapel_cathedral_send_info(u_int64_t);
 static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
@@ -186,15 +189,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 		last_rtime = ts.tv_sec;
 
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
-			if (cathedral_last != 0 &&
-			    (now - cathedral_last) >= 30) {
-				sanctum_log(LOG_INFO,
-				    "cathedral %s is unresponsive",
-				    sanctum_inet_string(&sanctum->cathedral));
-				cathedral_last = now;
-				chapel_cathedral_next();
-			}
-
+			chapel_cathedral_timeout(now);
 			chapel_cathedral_notify(now);
 		}
 
@@ -341,15 +336,24 @@ chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 }
 
 /*
- * Select the next cathedral from our remembrance list, if we had one.
+ * Check if we can detect if our current cathedral has timed out and if
+ * so we will select the next one from our remembrance list.
+ * This will only have an effect if remembrance was enabled.
  */
 static void
-chapel_cathedral_next(void)
+chapel_cathedral_timeout(u_int64_t now)
 {
 	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
 
 	if (sanctum->cathedral_remembrance == NULL)
 		return;
+
+	if ((now - cathedral_last) < CHAPEL_CATHEDRAL_TIMEOUT)
+		return;
+
+	cathedral_last = now;
+	sanctum_log(LOG_INFO, "cathedral %s is unresponsive",
+	    sanctum_inet_string(&sanctum->cathedral));
 
 	if (sanctum->cathedrals[0].sin_addr.s_addr == 0)
 		return;
