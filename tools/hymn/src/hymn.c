@@ -57,10 +57,10 @@
 #define HYMN_GROUP		(1 << 8)
 
 #define HYMN_REQUIRED		\
-    (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET | HYMN_GROUP)
+    (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
 
 #define HYMN_REQUIRED_LITURGY	\
-    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX)
+    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX | HYMN_GROUP)
 
 struct addr {
 	in_addr_t		ip;
@@ -594,8 +594,10 @@ hymn_add(int argc, char *argv[])
 			printf("missing peer\n");
 	}
 
-	if ((which & HYMN_REQUIRED) != HYMN_REQUIRED)
+	if ((which & HYMN_REQUIRED) != HYMN_REQUIRED) {
+		printf("0x%08x vs 0x%08x\n", which, HYMN_REQUIRED);
 		usage_add();
+	}
 
 	hymn_conf_path(confpath,
 	    sizeof(confpath), flock, config.src, config.dst);
