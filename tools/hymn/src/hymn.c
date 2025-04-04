@@ -349,7 +349,8 @@ usage_liturgy(void)
 	fprintf(stderr,
 	    "usage: hymn liturgy <flock>-<src> cathedral <ip:port> \\\n");
 	fprintf(stderr, "    identity <32-bit hexint>:<path> kek <path> \\\n");
-	fprintf(stderr, "    prefix <prefix> [natport <port>]\n");
+	fprintf(stderr, "    prefix <prefix> group <16-bit hexint> \\\n");
+	fprintf(stderr, "    [natport <port>]\n");
 
 	exit (1);
 
