@@ -596,10 +596,8 @@ hymn_add(int argc, char *argv[])
 			printf("missing peer\n");
 	}
 
-	if ((which & HYMN_REQUIRED) != HYMN_REQUIRED) {
-		printf("0x%08x vs 0x%08x\n", which, HYMN_REQUIRED);
+	if ((which & HYMN_REQUIRED) != HYMN_REQUIRED)
 		usage_add();
-	}
 
 	hymn_conf_path(confpath,
 	    sizeof(confpath), flock, config.src, config.dst);
