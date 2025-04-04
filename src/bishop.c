@@ -132,6 +132,8 @@ sanctum_bishop(struct sanctum_proc *proc)
 			bishop_liturgy_request(pkt);
 			sanctum_packet_release(pkt);
 		}
+
+		bishop_hymn_read();
 	}
 
 	sanctum_log(LOG_NOTICE, "shutting down running instances");
