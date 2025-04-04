@@ -281,9 +281,11 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		break;
 	}
 
-	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
-	if (len == -1 || (size_t)len >= sizeof(path))
-		fatal("failed to construct new path");
+	if (sanctum->secret != NULL) {
+		len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
+		if (len == -1 || (size_t)len >= sizeof(path))
+			fatal("failed to construct new path");
+	}
 
 	/*
 	 * Construct all parameters that the profiles can use.
@@ -291,10 +293,13 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	 * chapel will ues KEY_PATH, KEK_PATH or CATHEDRAL_SECRET.
 	 */
 	idx = 0;
-	params[idx++] = "KEY_PATH";
-	params[idx++] = sanctum->secret;
-	params[idx++] = "KEY_PATH_NEW";
-	params[idx++] = path;
+
+	if (sanctum->secret != NULL) {
+		params[idx++] = "KEY_PATH";
+		params[idx++] = sanctum->secret;
+		params[idx++] = "KEY_PATH_NEW";
+		params[idx++] = path;
+	}
 
 	if (sanctum->cathedral_secret != NULL) {
 		params[idx++] = "CATHEDRAL_SECRET";

@@ -4,3 +4,14 @@
 (deny default)
 
 (import "/usr/local/share/sanctum/sb/common.sb")
+
+;; Opening of the cathedral secret.
+(allow syscall-unix
+	(syscall-number SYS_open)
+	(syscall-number SYS_read)
+	(syscall-number SYS_access)
+	(syscall-number SYS_fstat64)
+	(syscall-number SYS_openat))
+
+(if (param "CATHEDRAL_SECRET")
+	(allow file-read* file-test-existence (path (param "CATHEDRAL_SECRET"))))
