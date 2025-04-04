@@ -88,7 +88,8 @@ sanctum_platform_tundev_create(void)
 
 	openbsd_configure_tundev(&path[PATH_SKIP]);
 
-	if (sanctum->tun_ip.sin_addr.s_addr != 0) {
+	if (sanctum->tun_ip.sin_addr.s_addr != 0 &&
+	    sanctum->tun_mask.sin_addr.s_addr != 0xffffffff) {
 		sanctum_platform_tundev_route(&sanctum->tun_ip,
 		    &sanctum->tun_mask);
 	}

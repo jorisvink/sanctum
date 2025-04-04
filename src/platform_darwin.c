@@ -133,7 +133,12 @@ sanctum_platform_tundev_create(void)
 		fatal("snprintf on utun%u failed", idx - 1);
 
 	darwin_configure_tundev(ifname);
-	sanctum_platform_tundev_route(&sanctum->tun_ip, &sanctum->tun_mask);
+
+	if (sanctum->tun_ip.sin_addr.s_addr != 0 &&
+	    sanctum->tun_mask.sin_addr.s_addr != 0xffffffff) {
+		sanctum_platform_tundev_route(&sanctum->tun_ip,
+		    &sanctum->tun_mask);
+	}
 
 	return (fd);
 }
