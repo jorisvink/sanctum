@@ -54,9 +54,10 @@
 #define HYMN_CATHEDRAL		(1 << 5)
 #define HYMN_IDENTITY		(1 << 6)
 #define HYMN_PREFIX		(1 << 7)
+#define HYMN_GROUP		(1 << 8)
 
 #define HYMN_REQUIRED		\
-    (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
+    (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET | HYMN_GROUP)
 
 #define HYMN_REQUIRED_LITURGY	\
     (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX)
@@ -413,6 +414,9 @@ hymn_liturgy(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "natport")) {
 			config.cathedral_nat_port = hymn_number(argv[i + 1],
 			    10, 0, USHRT_MAX);
+		} else if (!strcmp(argv[i], "group")) {
+			config.group = hymn_number(argv[i + 1], 16,
+			    0, USHRT_MAX);
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -1438,7 +1442,8 @@ hymn_tunnel_list(struct tunnels *list)
 					continue;
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
-				    entry->config.src > src) {
+				    entry->config.src > src ||
+				    entry->config.is_liturgy) {
 					TAILQ_INSERT_BEFORE(entry, tun, list);
 					break;
 				}
@@ -2027,7 +2032,7 @@ hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
 static void
 hymn_config_parse_liturgy_group(struct config *cfg, char *group)
 {
-	cfg->group = hymn_number(group, 10, 0, USHRT_MAX);
+	cfg->group = hymn_number(group, 16, 0, USHRT_MAX);
 }
 
 static void
