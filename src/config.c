@@ -62,6 +62,7 @@ static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_cathedral_p2p_sync(char *);
+static void	config_parse_liturgy_discoverable(char *);
 static void	config_parse_cathedral_remembrance(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
 
@@ -97,6 +98,7 @@ static const struct {
 	{ "encapsulation",		config_parse_encapsulation },
 	{ "liturgy_group",		config_parse_liturgy_group },
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
+	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
 	{ "cathedral_id",		config_parse_cathedral_id },
 	{ "cathedral_flock",		config_parse_cathedral_flock },
 	{ "cathedral_secret",		config_parse_cathedral_secret },
@@ -806,6 +808,23 @@ config_parse_encapsulation(char *opt)
 	}
 
 	sanctum->flags |= SANCTUM_FLAG_ENCAPSULATE;
+}
+
+/*
+ * Parse the liturgy_discoverable option.
+ */
+static void
+config_parse_liturgy_discoverable(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags &= ~SANCTUM_FLAG_LITURGY_HIDE;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags |= SANCTUM_FLAG_LITURGY_HIDE;
+	} else {
+		fatal("liturgy_discoverable '%s' is invalid (yes|no)", opt);
+	}
 }
 
 /*

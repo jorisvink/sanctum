@@ -91,6 +91,7 @@ struct config {
 	int			is_liturgy;
 	int			remembrance;
 	int			peer_cathedral;
+	int			liturgy_hidden;
 
 	const char		*flock;
 	char			*kek;
@@ -419,6 +420,14 @@ hymn_liturgy(int argc, char *argv[])
 			which |= HYMN_GROUP;
 			config.group = hymn_number(argv[i + 1], 16,
 			    0, USHRT_MAX);
+		} else if (!strcmp(argv[i], "discoverable")) {
+			if (!strcmp(argv[i + 1], "yes")) {
+				config.liturgy_hidden = 0;
+			} else if (!strcmp(argv[i + 1], "no")) {
+				config.liturgy_hidden = 1;
+			} else {
+				fatal("discoverable is a (yes|no) option");
+			}
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -1775,6 +1784,11 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	} else {
 		hymn_config_write(fd, "liturgy_prefix %s\n", cfg->prefix);
 		hymn_config_write(fd, "liturgy_group 0x%04x\n", cfg->group);
+
+		if (cfg->liturgy_hidden)
+			hymn_config_write(fd, "liturgy_discoverable no\n");
+		else
+			hymn_config_write(fd, "liturgy_discoverable yes\n");
 	}
 
 	if (cfg->encap != NULL)

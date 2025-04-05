@@ -105,6 +105,7 @@ struct liturgy {
 	u_int16_t		id;
 	u_int16_t		port;
 	u_int16_t		group;
+	u_int8_t		hidden;
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -651,12 +652,13 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	if (entry->age == 0 || entry->group != group) {
 		sanctum_log(LOG_INFO,
-		    "liturgy for %" PRIx64 ":%02x (%04x) (%d)",
-		    flock->id, lit->id, group, catacomb);
+		    "liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
+		    flock->id, lit->id, group, catacomb, lit->hidden);
 	}
 
 	entry->age = now;
 	entry->group = group;
+	entry->hidden = lit->hidden;
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
@@ -1041,6 +1043,7 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	struct sanctum_packet		*pkt;
 	struct sanctum_liturgy_offer	*lit;
 	struct liturgy			*entry;
+	int				visible;
 	char				secret[1024];
 
 	PRECOND(flock != NULL);
@@ -1057,7 +1060,15 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	lit->group = htobe16(src->group);
 
 	LIST_FOREACH(entry, &flock->liturgies, list) {
-		if (entry != src && entry->group == src->group)
+		if (entry == src)
+			continue;
+
+		if (src->hidden == 0 || entry->hidden == 0)
+			visible = 1;
+		else
+			visible = 0;
+
+		if (entry->group == src->group && visible)
 			lit->peers[entry->id] = 1;
 	}
 

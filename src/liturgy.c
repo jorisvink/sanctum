@@ -137,6 +137,7 @@ liturgy_offer_send(void)
 
 	lit->id = local_id;
 	lit->group = htobe16(sanctum->liturgy_group);
+	lit->hidden = (sanctum->flags & SANCTUM_FLAG_LITURGY_HIDE) ? 1 : 0;
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->cathedral_secret,

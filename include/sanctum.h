@@ -250,6 +250,7 @@ struct sanctum_liturgy_offer {
 	u_int8_t		id;
 	u_int16_t		group;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
+	u_int8_t		hidden;
 } __attribute__((packed));
 
 struct sanctum_offer_data {
@@ -494,6 +495,9 @@ struct sanctum_ether {
 
 /* P2P federated sync is enabled in a cathedral. */
 #define SANCTUM_FLAG_CATHEDRAL_P2P_SYNC	(1 << 7)
+
+/* When in liturgy mode, are we hiding ourselves or not. */
+#define SANCTUM_FLAG_LITURGY_HIDE	(1 << 8)
 
 /*
  * The modes in which sanctum can run.
