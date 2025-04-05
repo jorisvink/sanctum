@@ -804,7 +804,7 @@ sanctum_cathedral_timeout(u_int64_t now)
 	if (sanctum->cathedral_remembrance == NULL)
 		return;
 
-	if ((now - sanctum->cathedral_last) < 30)
+	if ((now - sanctum->cathedral_last) < SANCTUM_CATHEDRAL_TIMEOUT)
 		return;
 
 	sanctum->cathedral_last = now;

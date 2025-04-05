@@ -45,7 +45,7 @@
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
 /* The interval at which we send remembrances to peers. */
-#define CATHEDRAL_REMEMBRANCE_NEXT	(25 * 1000)
+#define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42

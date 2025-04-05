@@ -180,6 +180,9 @@ extern int daemon(int, int);
 /* The maximum number of federated cathedrals we can have. */
 #define SANCTUM_CATHEDRALS_MAX		32
 
+/* Number of seconds after which we consider a cathedral timed out. */
+#define SANCTUM_CATHEDRAL_TIMEOUT	45
+
 /*
  * Packets used when doing key offering or cathedral forward registration.
  *
