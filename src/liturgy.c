@@ -76,6 +76,12 @@ sanctum_liturgy(struct sanctum_proc *proc)
 	next_liturgy = 0;
 	local_id = sanctum->tun_spi & 0xff;
 
+	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
+
+	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
+	    sanctum->cathedral_remembrance != NULL)
+		sanctum_cathedrals_remembrance();
+
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
 			sanctum_log(LOG_NOTICE, "received signal %d", sig);
@@ -93,6 +99,8 @@ sanctum_liturgy(struct sanctum_proc *proc)
 			next_liturgy = now + 5;
 			liturgy_offer_send();
 		}
+
+		sanctum_cathedral_timeout(now);
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel))) {
 			liturgy_offer_recv(pkt, now);
