@@ -8,6 +8,7 @@ VERSION=$(OBJDIR)/version.c
 
 DESTDIR?=
 PREFIX?=/usr/local
+MAN_DIR=$(PREFIX)/man
 INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
@@ -65,7 +66,7 @@ else
 $(error "No CIPHER selected")
 endif
 
-INSTALL_TARGETS=install-bin
+INSTALL_TARGETS=install-bin install-man
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "linux")
@@ -117,6 +118,12 @@ install-bin: $(BIN)
 	$(MAKE) -C tools/hymn install
 	$(MAKE) -C tools/ambry install
 	$(MAKE) -C tools/vicar install
+
+install-man:
+	mkdir -p $(MAN_DIR)/man1
+	mkdir -p $(MAN_DIR)/man5
+	install -m 444 share/man/man1/sanctum.1 $(MAN_DIR)/man1
+	install -m 444 share/man/man5/sanctum.conf.5 $(MAN_DIR)/man5
 
 install-darwin-sb:
 	mkdir -p $(DARWIN_SB_PATH)

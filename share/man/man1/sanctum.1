@@ -1,0 +1,32 @@
+.nh
+.ad 1
+.TH SANCTUM 1
+.SH NAME
+sanctum \- A small, reviewable and capable VPN daemon.
+.SH SYNOPSIS
+.B sanctum
+[\-c file] [\-d] [\-h] [\-v]
+.SH DESCRIPTION
+.I Sanctum
+is a small, reviewable, capable, and fully privilege-separated VPN daemon designed to transport encrypted network traffic between two peers. It ensures that all important assets are separated from processes that handle non-cryptography-related tasks, providing enhanced security through its privilege separation model.
+
+Sanctum supports one-directional tunnels (pilgrim or shrine mode) and can operate in cathedral mode, which allows for peer-to-peer end-to-end encrypted connections even when both peers are behind restrictive NATs. The daemon uses AES256-GCM encryption with ESP in tunnel mode and supports symmetrical keying.
+
+The processes within Sanctum share packets in a well-defined manner to ensure that plaintext traffic cannot be moved to the ciphertext interface without passing through the encryption process.
+.SH OPTIONS
+.TP
+.BR \-d
+Run as
+.I sanctum
+as a daemon. This option allows the program to run in the background, detaching from the terminal.
+.TP
+.BR \-c " " file
+Load configuration file. Specify the path to the configuration file that contains the settings for the VPN daemon.
+.TP
+.BR \-h
+Prints the help. Display this help message and exit.
+.TP
+.BR \-v
+Display version information. Show the version of the program and exit.
+.SH "SEE ALSO"
+.BR sanctum.conf(5)

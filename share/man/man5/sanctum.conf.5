@@ -1,0 +1,136 @@
+.nh
+.ad 1
+.TH SANCTUM.CONF 5
+.SH NAME
+sanctum.conf \- Configuration file for the Sanctum VPN daemon.
+.SH SYNOPSIS
+.B /etc/sanctum.conf
+.SH DESCRIPTION
+The
+.I sanctum.conf
+file is used to configure the Sanctum VPN daemon. It contains various options that define how the daemon operates, including network settings, user permissions, and encryption parameters.
+
+.SH OPTIONS
+.TP
+.BR instance " " name
+Specify the name of this Sanctum instance.
+.TP
+.BR secret " " path
+Path to the shared secret file used for encryption.
+.TP
+.BR run " " process " as " user
+Run a specific process as a specified user. This is part of the privilege separation model.
+.TP
+.BR control " " path " " user
+Specify the control socket path and the user who owns it.
+.TP
+.BR tunnel " " ip/mask " " mtu
+Configure the tunnel settings, including the IP address, subnet mask, and MTU (Maximum Transmission Unit).
+.TP
+.BR route " " network
+Add a static route to the specified network.
+.TP
+.BR local " " ip:port
+Specify the local IP address and port for the daemon to bind to.
+.TP
+.BR peer " " ip:port
+Specify the peer's IP address and port. This is optional if the peer moves networks frequently.
+.TP
+.BR tap " " yes/no
+Enable or disable TAP mode (Layer 2 instead of Layer 3).
+.TP
+.BR tfc " " on/off
+Enable or disable traffic flow control.
+.TP
+.BR mode " " tunnel/pilgrim/shrine/cathedral/liturgy
+Set the operating mode of the daemon. Options include:
+.RS 4
+.TP
+.B tunnel
+Default mode for two-way encrypted tunnels.
+.TP
+.B pilgrim
+One-directional tunnel where this instance sends traffic to a shrine peer.
+.TP
+.B shrine
+One-directional tunnel where this instance receives traffic from a pilgrim peer.
+.TP
+.B cathedral
+Mode for relaying packets between tunnel endpoints without being able to read, inject, or modify packets.
+.TP
+.B liturgy
+Mode for autodiscovery of peers in a cathedral.
+.RE
+.TP
+.BR cathedral " " ip:port
+Specify the IP address and port of the cathedral server.
+.TP
+.BR cathedral_id " " hex_value
+Set the unique ID for the cathedral instance.
+.TP
+.BR cathedral_remembrance " " path
+Path to the remembrance file used by the cathedral.
+.TP
+.BR cathedral_nat_port " " port
+Specify the NAT port for the cathedral.
+.TP
+.BR cathedral_p2p_sync " " yes/no
+Enable or disable peer-to-peer synchronization in cathedral mode.
+.TP
+.BR cathedral_flock " " hex_value
+Set the flock value for the cathedral instance.
+.TP
+.BR cathedral_secret " " path
+Path to the secret file used by the cathedral.
+.TP
+.BR secretdir " " path
+Directory containing secret files for cathedral mode.
+.TP
+.BR settings " " path
+Path to the settings file for cathedral mode.
+.TP
+.BR encapsulation " " hex_value
+Set the encryption key for encapsulation.
+.TP
+.BR liturgy_group " " hex_value
+Set the group ID for liturgy mode.
+.TP
+.BR liturgy_prefix " " ip
+Specify the IP prefix for liturgy mode.
+
+.SH EXAMPLE
+Here is an example configuration file:
+
+.nf
+instance laptop
+
+secret /etc/sanctum/laptop_secret.key
+
+run control as _user
+control /tmp/sanctum-control _user
+
+tunnel 1.0.0.1/30 1422
+
+route 2.0.0.0/24
+
+local x.x.x.x:2333
+
+peer y.y.y.y:2333
+
+run bless as _bless
+run confess as _confess
+
+run heaven-rx as _heaven
+run heaven-tx as _heaven
+
+run purgatory-rx as _purgatory
+run purgatory-tx as _purgatory
+
+run bishop as root
+
+run chapel as _chapel
+.fi
+
+.SH "SEE ALSO"
+.BR sanctum(1)
+
