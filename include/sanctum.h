@@ -180,6 +180,9 @@ extern int daemon(int, int);
 /* The maximum number of federated cathedrals we can have. */
 #define SANCTUM_CATHEDRALS_MAX		32
 
+/* Number of seconds after which we consider a cathedral timed out. */
+#define SANCTUM_CATHEDRAL_TIMEOUT	45
+
 /*
  * Packets used when doing key offering or cathedral forward registration.
  *
@@ -250,6 +253,8 @@ struct sanctum_liturgy_offer {
 	u_int8_t		id;
 	u_int16_t		group;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
+	u_int8_t		hidden;
+	u_int32_t		flags;
 } __attribute__((packed));
 
 struct sanctum_offer_data {
@@ -495,6 +500,9 @@ struct sanctum_ether {
 /* P2P federated sync is enabled in a cathedral. */
 #define SANCTUM_FLAG_CATHEDRAL_P2P_SYNC	(1 << 7)
 
+/* When in liturgy mode, are we hiding ourselves or not. */
+#define SANCTUM_FLAG_LITURGY_HIDE	(1 << 8)
+
 /*
  * The modes in which sanctum can run.
  *
@@ -528,6 +536,12 @@ struct sanctum_state {
 
 	/* The current selected cathedral remote address (tunnel mode only). */
 	struct sockaddr_in	cathedral;
+
+	/* The current index into the cathedrals remembrance list. */
+	u_int8_t		cathedral_idx;
+
+	/* The last time we heard from cathedral (tunnel mode only). */
+	u_int64_t		cathedral_last;
 
 	/* All cathedrals in remembrance (tunnel mode only). */
 	struct sockaddr_in	cathedrals[SANCTUM_CATHEDRALS_MAX];
@@ -680,8 +694,8 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
-void	sanctum_cathedrals_load(void);
-void	sanctum_cathedrals_save(void);
+void	sanctum_cathedrals_remembrance(void);
+void	sanctum_cathedral_timeout(u_int64_t);
 int	sanctum_file_open(const char *, struct stat *);
 void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
@@ -704,6 +718,7 @@ int	sanctum_cipher_kdf(const char *, const char *,
 	    struct sanctum_key *, void *, size_t);
 void	sanctum_offer_nonce(u_int8_t *, size_t);
 void	sanctum_offer_tfc(struct sanctum_packet *);
+void	sanctum_offer_remembrance(struct sanctum_offer *, u_int64_t);
 void	sanctum_offer_encrypt(struct sanctum_key *, struct sanctum_offer *);
 void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
 int	sanctum_offer_decrypt(struct sanctum_key *,

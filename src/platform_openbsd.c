@@ -88,7 +88,8 @@ sanctum_platform_tundev_create(void)
 
 	openbsd_configure_tundev(&path[PATH_SKIP]);
 
-	if (sanctum->tun_ip.sin_addr.s_addr != 0) {
+	if (sanctum->tun_ip.sin_addr.s_addr != 0 &&
+	    sanctum->tun_mask.sin_addr.s_addr != 0xffffffff) {
 		sanctum_platform_tundev_route(&sanctum->tun_ip,
 		    &sanctum->tun_mask);
 	}
@@ -371,14 +372,12 @@ openbsd_sandbox_pledge(struct sanctum_proc *proc)
 	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_SHRINE:
 	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_LITURGY:
 	case SANCTUM_PROC_CATHEDRAL:
 		ret = pledge("stdio rpath wpath cpath", NULL);
 		break;
 	case SANCTUM_PROC_CONTROL:
 		ret = pledge("stdio unix inet", NULL);
-		break;
-	case SANCTUM_PROC_LITURGY:
-		ret = pledge("stdio", NULL);
 		break;
 	case SANCTUM_PROC_HEAVEN_TX:
 	case SANCTUM_PROC_HEAVEN_RX:

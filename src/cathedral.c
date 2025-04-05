@@ -45,7 +45,7 @@
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
 /* The interval at which we send remembrances to peers. */
-#define CATHEDRAL_REMEMBRANCE_NEXT	(25 * 1000)
+#define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
@@ -105,6 +105,8 @@ struct liturgy {
 	u_int16_t		id;
 	u_int16_t		port;
 	u_int16_t		group;
+	u_int8_t		hidden;
+	u_int64_t		update;
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -646,20 +648,29 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 			fatal("calloc: failed to allocate liturgy");
 
 		entry->id = lit->id;
+		entry->update = now;
+
 		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
 	}
 
 	if (entry->age == 0 || entry->group != group) {
 		sanctum_log(LOG_INFO,
-		    "liturgy for %" PRIx64 ":%02x (%04x) (%d)",
-		    flock->id, lit->id, group, catacomb);
+		    "liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
+		    flock->id, lit->id, group, catacomb, lit->hidden);
 	}
 
 	entry->age = now;
 	entry->group = group;
+	entry->hidden = lit->hidden;
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
+
+	if (now >= entry->update &&
+	    (lit->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
+		entry->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+		cathedral_remembrance_send(flock, &pkt->addr, id);
+	}
 
 	if (catacomb == 0) {
 		cathedral_offer_federate(flock, pkt);
@@ -1041,6 +1052,7 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	struct sanctum_packet		*pkt;
 	struct sanctum_liturgy_offer	*lit;
 	struct liturgy			*entry;
+	int				visible;
 	char				secret[1024];
 
 	PRECOND(flock != NULL);
@@ -1057,7 +1069,15 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	lit->group = htobe16(src->group);
 
 	LIST_FOREACH(entry, &flock->liturgies, list) {
-		if (entry != src && entry->group == src->group)
+		if (entry == src)
+			continue;
+
+		if (src->hidden == 0 || entry->hidden == 0)
+			visible = 1;
+		else
+			visible = 0;
+
+		if (entry->group == src->group && visible)
 			lit->peers[entry->id] = 1;
 	}
 

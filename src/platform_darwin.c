@@ -133,7 +133,12 @@ sanctum_platform_tundev_create(void)
 		fatal("snprintf on utun%u failed", idx - 1);
 
 	darwin_configure_tundev(ifname);
-	sanctum_platform_tundev_route(&sanctum->tun_ip, &sanctum->tun_mask);
+
+	if (sanctum->tun_ip.sin_addr.s_addr != 0 &&
+	    sanctum->tun_mask.sin_addr.s_addr != 0xffffffff) {
+		sanctum_platform_tundev_route(&sanctum->tun_ip,
+		    &sanctum->tun_mask);
+	}
 
 	return (fd);
 }
@@ -281,9 +286,11 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		break;
 	}
 
-	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
-	if (len == -1 || (size_t)len >= sizeof(path))
-		fatal("failed to construct new path");
+	if (sanctum->secret != NULL) {
+		len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
+		if (len == -1 || (size_t)len >= sizeof(path))
+			fatal("failed to construct new path");
+	}
 
 	/*
 	 * Construct all parameters that the profiles can use.
@@ -291,10 +298,13 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	 * chapel will ues KEY_PATH, KEK_PATH or CATHEDRAL_SECRET.
 	 */
 	idx = 0;
-	params[idx++] = "KEY_PATH";
-	params[idx++] = sanctum->secret;
-	params[idx++] = "KEY_PATH_NEW";
-	params[idx++] = path;
+
+	if (sanctum->secret != NULL) {
+		params[idx++] = "KEY_PATH";
+		params[idx++] = sanctum->secret;
+		params[idx++] = "KEY_PATH_NEW";
+		params[idx++] = path;
+	}
 
 	if (sanctum->cathedral_secret != NULL) {
 		params[idx++] = "CATHEDRAL_SECRET";

@@ -54,12 +54,13 @@
 #define HYMN_CATHEDRAL		(1 << 5)
 #define HYMN_IDENTITY		(1 << 6)
 #define HYMN_PREFIX		(1 << 7)
+#define HYMN_GROUP		(1 << 8)
 
 #define HYMN_REQUIRED		\
     (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
 
 #define HYMN_REQUIRED_LITURGY	\
-    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX)
+    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX | HYMN_GROUP)
 
 struct addr {
 	in_addr_t		ip;
@@ -90,6 +91,7 @@ struct config {
 	int			is_liturgy;
 	int			remembrance;
 	int			peer_cathedral;
+	int			liturgy_hidden;
 
 	const char		*flock;
 	char			*kek;
@@ -348,7 +350,8 @@ usage_liturgy(void)
 	fprintf(stderr,
 	    "usage: hymn liturgy <flock>-<src> cathedral <ip:port> \\\n");
 	fprintf(stderr, "    identity <32-bit hexint>:<path> kek <path> \\\n");
-	fprintf(stderr, "    prefix <prefix> [natport <port>]\n");
+	fprintf(stderr, "    prefix <prefix> group <16-bit hexint> \\\n");
+	fprintf(stderr, "    [natport <port>]\n");
 
 	exit (1);
 
@@ -413,6 +416,18 @@ hymn_liturgy(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "natport")) {
 			config.cathedral_nat_port = hymn_number(argv[i + 1],
 			    10, 0, USHRT_MAX);
+		} else if (!strcmp(argv[i], "group")) {
+			which |= HYMN_GROUP;
+			config.group = hymn_number(argv[i + 1], 16,
+			    0, USHRT_MAX);
+		} else if (!strcmp(argv[i], "discoverable")) {
+			if (!strcmp(argv[i + 1], "yes")) {
+				config.liturgy_hidden = 0;
+			} else if (!strcmp(argv[i + 1], "no")) {
+				config.liturgy_hidden = 1;
+			} else {
+				fatal("discoverable is a (yes|no) option");
+			}
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -1438,7 +1453,8 @@ hymn_tunnel_list(struct tunnels *list)
 					continue;
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
-				    entry->config.src > src) {
+				    entry->config.src > src ||
+				    entry->config.is_liturgy) {
 					TAILQ_INSERT_BEFORE(entry, tun, list);
 					break;
 				}
@@ -1768,6 +1784,11 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	} else {
 		hymn_config_write(fd, "liturgy_prefix %s\n", cfg->prefix);
 		hymn_config_write(fd, "liturgy_group 0x%04x\n", cfg->group);
+
+		if (cfg->liturgy_hidden)
+			hymn_config_write(fd, "liturgy_discoverable no\n");
+		else
+			hymn_config_write(fd, "liturgy_discoverable yes\n");
 	}
 
 	if (cfg->encap != NULL)
@@ -2027,7 +2048,7 @@ hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
 static void
 hymn_config_parse_liturgy_group(struct config *cfg, char *group)
 {
-	cfg->group = hymn_number(group, 10, 0, USHRT_MAX);
+	cfg->group = hymn_number(group, 16, 0, USHRT_MAX);
 }
 
 static void

@@ -678,6 +678,52 @@ sanctum_offer_install(struct sanctum_key *state, struct sanctum_offer *op)
 }
 
 /*
+ * We received a list of all cathedrals from the one we are currently
+ * talking too. We save the list for later if a path for it was
+ * configured, otherwise this is just ignored.
+ */
+void
+sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
+{
+	int					fd, i;
+	struct sanctum_remembrance_offer	*list;
+
+	PRECOND(op != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
+
+	if (sanctum->cathedral_remembrance == NULL) {
+		sanctum_log(LOG_NOTICE,
+		    "cathedral sent an unsolicited remembrance");
+		return;
+	}
+
+	if ((fd = open(sanctum->cathedral_remembrance,
+	    O_CREAT | O_TRUNC | O_WRONLY, 0500)) == -1) {
+		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
+		    sanctum->cathedral_remembrance, errno_s);
+		return;
+	}
+
+	sanctum->cathedral_idx = 0;
+	list = &op->data.offer.remembrance;
+
+	for (i = 0; i < SANCTUM_CATHEDRALS_MAX; i++) {
+		if (list->ips[i] == 0 || list->ports[i] == 0)
+			break;
+		sanctum->cathedrals[i].sin_port = list->ports[i];
+		sanctum->cathedrals[i].sin_addr.s_addr = list->ips[i];
+	}
+
+	nyfe_file_write(fd, list->ips, sizeof(list->ips));
+	nyfe_file_write(fd, list->ports, sizeof(list->ports));
+
+	if (close(fd) == -1) {
+		sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
+		    sanctum->cathedral_remembrance, errno_s);
+	}
+}
+
+/*
  * Install the given spi, salt and key into the given state.
  */
 void
@@ -743,4 +789,81 @@ sanctum_bind_local(struct sockaddr_in *sin)
 #endif
 
 	return (fd);
+}
+
+/*
+ * Check if we can detect if our current cathedral has timed out and if
+ * so we will select the next one from our remembrance list.
+ * This will only have an effect if remembrance was enabled.
+ */
+void
+sanctum_cathedral_timeout(u_int64_t now)
+{
+	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
+
+	if (sanctum->cathedral_remembrance == NULL)
+		return;
+
+	if ((now - sanctum->cathedral_last) < SANCTUM_CATHEDRAL_TIMEOUT)
+		return;
+
+	sanctum->cathedral_last = now;
+	sanctum_log(LOG_INFO, "cathedral %s is unresponsive",
+	    sanctum_inet_string(&sanctum->cathedral));
+
+	if (sanctum->cathedrals[0].sin_addr.s_addr == 0)
+		return;
+
+	sanctum->cathedral_idx = (sanctum->cathedral_idx + 1) &
+	    (SANCTUM_CATHEDRALS_MAX - 1);
+
+	if (sanctum->cathedrals[sanctum->cathedral_idx].sin_addr.s_addr == 0)
+		sanctum->cathedral_idx = 0;
+
+	sanctum->cathedral = sanctum->cathedrals[sanctum->cathedral_idx];
+
+	sanctum_log(LOG_INFO, "switching to cathedral %s",
+	    sanctum_inet_string(&sanctum->cathedral));
+}
+
+/*
+ * Load previously stored cathedrals from the configured cathedral_remembrance
+ * file. This should only be called when we have a cathedral configured and a
+ * remembrance file was configured.
+ */
+void
+sanctum_cathedrals_remembrance(void)
+{
+	int		fd, i;
+	u_int32_t	ips[SANCTUM_CATHEDRALS_MAX];
+	u_int16_t	ports[SANCTUM_CATHEDRALS_MAX];
+
+	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
+	PRECOND(sanctum->cathedral_remembrance != NULL);
+
+	nyfe_mem_zero(&sanctum->cathedrals, sizeof(sanctum->cathedrals));
+
+	fd = sanctum_file_open(sanctum->cathedral_remembrance, NULL);
+	if (fd == -1)
+		return;
+
+	if (nyfe_file_read(fd, ips, sizeof(ips)) != sizeof(ips) ||
+	    nyfe_file_read(fd, ports, sizeof(ports)) != sizeof(ports)) {
+		sanctum_log(LOG_NOTICE,
+		    "ignoring malformed cathedral_remembrance file");
+		goto cleanup;
+	}
+
+	for (i = 0; i < SANCTUM_CATHEDRALS_MAX; i++) {
+		if (ips[i] == 0 || ports[i] == 0)
+			break;
+
+		sanctum->cathedrals[i].sin_port = ports[i];
+		sanctum->cathedrals[i].sin_addr.s_addr = ips[i];
+	}
+
+	sanctum_log(LOG_INFO, "%d cathedrals in remembrance", i);
+
+cleanup:
+	(void)close(fd);
 }

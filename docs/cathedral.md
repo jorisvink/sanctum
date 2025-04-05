@@ -24,14 +24,7 @@ A cathedral can create different flocks (networks) that allows for
 separation of different clients while sharing the same identity
 and tunnel names.
 
-```
-flock f35ae0 {
-    allow 8f2a01ba spi 01
-    allow 9b00f8c0 spi 02
-
-    ambry /etc/cathedral/ambries/ambry-f35ae0
-}
-```
+See below for an example.
 
 ## Authentication
 
@@ -54,3 +47,39 @@ Multiple cathedrals may federate to each other, allowing peers to be
 distributed across these.
 
 Note that federation is global and not per flock.
+
+## Configuration
+
+Below is an example cathedral configuration that puts sanctum
+in cathedral mode and sets up a bunch of required options.
+
+```
+mode cathedral
+instance cathedral
+
+pidfile /tmp/cathedral.pid
+local 1.2.3.4:4500
+secret /home/cathedral/sync.secret
+secretdir /home/cathedral/shared/identities
+settings /home/cathedral/shared/settings.conf
+
+cathedral_p2p_sync yes
+cathedral_nat_port 4501
+
+run control as root
+run cathedral as cathedral
+run purgatory-rx as purgatory
+run purgatory-tx as purgatory
+```
+
+The settings file contains the flocks and their configuration
+and can be reloaded while the cathedral is running.
+
+```
+flock cafebabe {
+    allow deadbeef spi 01
+    allow badf00d spi 02
+
+    ambry /home/cathedral/shared/ambries/ambry-cafebabe
+}
+```

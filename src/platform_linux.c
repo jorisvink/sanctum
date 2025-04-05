@@ -132,18 +132,6 @@ static struct sock_filter purgatory_tx_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(getrandom),
 };
 
-static struct sock_filter liturgy_seccomp_filter[] = {
-	KORE_SYSCALL_ALLOW(read),
-	KORE_SYSCALL_ALLOW(close),
-	KORE_SYSCALL_ALLOW(fstat),
-#if defined(SYS_open)
-	KORE_SYSCALL_ALLOW(open),
-#endif
-	KORE_SYSCALL_ALLOW(openat),
-	KORE_SYSCALL_ALLOW(getrandom),
-	KORE_SYSCALL_ALLOW(newfstatat),
-};
-
 static struct sock_filter keying_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(read),
 	KORE_SYSCALL_ALLOW(write),
@@ -585,12 +573,9 @@ linux_sandbox_seccomp(struct sanctum_proc *proc)
 		pf.len = 0;
 		pf.filter = NULL;
 		break;
-	case SANCTUM_PROC_LITURGY:
-		pf.filter = liturgy_seccomp_filter;
-		pf.len = KORE_FILTER_LEN(liturgy_seccomp_filter);
-		break;
 	case SANCTUM_PROC_CHAPEL:
 	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_LITURGY:
 	case SANCTUM_PROC_PILGRIM:
 	case SANCTUM_PROC_CATHEDRAL:
 		pf.filter = keying_seccomp_filter;
