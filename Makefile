@@ -8,7 +8,7 @@ VERSION=$(OBJDIR)/version.c
 
 DESTDIR?=
 PREFIX?=/usr/local
-MAN_DIR=$(PREFIX)/man
+MAN_DIR?=$(PREFIX)/share/man
 INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
