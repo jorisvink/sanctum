@@ -106,6 +106,7 @@ struct liturgy {
 	u_int16_t		port;
 	u_int16_t		group;
 	u_int8_t		hidden;
+	u_int64_t		update;
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -647,6 +648,8 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 			fatal("calloc: failed to allocate liturgy");
 
 		entry->id = lit->id;
+		entry->update = now;
+
 		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
 	}
 
@@ -662,6 +665,12 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
+
+	if (now >= entry->update &&
+	    (lit->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
+		entry->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+		cathedral_remembrance_send(flock, &pkt->addr, id);
+	}
 
 	if (catacomb == 0) {
 		cathedral_offer_federate(flock, pkt);

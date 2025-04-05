@@ -139,6 +139,9 @@ liturgy_offer_send(void)
 	lit->group = htobe16(sanctum->liturgy_group);
 	lit->hidden = (sanctum->flags & SANCTUM_FLAG_LITURGY_HIDE) ? 1 : 0;
 
+	if (sanctum->cathedral_remembrance != NULL)
+		lit->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
+
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_cipher_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
@@ -206,6 +209,11 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi != sanctum->cathedral_id)
 		return;
+
+	if (op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE) {
+		sanctum_offer_remembrance(op, now);
+		return;
+	}
 
 	if (op->data.type != SANCTUM_OFFER_TYPE_LITURGY)
 		return;

@@ -251,6 +251,7 @@ struct sanctum_liturgy_offer {
 	u_int16_t		group;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
 	u_int8_t		hidden;
+	u_int32_t		flags;
 } __attribute__((packed));
 
 struct sanctum_offer_data {
