@@ -8,25 +8,58 @@ sanctum \- A small, reviewable and capable VPN daemon.
 [\-c file] [\-d] [\-h] [\-v]
 .SH DESCRIPTION
 .I Sanctum
-is a small, reviewable, capable, and fully privilege-separated VPN daemon designed to transport encrypted network traffic between two peers. It ensures that all important assets are separated from processes that handle non-cryptography-related tasks, providing enhanced security through its privilege separation model.
+is a small, reviewable, capable and fully privilege seperated VPN
+daemon capable of transporting encrypted network traffic between two peers.
 
-Sanctum supports one-directional tunnels (pilgrim or shrine mode) and can operate in cathedral mode, which allows for peer-to-peer end-to-end encrypted connections even when both peers are behind restrictive NATs. The daemon uses AES256-GCM encryption with ESP in tunnel mode and supports symmetrical keying.
-
-The processes within Sanctum share packets in a well-defined manner to ensure that plaintext traffic cannot be moved to the ciphertext interface without passing through the encryption process.
 .SH OPTIONS
 .TP
 .BR \-d
 Run as
 .I sanctum
-as a daemon. This option allows the program to run in the background, detaching from the terminal.
+as a daemon. This option allows the program to run in the background,
+detaching from the terminal.
 .TP
 .BR \-c " " file
-Load configuration file. Specify the path to the configuration file that contains the settings for the VPN daemon.
+Loads the given configuration file. See
+.BR sanctum.conf(5).
 .TP
 .BR \-h
 Prints the help. Display this help message and exit.
 .TP
 .BR \-v
 Display version information. Show the version of the program and exit.
+
+.SH DESIGN
+.I Sanctum
+is built using a multi-process approach where each process is only
+doing one thing. This allows for more fine-grained sandboxing
+in relation to permissions or allowed system calls.
+
+Packets flow between these processes in a well-defined manner making
+it impossible to move a packet straight from the red side to the black
+side without passing the encryption process and vice-versa.
+
+.SH ENCRYPTION
+Traffic is by default encrypted under AES256-GCM with unique keys in
+both the RX and TX directions using a 96-bit nonce consisting of a 32-bit
+salt and 64-bit packet counter (see rfc4106).
+
+For management traffic unique encryption keys are derived from the
+shared secret on a per-message basis.
+
+.I Sanctum
+uses strong shared symmetrical secrets from which an encryption key
+is derived for wrapping generated session keys that are exchanged
+between peers. Each sanctum instance is responsible for sending
+its
+.I RX
+session key to its configured peer periodically.
+
+Keys are automatically expired after a given number of packets
+have been sent on them (1 << 34), or after a 1-hour period.
+
+Note that due to the symmetrical keying there is no PFS and thus
+the shared secret must be kept a secret.
+
 .SH "SEE ALSO"
 .BR sanctum.conf(5)
