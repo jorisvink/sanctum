@@ -12,41 +12,7 @@ file is used to configure the Sanctum VPN daemon. It contains various options
 that define how the daemon operates, including network settings, user
 permissions, and more.
 
-.SH OPTIONS
-.TP
-.BR instance " " name
-Specify the name of the instance.
-.TP
-.BR secret " " path
-Path to the shared secret file.
-.TP
-.BR run " " process " as " user
-Run the specified process as a specified user.
-.TP
-.BR control " " path " " user
-Specify the control socket path and the user who owns it.
-.TP
-.BR tunnel " " ip/mask " " mtu
-Configure the tunnel settings, including the IP address, subnet mask,
-and MTU (Maximum Transmission Unit).
-.TP
-.BR route " " network
-Add a route to the specified network so that it gets routed over the tunnel.
-.TP
-.BR local " " ip:port
-Specify the local IP address and port for the daemon to bind to. This can be
-set to 0.0.0.0:0 for ephemeral binds.
-.TP
-.BR peer " " ip:port
-Specify the peer's IP address and port. This can be set to 0.0.0.0:0 if the
-peer location is unknown at the time of configuration.
-.TP
-.BR tap " " yes/no
-When set to yes, create a tap device (L2) instead of a tun device (L3).
-.TP
-.BR tfc " " on/off
-Enable or disable traffic flow control, which pads packets to the maximum
-MTU size before encrypting them.
+.SH COMMON OPTIONS
 .TP
 .BR mode " " tunnel/pilgrim/shrine/cathedral/liturgy
 Set the operating mode of the daemon. Options include:
@@ -69,6 +35,46 @@ or modify said packets.
 Mode for autodiscovery of peers in a cathedral.
 .RE
 .TP
+.BR instance " " name
+Specify the name of the instance.
+.TP
+.BR secret " " path
+Path to the shared secret file for tunnels or cathedral synchronization.
+.TP
+.BR encapsulation " " hex_value
+Set the key used for encapsulation. If used, this value must be set
+on all instances that are part of the same setup.
+.TP
+.BR run " " process " as " user
+Run the specified process as a specified user.
+.TP
+.BR control " " path " " user
+Specify the control socket path and the user who owns it.
+.TP
+.BR local " " ip:port
+Specify the local IP address and port sanctum shall bind too. May be set
+to 0.0.0.0:0 for non cathedrals.
+
+.SH TUNNEL SPECIFIC OPTIONS
+.TP
+.BR tunnel " " ip/mask " " mtu
+Configure the tunnel settings, including the IP address, subnet mask,
+and MTU (Maximum Transmission Unit).
+.TP
+.BR route " " network
+Add a route to the specified network so that it gets routed over the tunnel.
+.TP
+.BR peer " " ip:port
+Specify the peer's IP address and port. This can be set to 0.0.0.0:0 if the
+peer location is unknown at the time of configuration.
+.TP
+.BR tap " " yes/no
+When set to yes, create a tap device (L2) instead of a tun device (L3).
+.TP
+.BR tfc " " on/off
+Enable or disable traffic flow control, which pads packets to the maximum
+MTU size before encrypting them.
+.TP
 .BR cathedral " " ip:port
 Specify the IP address and port of the cathedral server.
 .TP
@@ -88,15 +94,14 @@ Specify the NAT port for the cathedral. If set, the instance will send
 packets to thise port as well so that the cathedral can determine if
 what NAT type the instance is behind.
 .TP
-.BR cathedral_p2p_sync " " yes/no
-Enables the cathedral-wide p2p information synchronization.
-.TP
 .BR cathedral_flock " " hex_value
 Set the flock value to which the instance belongs to, when communicating
 with the cathedral.
 .TP
 .BR cathedral_secret " " path
 Path to the secret file used by the cathedral for federation.
+
+.SH CATHEDRAL SPECIFIC OPTIONS
 .TP
 .BR secretdir " " path
 Directory containing secret files for cathedral mode. This path contains
@@ -107,9 +112,14 @@ Path to the settings file for cathedral mode. This settings file can be
 reloaded by the cathedral while running and contains flock and peer
 information.
 .TP
-.BR encapsulation " " hex_value
-Set the key used for encapsulation. If used, this value must be set
-on all instances that are part of the same setup.
+.BR cathedral_nat_port " " port
+Specify the NAT port for the cathedral. If set, the cathedral will listen
+on this port for incoming packets to perform NAT detection.
+.TP
+.BR cathedral_p2p_sync " " yes/no
+Enables the cathedral-wide p2p information synchronization.
+
+.SH LITURGY SPECIFIC OPTIONS
 .TP
 .BR liturgy_group " " hex_value
 Set the group ID for liturgy mode.
