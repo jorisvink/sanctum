@@ -885,6 +885,8 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 	}
 
+	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
+
 	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
 		if (key->flags & SANCTUM_OFFER_FLAG_ASYMMETRY)
 			return;
@@ -908,8 +910,6 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	peer_id = key->id;
 	last_spi = op->hdr.spi;
-
-	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 }
 
 /*
