@@ -971,7 +971,7 @@ chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
 
 	sanctum_install_key_material(io->tx,
 	    op->hdr.spi, key->salt, tx, SANCTUM_KEY_LENGTH);
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 
 	nyfe_zeroize(okm, sizeof(okm));
 	nyfe_zeroize(&kex, sizeof(kex));
