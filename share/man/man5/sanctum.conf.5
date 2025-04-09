@@ -8,39 +8,11 @@ sanctum.conf \- Configuration file for the Sanctum VPN daemon.
 .SH DESCRIPTION
 The
 .I sanctum.conf
-file is used to configure the Sanctum VPN daemon. It contains various options that define how the daemon operates, including network settings, user permissions, and encryption parameters.
+file is used to configure the Sanctum VPN daemon. It contains various options
+that define how the daemon operates, including network settings, user
+permissions, and more.
 
-.SH OPTIONS
-.TP
-.BR instance " " name
-Specify the name of this Sanctum instance.
-.TP
-.BR secret " " path
-Path to the shared secret file used for encryption.
-.TP
-.BR run " " process " as " user
-Run a specific process as a specified user. This is part of the privilege separation model.
-.TP
-.BR control " " path " " user
-Specify the control socket path and the user who owns it.
-.TP
-.BR tunnel " " ip/mask " " mtu
-Configure the tunnel settings, including the IP address, subnet mask, and MTU (Maximum Transmission Unit).
-.TP
-.BR route " " network
-Add a static route to the specified network.
-.TP
-.BR local " " ip:port
-Specify the local IP address and port for the daemon to bind to.
-.TP
-.BR peer " " ip:port
-Specify the peer's IP address and port. This is optional if the peer moves networks frequently.
-.TP
-.BR tap " " yes/no
-Enable or disable TAP mode (Layer 2 instead of Layer 3).
-.TP
-.BR tfc " " on/off
-Enable or disable traffic flow control.
+.SH COMMON OPTIONS
 .TP
 .BR mode " " tunnel/pilgrim/shrine/cathedral/liturgy
 Set the operating mode of the daemon. Options include:
@@ -56,47 +28,117 @@ One-directional tunnel where this instance sends traffic to a shrine peer.
 One-directional tunnel where this instance receives traffic from a pilgrim peer.
 .TP
 .B cathedral
-Mode for relaying packets between tunnel endpoints without being able to read, inject, or modify packets.
+Mode for authenticated peer discovery, relay and key distribution.
 .TP
 .B liturgy
 Mode for autodiscovery of peers in a cathedral.
 .RE
 .TP
+.BR instance " " name
+Specify the name of the instance.
+.TP
+.BR secret " " path
+Path to the shared secret file for tunnels or cathedral synchronization.
+.TP
+.BR encapsulation " " hex_value
+Set the key used for encapsulation. If used, this value must be set
+on all instances that are part of the same setup.
+.TP
+.BR run " " process " as " user
+Run the specified process as a specified user.
+.TP
+.BR control " " path " " user
+Specify the control socket path and the user who owns it.
+.TP
+.BR local " " ip:port
+Specify the local IP address and port sanctum shall bind too. May be set
+to 0.0.0.0:0 for non cathedrals.
+
+.SH TUNNEL SPECIFIC OPTIONS
+.TP
+.BR asymmetry " " yes/no
+Enables or disables the use of asymmetry during the key offering. Note that
+this is turned
+.I on
+by default to provide PFS (Perfect Forwarding Secrecy) in case of a shared
+secret compromise. If this is set to no, sanctum will not include an asymmetric
+offering in the session key derivation and will instead only depend on the
+secrecy of the shared secret.
+.TP
+.BR tunnel " " ip/mask " " mtu
+Configure the tunnel settings, including the IP address, subnet mask,
+and MTU (Maximum Transmission Unit).
+.TP
+.BR route " " network
+Add a route to the specified network so that it gets routed over the tunnel.
+.TP
+.BR peer " " ip:port
+Specify the peer's IP address and port. This can be set to 0.0.0.0:0 if the
+peer location is unknown at the time of configuration.
+.TP
+.BR tap " " yes/no
+When set to yes, create a tap device (L2) instead of a tun device (L3).
+.TP
+.BR tfc " " on/off
+Enable or disable traffic flow control, which pads packets to the maximum
+MTU size before encrypting them.
+.TP
 .BR cathedral " " ip:port
 Specify the IP address and port of the cathedral server.
 .TP
 .BR cathedral_id " " hex_value
-Set the unique ID for the cathedral instance.
+Set the ID used to authenticate the instance to the cathedral.
 .TP
 .BR cathedral_remembrance " " path
-Path to the remembrance file used by the cathedral.
+Path to the remembrance file used by the cathedral. This enables the
+use of
+.I remembrance
+which is a feature where the cathedral will inform the peer about all
+other cathedrals in the same setup, allowing the instance to perform
+fail-over in the case of a cathedral becoming unresponsive.
 .TP
 .BR cathedral_nat_port " " port
-Specify the NAT port for the cathedral.
-.TP
-.BR cathedral_p2p_sync " " yes/no
-Enable or disable peer-to-peer synchronization in cathedral mode.
+Specify the NAT port for the cathedral. If set, the instance will send
+packets to thise port as well so that the cathedral can determine if
+what NAT type the instance is behind.
 .TP
 .BR cathedral_flock " " hex_value
-Set the flock value for the cathedral instance.
+Set the flock value to which the instance belongs to, when communicating
+with the cathedral.
 .TP
 .BR cathedral_secret " " path
-Path to the secret file used by the cathedral.
+Path to the secret file used by the cathedral for federation.
+
+.SH CATHEDRAL SPECIFIC OPTIONS
 .TP
 .BR secretdir " " path
-Directory containing secret files for cathedral mode.
+Directory containing secret files for cathedral mode. This path contains
+the client authentication secrets.
 .TP
 .BR settings " " path
-Path to the settings file for cathedral mode.
+Path to the settings file for cathedral mode. This settings file can be
+reloaded by the cathedral while running and contains flock and peer
+information.
 .TP
-.BR encapsulation " " hex_value
-Set the encryption key for encapsulation.
+.BR cathedral_nat_port " " port
+Specify the NAT port for the cathedral. If set, the cathedral will listen
+on this port for incoming packets to perform NAT detection.
+.TP
+.BR cathedral_p2p_sync " " yes/no
+Enables the cathedral-wide p2p information synchronization.
+
+.SH LITURGY SPECIFIC OPTIONS
 .TP
 .BR liturgy_group " " hex_value
 Set the group ID for liturgy mode.
 .TP
 .BR liturgy_prefix " " ip
-Specify the IP prefix for liturgy mode.
+Specify the IP prefix for liturgy mode. This IP prefix should be in the
+format
+.I
+172.16.0.0
+The liturgy mode will then give fixed IP addresses in this prefix to
+each peer using its src-dst combination.
 
 .SH EXAMPLE
 Here is an example configuration file:
@@ -133,4 +175,3 @@ run chapel as _chapel
 
 .SH "SEE ALSO"
 .BR sanctum(1)
-

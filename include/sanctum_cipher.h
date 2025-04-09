@@ -30,6 +30,16 @@
 #define SANCTUM_TAG_LENGTH		16
 
 /*
+ * Data structure used when calling sanctum_traffic_kdf().
+ */
+struct sanctum_kex {
+	u_int8_t		pub1[32];
+	u_int8_t		pub2[32];
+	u_int8_t		remote[32];
+	u_int8_t		private[32];
+};
+
+/*
  * Represents a key that is used either by bless, confess or potentially
  * key processes when doing offers.
  */

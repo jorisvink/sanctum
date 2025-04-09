@@ -406,7 +406,7 @@ cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
 	op = sanctum_packet_head(pkt);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_cipher_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
+	if (sanctum_offer_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return (-1);
@@ -458,7 +458,7 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_cipher_kdf(secret, label, &cipher,
+	if (sanctum_offer_kdf(secret, label, &cipher,
 	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return (-1);
@@ -710,7 +710,7 @@ cathedral_offer_federate(struct flockent *flock, struct sanctum_packet *update)
 	op->hdr.flock = htobe64(flock->id);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_cipher_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;

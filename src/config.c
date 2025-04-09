@@ -54,6 +54,7 @@ static void	config_parse_instance(char *);
 static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
+static void	config_parse_asymmetry(char *);
 static void	config_parse_encapsulation(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
@@ -95,6 +96,7 @@ static const struct {
 	{ "cathedral",			config_parse_cathedral },
 	{ "secretdir",			config_parse_secretdir },
 	{ "settings",			config_parse_settings },
+	{ "asymmetry",			config_parse_asymmetry },
 	{ "encapsulation",		config_parse_encapsulation },
 	{ "liturgy_group",		config_parse_liturgy_group },
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
@@ -773,6 +775,23 @@ config_parse_settings(char *opt)
 
 	if ((sanctum->settings = strdup(opt)) == NULL)
 		fatal("strdup failed");
+}
+
+/*
+ * Parse the asymmetry option.
+ */
+static void
+config_parse_asymmetry(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags &= ~SANCTUM_FLAG_DISABLE_ASYMMETRY;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags |= SANCTUM_FLAG_DISABLE_ASYMMETRY;
+	} else {
+		fatal("asymmetryis a yes|no option (given: %s)", opt);
+	}
 }
 
 /*

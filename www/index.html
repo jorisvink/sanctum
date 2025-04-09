@@ -56,7 +56,7 @@ a, a:visited {
     </div>
 
     <div class="release">
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.15.tgz">sanctum 0.9.15</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.16.tgz">sanctum 0.9.16</a>
     </div>
 
     <div class="sep"></div>
@@ -115,49 +115,102 @@ a, a:visited {
     <h2>Key exchange</h2>
 
     <p>
-        Sanctum uses strong shared symmetrical secrets from which an
-        encryption key is derived for wrapping a generated session
-        key that is transmitted to its peer. Each sanctum instance is
-        responsible for sending its <strong>RX</strong> session key
-        to its configured peer periodically.
+        By default sanctum uses a strong shared symmetrical secret in
+        combination with an asymmetrical secret to derive session
+        keys for both RX and TX directions.
+    </p>
+
+    <p>
+        The key offering process looks as follows for this:
+    </p>
+
+<pre>
+derive_key(seed):
+    input = len(seed) || seed
+    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
+    return wk
+
+Key offer:
+    now  = wall time in seconds, 64-bit
+    priv = x25519 private key, selected uniformly at random, 256-bit
+    pub  = x25519 public key, derived from priv, 256-bit
+    id   = unique sanctum ID selected uniformly at random at start, 64-bit
+    salt = salt for nonce construction, selected uniformly at random, 32-bit
+    spi  = the spi for this association, selected uniformly at random, 32-bit
+
+    internal_seed = unused and set to random data
+    internal_tag  = unused and set to random data
+
+    seed = seed selected uniformly at random, 512-bit
+    dk = derive_key(seed)
+
+    magic = 0x53414352414D4E54, 64-bit
+
+    header = magic || spi || seed
+    encdata = id || salt || now || internal_seed || pub || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
+
+    send(header || encdata)
+
+Key derivation:
+    header, encdata = recv()
+
+    dk = derive_key(header.seed)
+    offer = AES256-GCM(dk, nonce=1, aad=header, encdata)
+
+    ikm = scalarmult(priv, offer.pub)
+    x = len(ikm) || ikm || len(pub) || pub || len(offer.pub) || offer.pub
+    rx, tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 512-bit
+</pre>
+
+    <p>
+        The asymmetry part can be turned off, meaning sanctum only relies
+        on the strong shared symmetrical secret. From this, a key is derived
+        for wrapping a generated session key that is transmitted to its peer.
+        Each sanctum instance is responsible for sending its
+        <strong>RX</strong> session key to its configured peer periodically.
+    </p>
+
+    <p>
+        The key offering process looks as follows for this:
+    </p>
+
+<pre>
+derive_key(seed):
+    input = len(seed) || seed
+    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
+    return wk
+
+Key offer:
+    now  = wall time in seconds, 64-bit
+    sk   = session key selected uniformly at random, 256-bit
+    id   = unique sanctum ID selected uniformly at random at start, 64-bit
+    salt = salt for nonce construction, selected uniformly at random, 32-bit
+    spi  = the spi for this association, selected uniformly at random, 32-bit
+
+    internal_seed = unused and set to random data
+    internal_tag  = unused and set to random data
+
+    seed = seed selected uniformly at random, 512-bit
+    dk = derive_key(seed)
+
+    magic = 0x53414352414D4E54, 64-bit
+
+    header = magic || spi || seed
+    encdata = id || salt || now || internal_seed || sk || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
+
+    send(header || encdata)
+</pre>
+
+    <p>
+        Note that if you turn off asymmetry you no longer have PFS and
+        you should swap out your underlying shared secret often.
     </p>
 
     <p>
         Keys are expired automatically after a given number of packets
         have been submitted on them (1 << 34), or after 1-hour.
-    </p>
-
-    <p>
-        The entire key derivation and offer process is as follows:
-    </p>
-
-<pre>
-    Wrapping key (wk) derivation:
-        s = shared secret, 256-bit
-        se = seed selected uniformly at random, 512-bit
-        wk = KMAC256(s, len(se) || se), 512-bit
-
-    Key offer:
-        now = Seconds since boot, 64-bit
-        salt = The salt for nonce construction, 32-bit
-        id = unique sanctum ID generated at start, 64-bit
-        key = session key selected uniformly at random, 256-bit
-
-        seed = se from wk derivation above
-        spi = The SPI for this association
-
-        header = magic || spi || seed
-        encdata = id || now || key || salt
-
-        encdata = AES256-GCM(wk, nonce=1, aad=header, encdata)
-        send(header || encdata)
-</pre>
-
-    <p>
-        While this alone does not provide PFS, the underlying key
-        may be swapped out OOB by other means while sanctum is running.
-
-        I recommend you rotate this key often via a mechanism of your liking.
     </p>
 
     <h2>Why did you write sanctum?</h2>
@@ -205,7 +258,7 @@ a, a:visited {
     <h2>Source?</h2>
 
     <p>
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.15.tgz">sanctum 0.9.15</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.16.tgz">sanctum 0.9.16</a>
     </p>
 
     <p>

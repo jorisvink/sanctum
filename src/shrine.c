@@ -141,7 +141,7 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_cipher_kdf(sanctum->secret, SHRINE_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, SHRINE_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
