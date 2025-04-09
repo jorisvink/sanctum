@@ -569,7 +569,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
 	nyfe_zeroize(kek, sizeof(kek));
 
-	len = sizeof(key.key);
+	len = sizeof(ambry->seed);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ambry->seed, sizeof(ambry->seed));
 	nyfe_kmac256_final(&kdf, key.key, sizeof(key.key));
