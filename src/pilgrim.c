@@ -228,7 +228,7 @@ pilgrim_offer_encrypt(u_int64_t now)
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_cipher_kdf(sanctum->secret, PILGRIM_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);

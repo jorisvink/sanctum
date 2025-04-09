@@ -1,6 +1,6 @@
 # Cryptographic description
 
-## Algorithm
+## Algorithms
 
 The algorithm used to provide confidentiality and integrity for
 user traffic and management traffic is AES256-GCM.
@@ -15,6 +15,9 @@ shared secret (defined below) per packet. In this case because the
 keys are freshly derived the nonces used in this construction
 are fixed as there is no risk for (key, nonce) pair re-use
 in this specific scenario.
+
+If asymmetry is enabled (default) x25519 is used in the key offering
+in combination with the shared symmetrical key.
 
 ## Keys
 
@@ -54,13 +57,81 @@ processes due to its nature.
 
 ## The shared secret (SS)
 
-The shared secret is a 256-bit symmetrical key shared between two peers
-used to derive keys for wrapping session keys.
+The shared secret is a 256-bit symmetrical key shared between two
+peers that wish to communicate with each other.
 
-These are either distributed invididually to all locations, or
+It is used in a few different ways depending on what is happening
+or how sanctum is configured.
+
+The SS is used to provide confidentiality and integrity for key offers
+and to provide additional strength to the session key derivation
+if asymmetry is enabled (the default).
+
+The SS is not used directly, but instead two derivations are taken,
+one for each specific purpose:
+
+```
+    ss = shared secret, loaded from disk
+    offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF"), 256-bit
+    traffic_base = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.KDF"), 256-bit
+```
+
+Shared secrets can either be distributed invididually to all locations, or
 these can be distributed via a cathedral as an ambry, see docs/cathedral.md.
 
 ## A session key (SK)
+
+### Normal mode (asymmetry on)
+
+In the default setup, session keys (SK) are derived from the **traffic_base**
+key in combination with the asymmetric secret using KMAC256() as the KDF.
+
+Both RX and TX keys are derived and installed.
+
+New offerings are sent when too many packets have been sent on a given
+key or when the keys become too old.
+
+```
+derive_key(seed):
+    input = len(seed) || seed
+    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
+    return wk
+
+Key offer:
+    now  = wall time in seconds, 64-bit
+    priv = x25519 private key, selected uniformly at random, 256-bit
+    pub  = x25519 public key, derived from priv, 256-bit
+    id   = unique sanctum ID selected uniformly at random at start, 64-bit
+    salt = salt for nonce construction, selected uniformly at random, 32-bit
+    spi  = the spi for this association, selected uniformly at random, 32-bit
+
+    internal_seed = unused and set to random data
+    internal_tag  = unused and set to random data
+
+    seed = seed selected uniformly at random, 512-bit
+    dk = derive_key(seed)
+
+    magic = 0x53414352414D4E54, 64-bit
+
+    header = magic || spi || seed
+    encdata = id || salt || now || internal_seed || pub || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
+
+    send(header || encdata)
+
+Key derivation:
+    header, encdata = recv()
+
+    dk = derive_key(header.seed)
+    offer = AES256-GCM(dk, nonce=1, aad=header, encdata)
+
+    ikm = scalarmult(priv, offer.pub)
+    x = len(ikm) || ikm || len(pub) || pub || len(offer.pub) || offer.pub
+    rx, tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 512-bit
+
+```
+
+### Symmetrical mode only (asymmetry off)
 
 Session keys are 256-bit symmetrical keys selected uniformly at random
 when generated and are created by both peers when no previous session
@@ -74,8 +145,8 @@ traffic confidentiality and integrity using AES256-GCM.
 
 ```
 derive_key(seed):
-    ss = shared secret, 256-bit
-    wk = KMAC256(ss, "SANCTUM.SACRAMENT.KDF", len(seed) || seed), 512-bit
+    input = len(seed) || seed
+    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
     return wk
 
 Key offer:

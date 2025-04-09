@@ -90,12 +90,15 @@ from the underlying shared secret between both parties.
 
 See docs/crypto.md for details on the session key and shared secrets.
 
-Note that sanctum only supports symmetrical keying and does not
-implement any asymmetrical key exchange method.
+By default sanctum will perform a key offering combining both the
+symmetrical shared secret and an asymmetric secret, providing
+Perfect Forwarding Secrecy (PFS) in case of a shared secret compromise.
 
-Your shared secret must be handled with **great care** and
-must be rotated **often**. When using a cathedral you can use
-the Ambry distribution to update shared secrets.
+This can be turned off to only use symmetrical keying.
+
+If you turn off asymmetry your shared secret must be handled with
+**great care** and must be rotated **often**. When using a cathedral
+you can use the Ambry distribution to update shared secrets.
 
 ## Traffic
 

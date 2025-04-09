@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
+#include <sodium.h>
 
 #include "sanctum.h"
 
@@ -449,23 +450,34 @@ sanctum_file_open(const char *path, struct stat *st)
 }
 
 /*
- * Derive a symmetrical key from the given secret, the given seed and
- * setup the given agelas cipher context.
+ * Derive a new key from the given shared secret for the intented purpose.
+ * Essentially doing this:
+ *	shared_secret = load_from_file()
+ *	label = "SANCTUM.KEY.TRAFFIC.KDF" or label = "SANCTUM.KEY.OFFER.KDF"
+ *	K = KMAC256(shared_secret, label), 256-bit
  */
 int
-sanctum_cipher_kdf(const char *path, const char *label,
-    struct sanctum_key *key, void *seed, size_t seed_len)
+sanctum_key_derive(const char *path, u_int32_t purpose, void *out, size_t len)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;
-	u_int8_t			len;
+	const char			*label;
 	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
 	PRECOND(path != NULL);
-	PRECOND(label != NULL);
-	PRECOND(key != NULL);
-	PRECOND(seed != NULL);
-	PRECOND(seed_len == 64);
+	PRECOND(out != NULL);
+	PRECOND(len == SANCTUM_KEY_LENGTH);
+
+	switch (purpose) {
+	case SANCTUM_KDF_PURPOSE_OFFER:
+		label = SANCTUM_KEY_OFFER_KDF_LABEL;
+		break;
+	case SANCTUM_KDF_PURPOSE_TRAFFIC:
+		label = SANCTUM_KEY_TRAFFIC_KDF_LABEL;
+		break;
+	default:
+		fatal("unknown purpose %u", purpose);
+	}
 
 	if ((fd = sanctum_file_open(path, NULL)) == -1)
 		return (-1);
@@ -483,16 +495,107 @@ sanctum_cipher_kdf(const char *path, const char *label,
 	(void)close(fd);
 
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
-
-	len = sizeof(key->key);
-
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
+	nyfe_kmac256_final(&kdf, out, len);
+
+	nyfe_zeroize(&kdf, sizeof(kdf));
 	nyfe_zeroize(secret, sizeof(secret));
 
+	return (0);
+}
+
+/*
+ * Derive a symmetrical key from the given seed, and the given secret
+ * for the purpose of encrypting an offer that will be sent to a peer
+ * or a cathedral.
+ */
+int
+sanctum_offer_kdf(const char *path, const char *label,
+    struct sanctum_key *key, void *seed, size_t seed_len)
+{
+	struct nyfe_kmac256		kdf;
+	u_int8_t			len;
+	u_int8_t			secret[SANCTUM_KEY_LENGTH];
+
+	PRECOND(path != NULL);
+	PRECOND(label != NULL);
+	PRECOND(key != NULL);
+	PRECOND(seed != NULL);
+	PRECOND(seed_len == 64);
+
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
+	nyfe_zeroize_register(secret, sizeof(secret));
+
+	sanctum_key_derive(path,
+	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret));
+
+	len = seed_len;
+
+	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, seed, seed_len);
 	nyfe_kmac256_final(&kdf, key->key, sizeof(key->key));
+
 	nyfe_zeroize(&kdf, sizeof(kdf));
+	nyfe_zeroize(secret, sizeof(secret));
+
+	return (0);
+}
+
+/*
+ * Derive new traffic key material based on our shared secret and
+ * the given ikm from the asymmetrical negotiation.
+ *
+ * Note that while this looks like sanctum_offer_kdf() above its
+ * slightly different in its behaviour and expectations.
+ *
+ * This is ONLY used for tunnel mode traffic, pilgrim/shrine mode work
+ * in a very different way as those are only one-directional.
+ */
+int
+sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
+{
+	struct nyfe_kmac256		kdf;
+	u_int8_t			len;
+	u_int8_t			ikm[SANCTUM_KEY_LENGTH];
+	u_int8_t			secret[SANCTUM_KEY_LENGTH];
+
+	PRECOND(kex != NULL);
+	PRECOND(okm != NULL);
+	PRECOND(okm_len == 64);
+	PRECOND(sanctum->secret != NULL);
+	PRECOND(!(sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY));
+
+	nyfe_zeroize_register(ikm, sizeof(ikm));
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
+	nyfe_zeroize_register(secret, sizeof(secret));
+
+	sanctum_key_derive(sanctum->secret,
+	    SANCTUM_KDF_PURPOSE_TRAFFIC, secret, sizeof(secret));
+
+	if (crypto_scalarmult_curve25519(ikm, kex->private, kex->remote) == -1)
+		fatal("failed to calculate shared secret");
+
+	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
+	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));
+
+	len = sizeof(ikm);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, ikm, sizeof(ikm));
+
+	len = sizeof(kex->pub1);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, kex->pub1, sizeof(kex->pub1));
+
+	len = sizeof(kex->pub2);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, kex->pub2, sizeof(kex->pub2));
+
+	nyfe_kmac256_final(&kdf, okm, okm_len);
+
+	nyfe_zeroize(ikm, sizeof(ikm));
+	nyfe_zeroize(&kdf, sizeof(kdf));
+	nyfe_zeroize(secret, sizeof(secret));
 
 	return (0);
 }
@@ -553,7 +656,7 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
  * Encrypt and authenticate a sanctum_offer data structure.
  * Note: does not zeroize the key, this is the caller its responsibility.
  * Note: do not call this with the same key twice, the given key shall
- * be derived using sanctum_cipher_kdf() first.
+ * be derived using sanctum_offer_kdf() first.
  */
 void
 sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)

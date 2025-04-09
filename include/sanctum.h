@@ -156,6 +156,16 @@ extern int daemon(int, int);
 #define SANCTUM_PROC_BISHOP		13
 #define SANCTUM_PROC_MAX		14
 
+/* KDF purposes for use with our shared secret. */
+#define SANCTUM_KDF_PURPOSE_OFFER	1
+#define SANCTUM_KDF_PURPOSE_TRAFFIC	2
+
+/* The KDF label for offer key derivation from shared secret. */
+#define SANCTUM_KEY_OFFER_KDF_LABEL	"SANCTUM.KEY.OFFER.KDF"
+
+/* The KDF label for traffic key derivation from shared secret. */
+#define SANCTUM_KEY_TRAFFIC_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.KDF"
+
 /* The half-time window in which offers are valid. */
 #define SANCTUM_OFFER_VALID		5
 
@@ -176,6 +186,9 @@ extern int daemon(int, int);
 
 /* The KDF label for traffic encapsulation. */
 #define SANCTUM_ENCAP_LABEL		"SANCTUM.ENCAP.KDF"
+
+/* The KDF label for traffic key derivation. */
+#define SANCTUM_TRAFFIC_KDF_LABEL	"SANCTUM.TRAFFIC.KDF"
 
 /* The maximum number of federated cathedrals we can have. */
 #define SANCTUM_CATHEDRALS_MAX		32
@@ -210,10 +223,13 @@ struct sanctum_offer_hdr {
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
 
+#define SANCTUM_OFFER_FLAG_ASYMMETRY	(1 << 0)
+
 struct sanctum_key_offer {
 	u_int64_t		id;
 	u_int32_t		salt;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
+	u_int32_t		flags;
 } __attribute__((packed));
 
 struct sanctum_ambry_offer {
@@ -503,6 +519,9 @@ struct sanctum_ether {
 /* When in liturgy mode, are we hiding ourselves or not. */
 #define SANCTUM_FLAG_LITURGY_HIDE	(1 << 8)
 
+/* If we make use of asymmetry during key offerings in tunnel mode. */
+#define SANCTUM_FLAG_DISABLE_ASYMMETRY	(1 << 9)
+
 /*
  * The modes in which sanctum can run.
  *
@@ -711,10 +730,12 @@ void	sanctum_peer_update(u_int32_t, u_int16_t);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 char	*sanctum_config_read(FILE *, char *, size_t);
+int	sanctum_key_derive(const char *, u_int32_t, void *, size_t);
+int	sanctum_traffic_kdf(struct sanctum_kex *, u_int8_t *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *);
-int	sanctum_cipher_kdf(const char *, const char *,
+int	sanctum_offer_kdf(const char *, const char *,
 	    struct sanctum_key *, void *, size_t);
 void	sanctum_offer_nonce(u_int8_t *, size_t);
 void	sanctum_offer_tfc(struct sanctum_packet *);
