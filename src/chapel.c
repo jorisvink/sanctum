@@ -63,7 +63,7 @@ static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
 static void	chapel_ambry_unwrap(struct sanctum_ambry_offer *, u_int64_t);
 
 static void	chapel_packet_handle(struct sanctum_packet *, u_int64_t);
-static void	chapel_session_keys_derive(struct sanctum_offer *, u_int64_t);
+static int	chapel_session_keys_derive(struct sanctum_offer *, u_int64_t);
 
 static void	chapel_offer_clear(void);
 static void	chapel_offer_check(u_int64_t);
@@ -569,7 +569,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
 	nyfe_zeroize(kek, sizeof(kek));
 
-	len = sizeof(ambry->seed);
+	len = sizeof(key.key);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ambry->seed, sizeof(ambry->seed));
 	nyfe_kmac256_final(&kdf, key.key, sizeof(key.key));
@@ -885,6 +885,10 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 	}
 
+	offer_ttl = 5;
+	offer_next = 0;
+	offer_next_send = 1;
+
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
 	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
@@ -898,18 +902,19 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 			if (offer == NULL)
 				chapel_offer_create(now, "peer restart");
 		}
+
+		peer_id = key->id;
+		last_spi = op->hdr.spi;
 	} else {
 		if (!(key->flags & SANCTUM_OFFER_FLAG_ASYMMETRY))
 			return;
-		chapel_session_keys_derive(op, now);
+
+		if (chapel_session_keys_derive(op, now) != -1) {
+			peer_id = key->id;
+			last_spi = op->hdr.spi;
+		}
 	}
 
-	offer_ttl = 5;
-	offer_next = 0;
-	offer_next_send = 1;
-
-	peer_id = key->id;
-	last_spi = op->hdr.spi;
 }
 
 /*
@@ -918,7 +923,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
  *
  * Who installs RX/TX keys where is based on the local and peer ID.
  */
-static void
+static int
 chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
 {
 	struct sanctum_kex		kex;
@@ -934,8 +939,11 @@ chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
 	if (offer != NULL && peer_id != 0 && key->id != peer_id)
 		chapel_offer_clear();
 
-	if (offer == NULL)
+	if (offer == NULL) {
 		chapel_offer_create(now, "peer renegotiate");
+		if (offer == NULL)
+			return (-1);
+	}
 
 	nyfe_zeroize_register(okm, sizeof(okm));
 	nyfe_zeroize_register(&kex, sizeof(kex));
@@ -954,7 +962,7 @@ chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
 	if (sanctum_traffic_kdf(&kex, okm, sizeof(okm)) == -1) {
 		nyfe_zeroize(okm, sizeof(okm));
 		nyfe_zeroize(&kex, sizeof(kex));
-		return;
+		return (-1);
 	}
 
 	if (key->id < local_id) {
@@ -975,6 +983,8 @@ chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
 
 	nyfe_zeroize(okm, sizeof(okm));
 	nyfe_zeroize(&kex, sizeof(kex));
+
+	return (0);
 }
 
 /*
