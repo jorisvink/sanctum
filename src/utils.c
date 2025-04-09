@@ -562,7 +562,7 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 
 	PRECOND(kex != NULL);
 	PRECOND(okm != NULL);
-	PRECOND(okm_len == 64);
+	PRECOND(okm_len == SANCTUM_KEY_LENGTH * 2);
 	PRECOND(sanctum->secret != NULL);
 	PRECOND(!(sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY));
 
