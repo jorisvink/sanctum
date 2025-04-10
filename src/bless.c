@@ -25,6 +25,10 @@
 
 #include "sanctum.h"
 
+/* After installing a new TX key, we pulse heartbeats for this duration. */
+#define BLESS_KEY_HEARTBEAT_INTERVAL	1
+#define BLESS_KEY_HEARTBEAT_DURATION	5
+
 static void	bless_drop_access(void);
 static void	bless_packet_heartbeat(void);
 static void	bless_packet_process(struct sanctum_packet *);
@@ -101,22 +105,24 @@ sanctum_bless(struct sanctum_proc *proc)
 			heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
 		}
 
-		if (sanctum_key_erase("TX", io->tx, &state) != -1)
+		if (sanctum_key_erase("TX", io->tx, &state, NULL) != -1)
 			sanctum_stat_clear(&sanctum->tx);
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
-			heartbeat_next = now;
+			heartbeat_interval = BLESS_KEY_HEARTBEAT_INTERVAL;
+			heartbeat_next = now + BLESS_KEY_HEARTBEAT_INTERVAL;
+			heartbeat_reset = now + BLESS_KEY_HEARTBEAT_DURATION;
 			sanctum_atomic_write(&sanctum->tx.pkt, 0);
 			sanctum_atomic_write(&sanctum->tx.bytes, 0);
 			sanctum_atomic_write(&sanctum->tx.age, now);
 			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
 		}
 
-		if (heartbeat_next != 0 && now >= heartbeat_next)
-			bless_packet_heartbeat();
-
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
 			bless_packet_process(pkt);
+
+		if (heartbeat_next != 0 && now >= heartbeat_next)
+			bless_packet_heartbeat();
 
 		if (tx_wakeup) {
 			tx_wakeup = 0;
@@ -195,9 +201,13 @@ bless_packet_process(struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
 
-	sanctum_key_erase("TX", io->tx, &state);
+	if (sanctum_key_erase("TX", io->tx, &state, NULL) != -1)
+		sanctum_stat_clear(&sanctum->tx);
 
 	if (sanctum_key_install(io->tx, &state) != -1) {
+		heartbeat_interval = BLESS_KEY_HEARTBEAT_INTERVAL;
+		heartbeat_next = now + BLESS_KEY_HEARTBEAT_INTERVAL;
+		heartbeat_reset = now + BLESS_KEY_HEARTBEAT_DURATION;
 		sanctum_atomic_write(&sanctum->tx.pkt, 0);
 		sanctum_atomic_write(&sanctum->tx.bytes, 0);
 		sanctum_atomic_write(&sanctum->tx.age, now);

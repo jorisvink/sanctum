@@ -164,10 +164,9 @@ confess_clear_state(void)
 static void
 confess_key_management(void)
 {
-	if (sanctum_key_erase("RX", io->rx, &state.active) != -1)
-		sanctum_stat_clear(&sanctum->rx);
-
-	(void)sanctum_key_erase("RX", io->rx, &state.pending);
+	if (sanctum_key_erase("RX", io->rx,
+	    &state.active, &state.pending) != -1)
+		sanctum_stat_clear(&sanctum->tx);
 
 	if (state.active.cipher == NULL) {
 		if (sanctum_key_install(io->rx, &state.active) != -1) {

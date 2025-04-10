@@ -280,14 +280,6 @@ chapel_peer_check(u_int64_t now)
 	chapel_erase(io->rx, spi);
 	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
-	if (offer != NULL) {
-		if (offer->spi != spi) {
-			chapel_erase(io->rx, offer->spi);
-			sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-		}
-		chapel_offer_clear();
-	}
-
 	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
 		chapel_erase(io->tx, spi);
 		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
@@ -739,6 +731,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	}
 
 	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
+		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 		sanctum_install_key_material(io->rx, offer->spi,
 		    offer->salt, offer->key, sizeof(offer->key));
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
@@ -751,8 +744,6 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	sanctum_log(LOG_INFO, "offering fresh key (%s) "
 	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->spi, offer_ttl, offer_next_send);
-
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 }
 
 /*
@@ -895,6 +886,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		if (key->flags & SANCTUM_OFFER_FLAG_ASYMMETRY)
 			return;
 
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 		sanctum_offer_install(io->tx, op);
 		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 
@@ -973,13 +965,17 @@ chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
 		rx = &okm[SANCTUM_KEY_LENGTH];
 	}
 
+	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+
 	sanctum_install_key_material(io->rx,
 	    offer->spi, offer->salt, rx, SANCTUM_KEY_LENGTH);
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
 	sanctum_install_key_material(io->tx,
 	    op->hdr.spi, key->salt, tx, SANCTUM_KEY_LENGTH);
+
 	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
 	nyfe_zeroize(okm, sizeof(okm));
 	nyfe_zeroize(&kex, sizeof(kex));

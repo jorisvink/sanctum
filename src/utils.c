@@ -125,38 +125,36 @@ sanctum_peer_update(u_int32_t ip, u_int16_t port)
 }
 
 /*
- * Erase the given sa if the key says it was erased.
+ * Erase the given SA contexts if the key state says we have to erase.
  */
 int
-sanctum_key_erase(const char *s, struct sanctum_key *key, struct sanctum_sa *sa)
+sanctum_key_erase(const char *s, struct sanctum_key *key,
+    struct sanctum_sa *active, struct sanctum_sa *pending)
 {
-	int		ret;
-
 	PRECOND(s != NULL);
 	PRECOND(key != NULL);
-	PRECOND(sa != NULL);
+	PRECOND(active != NULL);
+	/* pending may be NULL */
 
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_ERASE, SANCTUM_KEY_INSTALLING))
 		return (-1);
 
-	if (sa->spi == key->spi) {
-		sanctum_sa_clear(sa);
-		sanctum_log(LOG_NOTICE,
-		    "%s SA erased (spi=0x%08x)", s, key->spi);
+	sanctum_log(LOG_NOTICE,
+	    "%s SA erased (spi=0x%08x)", s, active->spi);
+	sanctum_sa_clear(active);
 
-		ret = 0;
-		if (!sanctum_atomic_cas_simple(&key->state,
-		    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
-			fatal("failed to swap key state to empty");
-	} else {
-		ret = -1;
-		if (!sanctum_atomic_cas_simple(&key->state,
-		    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_ERASE))
-			fatal("failed to swap key state to erasing");
+	if (pending != NULL && pending->spi != 0) {
+		sanctum_log(LOG_NOTICE,
+		    "%s SA erased (spi=0x%08x)", s, pending->spi);
+		sanctum_sa_clear(pending);
 	}
 
-	return (ret);
+	if (!sanctum_atomic_cas_simple(&key->state,
+	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
+		fatal("failed to swap key state to empty");
+
+	return (0);
 }
 
 /*

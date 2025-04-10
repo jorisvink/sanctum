@@ -734,7 +734,7 @@ int	sanctum_key_derive(const char *, u_int32_t, void *, size_t);
 int	sanctum_traffic_kdf(struct sanctum_kex *, u_int8_t *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
-	    struct sanctum_sa *);
+	    struct sanctum_sa *, struct sanctum_sa *);
 int	sanctum_offer_kdf(const char *, const char *,
 	    struct sanctum_key *, void *, size_t);
 void	sanctum_offer_nonce(u_int8_t *, size_t);
