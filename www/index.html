@@ -125,6 +125,10 @@ a, a:visited {
     </p>
 
 <pre>
+ss = shared secret, loaded from disk
+offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF"), 256-bit
+traffic_base = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.KDF"), 256-bit
+
 derive_key(seed):
     input = len(seed) || seed
     wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
