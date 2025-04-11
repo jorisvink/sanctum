@@ -273,6 +273,7 @@ usage(void)
 	fprintf(stderr, "  cathedral   - change cathedral for a tunnel\n");
 	fprintf(stderr, "  del         - delete an existing tunnel\n");
 	fprintf(stderr, "  down        - kills the given tunnel\n");
+	fprintf(stderr, "  mtu         - change mtu for a given tunnel\n");
 	fprintf(stderr, "  list        - list all configured tunnels\n");
 	fprintf(stderr, "  liturgy     - configure a liturgy\n");
 	fprintf(stderr, "  name        - sets the name for a given tunnel\n");
