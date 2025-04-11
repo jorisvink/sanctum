@@ -119,6 +119,7 @@ static void	usage_simple(const char *) __attribute__((noreturn));
 
 static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
+static void	usage_mtu(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
@@ -147,6 +148,7 @@ static int	hymn_tunnel_parse(char *, const char **,
 static int	hymn_up(int, char **);
 static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
+static int	hymn_mtu(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
@@ -222,6 +224,7 @@ static const struct {
 	{ "up",			hymn_up },
 	{ "add",		hymn_add },
 	{ "del",		hymn_del },
+	{ "mtu",		hymn_mtu },
 	{ "status",		hymn_status },
 	{ "list",		hymn_list },
 	{ "down",		hymn_down },
@@ -647,6 +650,48 @@ hymn_del(int argc, char *argv[])
 		fatal("tunnel %s-%02x-%02x still up", flock, src, dst);
 
 	hymn_unlink("%s/%s-%02x-%02x.conf", HYMN_BASE_PATH, flock, src, dst);
+
+	return (0);
+}
+
+static void
+usage_mtu(void)
+{
+	fprintf(stderr,
+	    "usage: hymn mtu [name | [<flock>-]<src>-<dst>] [mtu]\n");
+	exit(1);
+}
+
+static int
+hymn_mtu(int argc, char *argv[])
+{
+	const char		*flock;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_mtu();
+
+	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+		usage_mtu();
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	config.src = src;
+	config.dst = dst;
+
+	if ((config.flock = strdup(flock)) == NULL)
+		fatal("strdup");
+
+	hymn_config_set_mtu(&config, argv[1]);
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x mtu changed to %s\n", flock, src, dst, argv[1]);
+	printf("tunnel modified, please restart it\n");
 
 	return (0);
 }
