@@ -56,7 +56,7 @@ a, a:visited {
     </div>
 
     <div class="release">
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.17.tgz">sanctum 0.9.17</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.18.tgz">sanctum 0.9.18</a>
     </div>
 
     <div class="sep"></div>
@@ -125,6 +125,10 @@ a, a:visited {
     </p>
 
 <pre>
+ss = shared secret, loaded from disk
+offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF"), 256-bit
+traffic_base = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.KDF"), 256-bit
+
 derive_key(seed):
     input = len(seed) || seed
     wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
@@ -258,7 +262,7 @@ Key offer:
     <h2>Source?</h2>
 
     <p>
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.17.tgz">sanctum 0.9.17</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.18.tgz">sanctum 0.9.18</a>
     </p>
 
     <p>
