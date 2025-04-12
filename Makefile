@@ -32,6 +32,7 @@ SRC=	src/sanctum.c \
 	src/control.c \
 	src/heaven_rx.c \
 	src/heaven_tx.c \
+	src/libsodium_x25519.c \
 	src/liturgy.c \
 	src/proc.c \
 	src/packet.c \

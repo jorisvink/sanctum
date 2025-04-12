@@ -27,7 +27,6 @@
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
-#include <sodium.h>
 
 #include "sanctum.h"
 #include "libnyfe.h"
@@ -721,7 +720,6 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	offer->pulse = now;
 	offer->ttl = offer_ttl;
 
-	nyfe_random_bytes(offer->key, sizeof(offer->key));
 	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
 	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
 
@@ -731,14 +729,14 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	}
 
 	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
+		nyfe_random_bytes(offer->key, sizeof(offer->key));
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 		sanctum_install_key_material(io->rx, offer->spi,
 		    offer->salt, offer->key, sizeof(offer->key));
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 	} else {
-		if (crypto_scalarmult_curve25519_base(offer->public,
-		    offer->key) == -1)
-			fatal("failed to calculate public key");
+		sanctum_asymmetry_keygen(offer->key, sizeof(offer->key),
+		    offer->public, sizeof(offer->public));
 	}
 
 	sanctum_log(LOG_INFO, "offering fresh key (%s) "

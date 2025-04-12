@@ -27,7 +27,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
-#include <sodium.h>
 
 #include "sanctum.h"
 
@@ -568,11 +567,9 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
+	sanctum_asymmetry_derive(kex, ikm, sizeof(ikm));
 	sanctum_key_derive(sanctum->secret,
 	    SANCTUM_KDF_PURPOSE_TRAFFIC, secret, sizeof(secret));
-
-	if (crypto_scalarmult_curve25519(ikm, kex->private, kex->remote) == -1)
-		fatal("failed to calculate shared secret");
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));
