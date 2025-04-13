@@ -118,6 +118,9 @@ variable at compile time with either:
 - libsodium-aes-gcm (AES256-GCM via libsodium, default, most portable).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 
+Note that no matter which CIPHER is selected libsodium is always
+a dependency.
+
 ## One-directional tunnels
 
 Sanctum supports one-directional tunnels, this is called the pilgrim
