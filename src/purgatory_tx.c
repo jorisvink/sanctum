@@ -186,6 +186,10 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 				sanctum_log(LOG_INFO, "network is down");
 				break;
 			}
+			if (errno == ENOBUFS) {
+				sanctum_log(LOG_NOTICE, "sendto: %s", errno_s);
+				break;
+			}
 			fatal("sendto: %s", errno_s);
 		}
 		break;
