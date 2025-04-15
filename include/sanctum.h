@@ -203,11 +203,12 @@ extern int daemon(int, int);
  * populated when the cathedral sends an ambry.
  *
  * An offer can either be:
- *	1) A key offering (between peers)
+ *	1) A symmetric key offering (between peers)
  *	2) An ambry offering (from cathedral to us)
  *	3) An info offering (from us to cathedral, or cathedral to us)
  *	4) A liturgy offering (from us to cathedral, or cathedral to us)
  *	5) A remembrance offering (from cathedral to us)
+ *	6) A key exchange offering (between peers)
  */
 
 #define SANCTUM_OFFER_TYPE_KEY		1
@@ -215,6 +216,7 @@ extern int daemon(int, int);
 #define SANCTUM_OFFER_TYPE_INFO		3
 #define SANCTUM_OFFER_TYPE_LITURGY	4
 #define SANCTUM_OFFER_TYPE_REMEMBRANCE	5
+#define SANCTUM_OFFER_TYPE_EXCHANGE	6
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -223,19 +225,36 @@ struct sanctum_offer_hdr {
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
 
-#define SANCTUM_OFFER_STATE_KEM_PK	(1 << 1)
-#define SANCTUM_OFFER_STATE_KEM_CT	(1 << 2)
+/* The maximum number of fragments sent in a KEM offer. */
+#define SANCTUM_OFFER_KEM_FRAGMENTS		4
+
+/* The value we get when all packets are received. */
+#define SANCTUM_OFFER_KEM_FRAGMENTS_DONE	\
+    ((1 << SANCTUM_OFFER_KEM_FRAGMENTS) - 1)
+
+/* This is ML-KEM-1024 its pubkey len / fragments. */
+#define SANCTUM_OFFER_KEM_FRAGMENT_SIZE		\
+    (SANCTUM_MLKEM_1024_PUBLICKEYBYTES / SANCTUM_OFFER_KEM_FRAGMENTS)
+
+/* Does the exchange offer include an ML-KEM-1024 public key fragment. */
+#define SANCTUM_OFFER_STATE_KEM_PK_FRAGMENT	1
+
+/* Does the exchange offer include an ML-KEM-1024 cipher text fragment. */
+#define SANCTUM_OFFER_STATE_KEM_CT_FRAGMENT	2
+
+struct sanctum_exchange_offer {
+	u_int64_t		id;
+	u_int32_t		salt;
+	u_int8_t		state;
+	u_int8_t		fragment;
+	u_int8_t		ecdh[SANCTUM_KEY_LENGTH];
+	u_int8_t		kem[SANCTUM_OFFER_KEM_FRAGMENT_SIZE];
+} __attribute__((packed));
 
 struct sanctum_key_offer {
 	u_int64_t		id;
 	u_int32_t		salt;
-	u_int32_t		state;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
-	/*
-	 * The kem member is used for both the public key and ciphertext.
-	 * Since the public key is larger it is used as the max size for it.
-	 */
-	u_int8_t		kem[SANCTUM_MLKEM768_PUBLICKEYBYTES];
 } __attribute__((packed));
 
 struct sanctum_ambry_offer {
@@ -251,6 +270,7 @@ struct sanctum_remembrance_offer {
 	u_int16_t		ports[SANCTUM_CATHEDRALS_MAX];
 } __attribute__((packed));
 
+/* Set in an info offer if peer wants remembrance. */
 #define SANCTUM_INFO_FLAG_REMEMBRANCE	(1 << 0)
 
 struct sanctum_info_offer {
@@ -288,6 +308,7 @@ struct sanctum_offer_data {
 		struct sanctum_info_offer		info;
 		struct sanctum_ambry_offer		ambry;
 		struct sanctum_liturgy_offer		liturgy;
+		struct sanctum_exchange_offer		exchange;
 		struct sanctum_remembrance_offer	remembrance;
 	} offer;
 } __attribute__((packed));
@@ -465,7 +486,6 @@ struct sanctum_encap_hdr {
 struct sanctum_packet {
 	struct sockaddr_in	addr;
 	u_int8_t		next;
-	u_int8_t		fragment;
 	size_t			length;
 	u_int32_t		target;
 	u_int8_t		buf[SANCTUM_PACKET_MAX_LEN];

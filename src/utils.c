@@ -542,9 +542,9 @@ sanctum_offer_kdf(const char *path, const char *label,
 /*
  * Derive a new traffic key based on our shared secret, the derived secret
  * from the ecdh exchange and the direction-specific derived secret from
- * the ml-kem-768 exchange.
+ * the ML-KEM-1024 exchange.
  *
- * IKM = len(ecdh_ss) || ecdh_ss || len(mlkem768_ss) || mlkem768_ss ||
+ * IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
  *       len(local.pub) || local.pub || len(offer.pub) || offer.pub || dir
  * OKM = KMAC256(traffic_key, IKM)
  *
@@ -639,9 +639,9 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	    type == SANCTUM_OFFER_TYPE_AMBRY ||
 	    type == SANCTUM_OFFER_TYPE_INFO ||
 	    type == SANCTUM_OFFER_TYPE_LITURGY ||
-	    type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
+	    type == SANCTUM_OFFER_TYPE_REMEMBRANCE ||
+	    type == SANCTUM_OFFER_TYPE_EXCHANGE);
 
-	pkt->fragment = 1;
 	op = sanctum_packet_head(pkt);
 
 	op->data.type = type;

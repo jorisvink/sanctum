@@ -120,8 +120,8 @@ sanctum_proc_start(void)
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 	    sanctum->mode != SANCTUM_MODE_LITURGY) {
 		io.clear = sanctum_platform_tundev_create();
-		io.offer = sanctum_ring_alloc(16);
-		io.chapel = sanctum_ring_alloc(16);
+		io.offer = sanctum_ring_alloc(64);
+		io.chapel = sanctum_ring_alloc(64);
 		io.bless = sanctum_ring_alloc(1024);
 		io.heaven = sanctum_ring_alloc(1024);
 		io.confess = sanctum_ring_alloc(1024);

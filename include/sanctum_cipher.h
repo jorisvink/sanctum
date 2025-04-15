@@ -29,8 +29,8 @@
 /* Length of x25519 scalars. */
 #define SANCTUM_X25519_SCALAR_BYTES		SANCTUM_KEY_LENGTH
 
-/* Length of the ML-KEM-768 shared secret. */
-#define SANCTUM_MLKEM_768_KEY_BYTES		SANCTUM_KEY_LENGTH
+/* Length of the ML-KEM-1024 shared secret. */
+#define SANCTUM_MLKEM_1024_KEY_BYTES		SANCTUM_KEY_LENGTH
 
 /* Length for an encapsulation key in hex. */
 #define SANCTUM_ENCAP_HEX_LEN			(SANCTUM_KEY_LENGTH * 2)
@@ -41,20 +41,21 @@
 /* The tag size, in our case 128-bit. */
 #define SANCTUM_TAG_LENGTH			16
 
-/* Number of bytes for the ML-KEM-768 secret key. */
-#define SANCTUM_MLKEM768_SECRETKEYBYTES		2400
+/* Number of bytes for the ML-KEM-1024 secret key. */
+#define SANCTUM_MLKEM_1024_SECRETKEYBYTES	3168
 
-/* Number of bytes for the ML-KEM-768 public key we share. */
-#define SANCTUM_MLKEM768_PUBLICKEYBYTES		1184
+/* Number of bytes for the ML-KEM-1024 public key we share. */
+#define SANCTUM_MLKEM_1024_PUBLICKEYBYTES	1568
 
-/* Number of bytes for the ML-KEM-768 ciphertext we share. */
-#define SANCTUM_MLKEM768_CIPHERTEXTBYTES	1088
+/* Number of bytes for the ML-KEM-1024 ciphertext we share. */
+#define SANCTUM_MLKEM_1024_CIPHERTEXTBYTES	\
+    SANCTUM_MLKEM_1024_PUBLICKEYBYTES
 
 /*
  * Data structure used when calling sanctum_traffic_kdf().
  */
 struct sanctum_kex {
-	u_int8_t		kem[SANCTUM_MLKEM_768_KEY_BYTES];
+	u_int8_t		kem[SANCTUM_MLKEM_1024_KEY_BYTES];
 	u_int8_t		pub1[SANCTUM_X25519_SCALAR_BYTES];
 	u_int8_t		pub2[SANCTUM_X25519_SCALAR_BYTES];
 	u_int8_t		remote[SANCTUM_X25519_SCALAR_BYTES];
@@ -88,29 +89,29 @@ struct sanctum_cipher {
 };
 
 /*
- * Used to interface with the ML-KEM-768 api.
+ * Used to interface with the ML-KEM-1024 api.
  */
-struct sanctum_mlkem768 {
+struct sanctum_mlkem1024 {
 	u_int8_t	ss[SANCTUM_KEY_LENGTH];
-	u_int8_t	sk[SANCTUM_MLKEM768_SECRETKEYBYTES];
-	u_int8_t	pk[SANCTUM_MLKEM768_PUBLICKEYBYTES];
-	u_int8_t	ct[SANCTUM_MLKEM768_CIPHERTEXTBYTES];
+	u_int8_t	sk[SANCTUM_MLKEM_1024_SECRETKEYBYTES];
+	u_int8_t	pk[SANCTUM_MLKEM_1024_PUBLICKEYBYTES];
+	u_int8_t	ct[SANCTUM_MLKEM_1024_CIPHERTEXTBYTES];
 };
 
-/* The ML-KEM-768 API. */
-void	sanctum_mlkem768_selftest(void);
-void	sanctum_mlkem768_keypair(struct sanctum_mlkem768 *);
-void	sanctum_mlkem768_encapsulate(struct sanctum_mlkem768 *);
-void	sanctum_mlkem768_decapsulate(struct sanctum_mlkem768 *);
+/* The ML-KEM-1024 API. */
+void	sanctum_mlkem1024_selftest(void);
+void	sanctum_mlkem1024_keypair(struct sanctum_mlkem1024 *);
+void	sanctum_mlkem1024_encapsulate(struct sanctum_mlkem1024 *);
+void	sanctum_mlkem1024_decapsulate(struct sanctum_mlkem1024 *);
 
-/* The mlkem768 backend api. */
-int	pqcrystals_kyber768_ref_keypair(u_int8_t *, u_int8_t *);
-int	pqcrystals_kyber768_ref_keypair_derand(u_int8_t *, u_int8_t *,
+/* The mlkem1024 backend api. */
+int	pqcrystals_kyber1024_ref_keypair(u_int8_t *, u_int8_t *);
+int	pqcrystals_kyber1024_ref_keypair_derand(u_int8_t *, u_int8_t *,
 	    const u_int8_t *);
-int	pqcrystals_kyber768_ref_enc(u_int8_t *, u_int8_t *, const u_int8_t *);
-int	pqcrystals_kyber768_ref_enc_derand(u_int8_t *, u_int8_t *,
+int	pqcrystals_kyber1024_ref_enc(u_int8_t *, u_int8_t *, const u_int8_t *);
+int	pqcrystals_kyber1024_ref_enc_derand(u_int8_t *, u_int8_t *,
 	    const u_int8_t *, const u_int8_t *);
-int	pqcrystals_kyber768_ref_dec(u_int8_t *, const u_int8_t *,
+int	pqcrystals_kyber1024_ref_dec(u_int8_t *, const u_int8_t *,
 	    const u_int8_t *);
 
 /* The cipher API. */

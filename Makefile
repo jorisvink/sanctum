@@ -4,7 +4,7 @@ CC?=cc
 OBJDIR?=obj
 BIN=sanctum
 LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
-LIBMLKEM768=$(CURDIR)/mlkem768/libmlkem768.a
+LIBMLKEM1024=$(CURDIR)/mlkem1024/libmlkem1024.a
 
 VERSION=$(OBJDIR)/version.c
 
@@ -34,7 +34,7 @@ SRC=	src/sanctum.c \
 	src/control.c \
 	src/heaven_rx.c \
 	src/heaven_tx.c \
-	src/mlkem768.c \
+	src/mlkem1024.c \
 	src/libsodium_x25519.c \
 	src/liturgy.c \
 	src/proc.c \
@@ -52,7 +52,7 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
-LDFLAGS+=$(LIBNYFE) $(LIBMLKEM768)
+LDFLAGS+=$(LIBNYFE) $(LIBMLKEM1024)
 
 ifeq ("$(JUMBO_FRAMES)", "1")
 	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
@@ -94,7 +94,7 @@ all: $(BIN)
 	$(MAKE) -C tools/ambry
 	$(MAKE) -C tools/vicar
 
-$(BIN): $(OBJDIR) $(LIBNYFE) $(LIBMLKEM768) $(OBJS) $(VERSION)
+$(BIN): $(OBJDIR) $(LIBNYFE) $(LIBMLKEM1024) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
 $(VERSION): $(OBJDIR) force
@@ -136,8 +136,8 @@ install-darwin-sb:
 $(LIBNYFE):
 	$(MAKE) -C nyfe
 
-$(LIBMLKEM768): $(LIBNYFE)
-	$(MAKE) -C mlkem768 tests
+$(LIBMLKEM1024): $(LIBNYFE)
+	$(MAKE) -C mlkem1024 tests
 
 src/sanctum.c: $(VERSION)
 
@@ -150,7 +150,7 @@ $(OBJDIR)/%.o: src/%.c
 clean:
 	rm -f $(VERSION)
 	$(MAKE) -C nyfe clean
-	$(MAKE) -C mlkem768 clean
+	$(MAKE) -C mlkem1024 clean
 	$(MAKE) -C tools/hymn clean
 	$(MAKE) -C tools/ambry clean
 	$(MAKE) -C tools/vicar clean

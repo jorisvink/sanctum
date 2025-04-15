@@ -24,7 +24,7 @@ def dump_keygen(path, hdr):
     f = open(hdr, "wb")
 
     for tg in tests["testGroups"]:
-        if tg["parameterSet"] != "ML-KEM-768":
+        if tg["parameterSet"] != "ML-KEM-1024":
             continue
 
         for tc in tg["tests"]:
@@ -37,8 +37,8 @@ def dump_keygen(path, hdr):
 
             f.write(struct.pack("32s", z))
             f.write(struct.pack("32s", d))
-            f.write(struct.pack("1184s", ek))
-            f.write(struct.pack("2400s", dk))
+            f.write(struct.pack("1568s", ek))
+            f.write(struct.pack("3168s", dk))
 
         f.flush()
 
@@ -51,7 +51,7 @@ def dump_encap_decap(path, hdr):
     f = open(hdr, "wb")
 
     for tg in tests["testGroups"]:
-        if tg["parameterSet"] != "ML-KEM-768" or tg["testType"] != "AFT":
+        if tg["parameterSet"] != "ML-KEM-1024" or tg["testType"] != "AFT":
             continue
 
         for tc in tg["tests"]:
@@ -65,9 +65,9 @@ def dump_encap_decap(path, hdr):
             ek = bytes.fromhex(tc["ek"])
             dk = bytes.fromhex(tc["dk"])
 
-            f.write(struct.pack("1184s", ek))
-            f.write(struct.pack("2400s", dk))
-            f.write(struct.pack("1088s", c))
+            f.write(struct.pack("1568s", ek))
+            f.write(struct.pack("3168s", dk))
+            f.write(struct.pack("1568s", c))
             f.write(struct.pack("32s", k))
             f.write(struct.pack("32s", m))
 

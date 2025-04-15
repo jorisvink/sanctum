@@ -104,7 +104,7 @@ a, a:visited {
         deriving session keys based on a shared symmetrical secret in
         combination with a hybridized asymmetrical exchange. It combines
         both classic ECDH (x25519) and the PQ-safe NIST standardized
-        ML-KEM-768.
+        ML-KEM-1024.
     </p>
 
     <p>
@@ -124,7 +124,7 @@ a, a:visited {
 
     <p>
         Ssanctum uses a strong shared symmetrical secret in combination
-        with two asymmetrical secrets (ECDH and ML-KEM-768) to derive
+        with two asymmetrical secrets (ECDH and ML-KEM-1024) to derive
         session keys for both RX and TX directions.
     </p>
 
@@ -144,7 +144,7 @@ derive_offer_encryption_key(seed):
 
 offer_create():
     offer.ecdh = X25519-KEYGEN()
-    offer.kem  = ML-KEM-768-KEYGEN()
+    offer.kem  = ML-KEM-1024-KEYGEN()
     offer.now  = TIME(WALL_CLOCK), 64-bit
     offer.id   = PRNG(64-bit), unique sanctum id
     offer.salt = PRNG(32-bit), salt for nonce construction
@@ -175,7 +175,7 @@ offer_recv_pk(offer):
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
     ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
-    offer.kem.ct, kem_ss = ML-KEM-768-ENCAP(pt.kem.pk)
+    offer.kem.ct, kem_ss = ML-KEM-1024-ENCAP(pt.kem.pk)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
@@ -203,7 +203,7 @@ offer_recv_ct(offer):
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
     ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
-    kem_ss = ML-KEM-768-DECAP(offer.kem, pt.kem.ct)
+    kem_ss = ML-KEM-1024-DECAP(offer.kem, pt.kem.ct)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub

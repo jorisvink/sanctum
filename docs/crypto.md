@@ -17,7 +17,7 @@ are fixed as there is no risk for (key, nonce) pair re-use
 in this specific scenario.
 
 Key derivation for session keys is done by combing unique
-per-direction shared secrets from ECDH (x25519) and ML-KEM-768,
+per-direction shared secrets from ECDH (x25519) and ML-KEM-1024,
 together with our shared symmetrical key.
 
 IKM = len(ecdh_ss) || ecdh_ss || len(mlkem768_ss) || mlkem768_ss ||
@@ -86,13 +86,13 @@ these can be distributed via a cathedral as an ambry, see docs/cathedral.md.
 ## A session key (SK)
 
 Session keys (SK) are derived from the **traffic_base** key in combination
-with directional unique ECDH (x25519) and ML-KEM-768 shared secrets,
+with directional unique ECDH (x25519) and ML-KEM-1024 shared secrets,
 using KMAC256() as the KDF.
 
-Both sides start by sending out offerings that contain an ML-KEM-768
+Both sides start by sending out offerings that contain an ML-KEM-1024
 public key and an x25519 public key.
 
-Both sides upon receiving these offerings will perform ML-KEM-768
+Both sides upon receiving these offerings will perform ML-KEM-1024
 encapsulation and send back the ciphertext and their own x25519
 public key which differs from the one sent in the initial offering.
 
@@ -105,7 +105,7 @@ TX session key using all of that key material and install the
 key as the active TX key.
 
 In both cases this results in unique shared secrets for x25519
-and ML-KEM-768 in each direction, while allowing us to gracefully
+and ML-KEM-1024 in each direction, while allowing us to gracefully
 install pending RX keys so that we do not miss a beat.
 
 New offerings are sent when too many packets have been sent on a given
@@ -119,7 +119,7 @@ derive_offer_encryption_key(seed):
 
 offer_create():
     offer.ecdh = X25519-KEYGEN()
-    offer.kem  = ML-KEM-768-KEYGEN()
+    offer.kem  = ML-KEM-1024-KEYGEN()
     offer.now  = TIME(WALL_CLOCK), 64-bit
     offer.id   = PRNG(64-bit), unique sanctum id
     offer.salt = PRNG(32-bit), salt for nonce construction
@@ -150,7 +150,7 @@ offer_recv_pk(offer):
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
     ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
-    offer.kem.ct, kem_ss = ML-KEM-768-ENCAP(pt.kem.pk)
+    offer.kem.ct, kem_ss = ML-KEM-1024-ENCAP(pt.kem.pk)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
@@ -178,7 +178,7 @@ offer_recv_ct(offer):
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
     ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
-    kem_ss = ML-KEM-768-DECAP(offer.kem, pt.kem.ct)
+    kem_ss = ML-KEM-1024-DECAP(offer.kem, pt.kem.ct)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub

@@ -52,15 +52,6 @@ sanctum_packet_get(void)
 
 	sanctum_mem_zero(pkt, sizeof(*pkt));
 
-	/*
-	 * In the case TFC or encapsulation (or both) are enabled,
-	 * always allow fragmentation to prevent anyone from using
-	 * the DF bit to identify what type of packet it is.
-	 */
-	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) ||
-	    (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE))
-		pkt->fragment = 1;
-
 	return (pkt);
 }
 

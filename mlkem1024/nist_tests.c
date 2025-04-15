@@ -26,7 +26,7 @@
 #include "../include/sanctum_cipher.h"
 
 /*
- * We perform the NIST ACVP AFT tests for ML-KEM-768 using the
+ * We perform the NIST ACVP AFT tests for ML-KEM-1024 using the
  * reference implementation found in this directory.
  *
  * The test vectors originally come in JSON format, they were instead
@@ -40,17 +40,17 @@ struct keygen_test {
 	int		tcid;
 	u_int8_t	z[SANCTUM_KEY_LENGTH];
 	u_int8_t	d[SANCTUM_KEY_LENGTH];
-	u_int8_t	ek[SANCTUM_MLKEM768_PUBLICKEYBYTES];
-	u_int8_t	dk[SANCTUM_MLKEM768_SECRETKEYBYTES];
+	u_int8_t	ek[SANCTUM_MLKEM_1024_PUBLICKEYBYTES];
+	u_int8_t	dk[SANCTUM_MLKEM_1024_SECRETKEYBYTES];
 } __attribute__((packed));
 
 #define ENCDEC_TEST	"test-vectors/acvp_nist_encap_decap_fips203.bin"
 
 struct encdec_test {
 	int		tcid;
-	u_int8_t	ek[SANCTUM_MLKEM768_PUBLICKEYBYTES];
-	u_int8_t	dk[SANCTUM_MLKEM768_SECRETKEYBYTES];
-	u_int8_t	ct[SANCTUM_MLKEM768_CIPHERTEXTBYTES];
+	u_int8_t	ek[SANCTUM_MLKEM_1024_PUBLICKEYBYTES];
+	u_int8_t	dk[SANCTUM_MLKEM_1024_SECRETKEYBYTES];
+	u_int8_t	ct[SANCTUM_MLKEM_1024_CIPHERTEXTBYTES];
 	u_int8_t	k[SANCTUM_KEY_LENGTH];
 	u_int8_t	m[SANCTUM_KEY_LENGTH];
 } __attribute__((packed));
@@ -64,7 +64,7 @@ main(void)
 	ssize_t				ret;
 	struct encdec_test		encdec;
 	struct keygen_test		keygen;
-	struct sanctum_mlkem768		ref, test;
+	struct sanctum_mlkem1024	ref, test;
 	u_int8_t			coins[2 * SANCTUM_KEY_LENGTH];
 
 	if ((fd = open(KEYGEN_TEST, O_RDONLY)) == -1)
@@ -90,7 +90,7 @@ main(void)
 		memcpy(ref.pk, keygen.ek, sizeof(keygen.ek));
 		memcpy(ref.sk, keygen.dk, sizeof(keygen.dk));
 
-		(void)pqcrystals_kyber768_ref_keypair_derand(test.pk,
+		(void)pqcrystals_kyber1024_ref_keypair_derand(test.pk,
 		    test.sk, coins);
 
 		if (memcmp(test.pk, ref.pk, sizeof(test.pk)))
@@ -124,7 +124,7 @@ main(void)
 		memcpy(ref.pk, encdec.ek, sizeof(encdec.ek));
 		memcpy(ref.sk, encdec.dk, sizeof(encdec.dk));
 
-		(void)pqcrystals_kyber768_ref_enc_derand(test.ct,
+		(void)pqcrystals_kyber1024_ref_enc_derand(test.ct,
 		    test.ss, ref.pk, encdec.m);
 
 		if (memcmp(test.ct, encdec.ct, sizeof(encdec.ct)))
@@ -134,7 +134,7 @@ main(void)
 			fatal("test.ss != k (%d)", encdec.tcid);
 
 		memcpy(ref.ct, encdec.ct, sizeof(encdec.ct));
-		(void)pqcrystals_kyber768_ref_dec(ref.ss, ref.ct, ref.sk);
+		(void)pqcrystals_kyber1024_ref_dec(ref.ss, ref.ct, ref.sk);
 
 		if (memcmp(ref.ss, encdec.k, sizeof(encdec.k)))
 			fatal("ref.ss != k (%d)", encdec.tcid);
