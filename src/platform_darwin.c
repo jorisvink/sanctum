@@ -212,8 +212,7 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 	PRECOND(fd > 0);
 	PRECOND(on == 0 || on == 1);
 
-	val = on;
-	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val)) == -1)
+	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &on, sizeof(on)) == -1)
 		fatal("%s: setsockopt: %s", __func__, errno_s);
 }
 
