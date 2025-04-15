@@ -16,8 +16,16 @@ keys are freshly derived the nonces used in this construction
 are fixed as there is no risk for (key, nonce) pair re-use
 in this specific scenario.
 
-If asymmetry is enabled (default) x25519 is used in the key offering
-in combination with the shared symmetrical key.
+Key derivation for session keys is done by combing unique
+per-direction shared secrets from ECDH (x25519) and ML-KEM-768,
+together with our shared symmetrical key.
+
+IKM = len(ecdh_ss) || ecdh_ss || len(mlkem768_ss) || mlkem768_ss ||
+      len(local.pub) || local.pub || len(offer.pub) || offer.pub
+
+This IKM is run through KMAC256() instantiated with a derived key
+from the shared symmetrical secret, to produce strong and unique
+session keys in both RX and TX directions.
 
 ## Keys
 
@@ -60,12 +68,8 @@ processes due to its nature.
 The shared secret is a 256-bit symmetrical key shared between two
 peers that wish to communicate with each other.
 
-It is used in a few different ways depending on what is happening
-or how sanctum is configured.
-
 The SS is used to provide confidentiality and integrity for key offers
-and to provide additional strength to the session key derivation
-if asymmetry is enabled (the default).
+and to provide additional strength to the session key derivation.
 
 The SS is not used directly, but instead two derivations are taken,
 one for each specific purpose:
@@ -81,94 +85,116 @@ these can be distributed via a cathedral as an ambry, see docs/cathedral.md.
 
 ## A session key (SK)
 
-### Normal mode (asymmetry on)
+Session keys (SK) are derived from the **traffic_base** key in combination
+with directional unique ECDH (x25519) and ML-KEM-768 shared secrets,
+using KMAC256() as the KDF.
 
-In the default setup, session keys (SK) are derived from the **traffic_base**
-key in combination with the asymmetric secret using KMAC256() as the KDF.
+Both sides start by sending out offerings that contain an ML-KEM-768
+public key and an x25519 public key.
 
-Both RX and TX keys are derived and installed.
+Both sides upon receiving these offerings will perform ML-KEM-768
+encapsulation and send back the ciphertext and their own x25519
+public key which differs from the one sent in the initial offering.
+
+When a side performs encapsulation it will derive a fresh
+RX session key using all of that key material and install the
+key as a pending RX key.
+
+When a side performs decapsulation it will derive a fresh
+TX session key using all of that key material and install the
+key as the active TX key.
+
+In both cases this results in unique shared secrets for x25519
+and ML-KEM-768 in each direction, while allowing us to gracefully
+install pending RX keys so that we do not miss a beat.
 
 New offerings are sent when too many packets have been sent on a given
 key or when the keys become too old.
 
 ```
-derive_key(seed):
+derive_offer_encryption_key(seed):
     input = len(seed) || seed
     wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
     return wk
 
-Key offer:
-    now  = wall time in seconds, 64-bit
-    priv = x25519 private key, selected uniformly at random, 256-bit
-    pub  = x25519 public key, derived from priv, 256-bit
-    id   = unique sanctum ID selected uniformly at random at start, 64-bit
-    salt = salt for nonce construction, selected uniformly at random, 32-bit
-    spi  = the spi for this association, selected uniformly at random, 32-bit
+offer_create():
+    offer.ecdh = X25519-KEYGEN()
+    offer.kem  = ML-KEM-768-KEYGEN()
+    offer.now  = TIME(WALL_CLOCK), 64-bit
+    offer.id   = PRNG(64-bit), unique sanctum id
+    offer.salt = PRNG(32-bit), salt for nonce construction
+    offer.spi  = PRNG(32-bit), the spi for this association
 
-    internal_seed = unused and set to random data
-    internal_tag  = unused and set to random data
+    offer.internal_seed = unused and set to random data
+    offer.internal_tag  = unused and set to random data
 
-    seed = seed selected uniformly at random, 512-bit
-    dk = derive_key(seed)
+    return offer
 
-    magic = 0x53414352414D4E54, 64-bit
+offer_send_pk(offer):
+    seed = PRNG(512-bit)
+    dk = derive_offer_encryption_key(seed)
 
-    header = magic || spi || seed
-    encdata = id || salt || now || internal_seed || pub || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
+    header = 0x53414352414D4E54 || offer.spi || seed
+    pt = id || salt || now || internal_seed ||
+         offer.ecdh.pub || offer.kem.pk || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
 
-    send(header || encdata)
+    packet.header = header
+    packet.data = encdata
+    send(packet)
 
-Key derivation:
-    header, encdata = recv()
+offer_recv_pk(offer):
+    packet = recv()
 
-    dk = derive_key(header.seed)
-    offer = AES256-GCM(dk, nonce=1, aad=header, encdata)
+    dk = derive_offer_encryption_key(packet.header.seed)
+    pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
-    ikm = scalarmult(priv, offer.pub)
-    x = len(ikm) || ikm || len(pub) || pub || len(offer.pub) || offer.pub
-    rx, tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 512-bit
+    ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
+    offer.kem.ct, kem_ss = ML-KEM-768-ENCAP(pt.kem.pk)
 
-```
+    x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
+        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
+    rx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 256-bit
 
-### Symmetrical mode only (asymmetry off)
+    return rx
 
-Session keys are 256-bit symmetrical keys selected uniformly at random
-when generated and are created by both peers when no previous session
-exists or, when a session has sent too many packets or is 1 hour old.
+offer_send_ct(offer):
+    seed = PRNG(512-bit)
+    dk = derive_offer_encryption_key(seed)
 
-These SK's are encrypted with keys derived from the SS and are exchanged
-between both peers.
+    header = 0x53414352414D4E54 || spi || seed
+    pt = id || salt || now || internal_seed ||
+         offer.ecdh.pub || offer.kem.ct || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
 
-Once the session keys have been exchanged they are used to provide
-traffic confidentiality and integrity using AES256-GCM.
+    packet.header = header
+    packet.data = encdata
+    send(packet)
 
-```
-derive_key(seed):
-    input = len(seed) || seed
-    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
-    return wk
+offer_recv_ct(offer):
+    packet = recv()
 
-Key offer:
-    now  = wall time in seconds, 64-bit
-    sk   = session key selected uniformly at random, 256-bit
-    id   = unique sanctum ID selected uniformly at random at start, 64-bit
-    salt = salt for nonce construction, selected uniformly at random, 32-bit
-    spi  = the spi for this association, selected uniformly at random, 32-bit
+    dk = derive_offer_encryption_key(packet.header.seed)
+    pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
-    internal_seed = unused and set to random data
-    internal_tag  = unused and set to random data
+    ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
+    kem_ss = ML-KEM-768-DECAP(offer.kem, pt.kem.ct)
 
-    seed = seed selected uniformly at random, 512-bit
-    dk = derive_key(seed)
+    x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
+        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
+    tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 256-bit
 
-    magic = 0x53414352414D4E54, 64-bit
+    return tx
 
-    header = magic || spi || seed
-    encdata = id || salt || now || internal_seed || sk || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
+key exchange:
+    my_offer = offer_create()
+    peer_offer = offer_create()
 
-    send(header || encdata)
+    offer_send_pk(my_offer)
+    tx = offer_recv_ct(my_offer)
+
+    rx = offer_recv_pk(peer_offer)
+    offer_send_ct(peer_offer)
 ```
 
 ## Key-Encryption-Key (KEK)

@@ -32,25 +32,45 @@
 #include "libnyfe.h"
 
 /* The SACRAMENT KDF label. */
-#define CHAPEL_DERIVE_LABEL	"SANCTUM.SACRAMENT.KDF"
+#define CHAPEL_DERIVE_LABEL		"SANCTUM.SACRAMENT.KDF"
 
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
+/* Should the offer packet include the ML-KEM-768 public key. */
+#define OFFER_INCLUDE_KEM_PK		(1 << 0)
+
+/* Should the offer packet include the ML-KEM-768 ciphertext. */
+#define OFFER_INCLUDE_KEM_CT		(1 << 1)
+
 /*
- * An RX offer we send to our peer (meaning the peer can use this key as
- * a TX key and we will be able to decrypt traffic with it).
+ * Exchange data for a specific direction.
  */
-struct rx_offer {
-	u_int16_t		ttl;
-	u_int32_t		spi;
-	u_int32_t		salt;
-	u_int64_t		pulse;
-	u_int8_t		public[32];
-	u_int8_t		key[SANCTUM_KEY_LENGTH];
+struct exchange_info {
+	struct sanctum_mlkem768		kem;
+	u_int32_t			spi;
+	u_int32_t			salt;
+	u_int8_t			public[SANCTUM_X25519_SCALAR_BYTES];
+	u_int8_t			private[SANCTUM_X25519_SCALAR_BYTES];
+};
+
+/*
+ * An active key offering. This keeps track of the state of the key exchange
+ * and what needs to be sent and used for the actual derivation of session
+ * keys.
+ */
+struct exchange_offer {
+	struct exchange_info		local;
+	struct exchange_info		remote;
+
+	u_int16_t			ttl;
+	u_int64_t			pulse;
+	u_int32_t			flags;
+
 };
 
 static void	chapel_peer_check(u_int64_t);
+static void	chapel_derive_session_key(struct sanctum_offer *, u_int8_t);
 
 static void	chapel_cathedral_notify(u_int64_t);
 static void	chapel_cathedral_send_info(u_int64_t);
@@ -62,11 +82,12 @@ static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
 static void	chapel_ambry_unwrap(struct sanctum_ambry_offer *, u_int64_t);
 
 static void	chapel_packet_handle(struct sanctum_packet *, u_int64_t);
-static int	chapel_session_keys_derive(struct sanctum_offer *, u_int64_t);
+static void	chapel_session_key_exchange(struct sanctum_offer *, u_int64_t);
 
 static void	chapel_offer_clear(void);
+static void	chapel_offer_send(u_int64_t);
 static void	chapel_offer_check(u_int64_t);
-static void	chapel_offer_encrypt(u_int64_t);
+static void	chapel_offer_encrypt(u_int64_t, int);
 static void	chapel_offer_create(u_int64_t, const char *);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
@@ -77,10 +98,7 @@ static void	chapel_erase(struct sanctum_key *, u_int32_t);
 static struct sanctum_proc_io	*io = NULL;
 
 /* The current offer for our peer. */
-static struct rx_offer		*offer = NULL;
-
-/* Last received verified offer its SPI. */
-static u_int32_t		last_spi = 0;
+static struct exchange_offer	*offer = NULL;
 
 /* The next time we can offer at the earliest. */
 static u_int64_t		offer_next = 0;
@@ -94,9 +112,6 @@ static u_int64_t		offer_next_send = 1;
 
 /* Randomly generated local ID. */
 static u_int64_t		local_id = 0;
-
-/* The randomly generated peer ID. */
-static u_int64_t		peer_id = 0;
 
 /* The ambry generation, initially 0. */
 static u_int32_t		ambry_generation = 0;
@@ -200,12 +215,14 @@ sanctum_chapel(struct sanctum_proc *proc)
 			 * clear it as we know the other side got it.
 			 */
 			spi = sanctum_atomic_read(&sanctum->rx.spi);
-			if (spi == offer->spi &&
+			if (spi == offer->local.spi &&
 			    sanctum_atomic_read(&sanctum->rx.pkt) > 0) {
-				chapel_offer_clear();
+				offer->flags &= ~OFFER_INCLUDE_KEM_CT;
+				if (offer->flags == 0)
+					chapel_offer_clear();
 			} else {
 				if (now >= offer->pulse)
-					chapel_offer_encrypt(now);
+					chapel_offer_send(now);
 			}
 		} else {
 			chapel_offer_check(now);
@@ -669,9 +686,8 @@ chapel_offer_check(u_int64_t now)
 	reason = NULL;
 
 	if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
-		/* Default is now to offer for 60 seconds. */
-		offer_ttl = 6;
-		offer_next_send = 10;
+		offer_ttl = 10;
+		offer_next_send = 1;
 
 		age = sanctum_atomic_read(&sanctum->rx.age);
 		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
@@ -717,54 +733,81 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	if ((offer = calloc(1, sizeof(*offer))) == NULL)
 		fatal("calloc");
 
+	nyfe_zeroize_register(offer, sizeof(*offer));
+
 	offer->pulse = now;
 	offer->ttl = offer_ttl;
+	offer->flags = OFFER_INCLUDE_KEM_PK;
 
-	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
-	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
+	nyfe_random_bytes(&offer->local.spi, sizeof(offer->local.spi));
+	nyfe_random_bytes(&offer->local.salt, sizeof(offer->local.salt));
 
 	if (sanctum->tun_spi != 0) {
-		offer->spi = (offer->spi & 0x0000ffff) |
+		offer->local.spi = (offer->local.spi & 0x0000ffff) |
 		    ((u_int32_t)sanctum->tun_spi << 16);
 	}
 
-	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
-		nyfe_random_bytes(offer->key, sizeof(offer->key));
-		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-		sanctum_install_key_material(io->rx, offer->spi,
-		    offer->salt, offer->key, sizeof(offer->key));
-		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-	} else {
-		sanctum_asymmetry_keygen(offer->key, sizeof(offer->key),
-		    offer->public, sizeof(offer->public));
-	}
+	sanctum_mlkem768_keypair(&offer->local.kem);
 
-	sanctum_log(LOG_INFO, "offering fresh key (%s) "
+	sanctum_asymmetry_keygen(offer->local.private,
+	    sizeof(offer->local.private), offer->local.public,
+	    sizeof(offer->local.public));
+
+	sanctum_asymmetry_keygen(offer->remote.private,
+	    sizeof(offer->remote.private), offer->remote.public,
+	    sizeof(offer->remote.public));
+
+	sanctum_log(LOG_INFO, "starting new key exchange (%s) "
 	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
-	    reason, offer->spi, offer_ttl, offer_next_send);
+	    reason, offer->local.spi, offer_ttl, offer_next_send);
 }
 
 /*
- * Generate a new encrypted packet containing our current key offer
- * for our peer and submit it via the purgatory process.
+ * Generate new offer packets depending on our current offer state.
  */
 static void
-chapel_offer_encrypt(u_int64_t now)
+chapel_offer_send(u_int64_t now)
 {
-	struct sanctum_offer		*op;
-	struct sanctum_key_offer	*key;
-	struct sanctum_packet		*pkt;
-	struct sanctum_key		cipher;
-
 	PRECOND(offer != NULL);
 
 	offer->ttl--;
 	offer->pulse = now + offer_next_send;
 
-	if ((pkt = sanctum_packet_get()) == NULL)
-		goto cleanup;
+	if (offer->flags & OFFER_INCLUDE_KEM_PK)
+		chapel_offer_encrypt(now, OFFER_INCLUDE_KEM_PK);
 
-	op = sanctum_offer_init(pkt, offer->spi,
+	if (offer->flags & OFFER_INCLUDE_KEM_CT)
+		chapel_offer_encrypt(now, OFFER_INCLUDE_KEM_CT);
+
+	if (offer->ttl == 0)
+		chapel_offer_clear();
+}
+
+/*
+ * Encrypt and send a single offer packet to our peer. What it includes
+ * is based on the which parameter.
+ */
+static void
+chapel_offer_encrypt(u_int64_t now, int which)
+{
+	struct sanctum_offer		*op;
+	struct sanctum_key_offer	*key;
+	struct sanctum_packet		*pkt;
+	struct exchange_info		*info;
+	struct sanctum_key		cipher;
+
+	PRECOND(offer != NULL);
+	PRECOND(which == OFFER_INCLUDE_KEM_PK || which == OFFER_INCLUDE_KEM_CT);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	if (which == OFFER_INCLUDE_KEM_CT)
+		info = &offer->remote;
+	else
+		info = &offer->local;
+
+	op = sanctum_offer_init(pkt, info->spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
 	if (sanctum->cathedral_flock != 0)
@@ -775,19 +818,23 @@ chapel_offer_encrypt(u_int64_t now)
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
-		goto cleanup;
+		return;
 	}
 
 	key = &op->data.offer.key;
-	key->salt = offer->salt;
+	key->salt = info->salt;
 	key->id = htobe64(local_id);
 
-	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
-		key->flags = 0;
-		nyfe_memcpy(key->key, offer->key, sizeof(offer->key));
+	nyfe_memcpy(key->key, info->public, sizeof(info->public));
+
+	if (which == OFFER_INCLUDE_KEM_CT) {
+		key->state = SANCTUM_OFFER_STATE_KEM_CT;
+		nyfe_memcpy(key->kem,
+		    offer->remote.kem.ct, sizeof(offer->remote.kem.ct));
 	} else {
-		key->flags = SANCTUM_OFFER_FLAG_ASYMMETRY;
-		nyfe_memcpy(key->key, offer->public, sizeof(offer->public));
+		key->state = SANCTUM_OFFER_STATE_KEM_PK;
+		nyfe_memcpy(key->kem,
+		    offer->local.kem.pk, sizeof(offer->local.kem.pk));
 	}
 
 	sanctum_offer_encrypt(&cipher, op);
@@ -802,10 +849,6 @@ chapel_offer_encrypt(u_int64_t now)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
-
-cleanup:
-	if (offer->ttl == 0)
-		chapel_offer_clear();
 }
 
 /*
@@ -816,23 +859,22 @@ chapel_offer_clear(void)
 {
 	PRECOND(offer != NULL);
 
-	sanctum_mem_zero(offer, sizeof(*offer));
+	offer_ttl = 5;
+	offer_next = 0;
+	offer_next_send = 1;
+
+	nyfe_zeroize(offer, sizeof(*offer));
 	free(offer);
 	offer = NULL;
 }
 
 /*
  * Attempt to verify the given key offer that should be in pkt.
- * Depending on the asymmetry setting we will do one of the two:
  *
- * If asymmetry is enabled (the default):
- *	If we can verify that it was sent by the peer, and it is not
- *	too old we will finalize our asymmetrical exchange based on
- *	the current offer we are sending (or we create one) and derive
- *	fresh session keys for both RX/TX directions.
- *
- * If asymmetry is disabled:
- *	Install the received key as our TX key.
+ * If we can verify that it was sent by the peer, and it is not
+ * too old we will finalize our asymmetrical exchange based on
+ * the current offer we are sending (or we create one) and derive
+ * fresh session keys for both RX/TX directions.
  */
 static void
 chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
@@ -863,10 +905,6 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	if (op->data.type != SANCTUM_OFFER_TYPE_KEY)
 		return;
 
-	op->hdr.spi = be32toh(op->hdr.spi);
-	if (op->hdr.spi == last_spi)
-		return;
-
 	key = &op->data.offer.key;
 	key->id = be64toh(key->id);
 	if (key->id == local_id) {
@@ -874,111 +912,158 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 	}
 
-	offer_ttl = 5;
-	offer_next = 0;
-	offer_next_send = 1;
+	op->hdr.spi = be32toh(op->hdr.spi);
 
+	chapel_session_key_exchange(op, now);
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
-
-	if (sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY) {
-		if (key->flags & SANCTUM_OFFER_FLAG_ASYMMETRY)
-			return;
-
-		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
-		sanctum_offer_install(io->tx, op);
-		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
-
-		if (key->id != peer_id) {
-			if (offer == NULL)
-				chapel_offer_create(now, "peer restart");
-		}
-
-		peer_id = key->id;
-		last_spi = op->hdr.spi;
-	} else {
-		if (!(key->flags & SANCTUM_OFFER_FLAG_ASYMMETRY))
-			return;
-
-		if (chapel_session_keys_derive(op, now) != -1) {
-			peer_id = key->id;
-			last_spi = op->hdr.spi;
-		}
-	}
-
 }
 
 /*
- * Derive both RX and TX keys based on our shared secret and the
- * extra input key material from the asymmetry offering.
+ * Performing a key exchange boils down to the following:
  *
- * Who installs RX/TX keys where is based on the local and peer ID.
+ *	Both sides start by sending out offerings that contain an ML-KEM-768
+ *	public key and an x25519 public key.
+ *
+ *	Both sides upon receiving these offerings will perform ML-KEM-768
+ *	encapsulation and send back the ciphertext and their own x25519
+ *	public key which differs from the one sent in the initial offering.
+ *
+ *	When a side performs encapsulation it will derive a fresh
+ *	RX session key using all of that key material and install the
+ *	key as a pending RX key.
+ *
+ *	When a side performs decapsulation it will derive a fresh
+ *	TX session key using all of that key material and install the
+ *	key as the active TX key.
+ *
+ * In both cases this results in unique shared secrets for x25519
+ * and ML-KEM-768 in each direction, while allowing us to gracefully
+ * install pending RX keys so that we do not miss a beat.
  */
-static int
-chapel_session_keys_derive(struct sanctum_offer *op, u_int64_t now)
+static void
+chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 {
-	struct sanctum_kex		kex;
 	struct sanctum_key_offer	*key;
-	u_int8_t			*rx, *tx;
-	u_int8_t			okm[SANCTUM_KEY_LENGTH * 2];
 
 	PRECOND(op != NULL);
-	PRECOND(!(sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY));
 
 	key = &op->data.offer.key;
 
-	if (offer != NULL && peer_id != 0 && key->id != peer_id)
-		chapel_offer_clear();
+	switch (key->state) {
+	case SANCTUM_OFFER_STATE_KEM_PK:
+		if (offer == NULL) {
+			chapel_offer_create(now, "peer renegotiate");
+			if (offer == NULL)
+				break;
+		}
 
-	if (offer == NULL) {
-		chapel_offer_create(now, "peer renegotiate");
-		if (offer == NULL)
-			return (-1);
+		if (op->hdr.spi == offer->remote.spi)
+			break;
+
+		offer->ttl = offer_ttl;
+		offer->remote.salt = key->salt;
+		offer->remote.spi = op->hdr.spi;
+		offer->flags |= OFFER_INCLUDE_KEM_CT;
+
+		nyfe_memcpy(offer->remote.kem.pk,
+		    key->kem, sizeof(offer->remote.kem.pk));
+		sanctum_mlkem768_encapsulate(&offer->remote.kem);
+		chapel_derive_session_key(op, SANCTUM_KEY_DIRECTION_RX);
+		break;
+	case SANCTUM_OFFER_STATE_KEM_CT:
+		if (offer == NULL) {
+			sanctum_log(LOG_INFO,
+			    "offer received with kem-ct but no active offer");
+			break;
+		}
+
+		if (op->hdr.spi != offer->local.spi) {
+			sanctum_log(LOG_INFO,
+			    "offer received with kem-ct but wrong spi");
+			sanctum_log(LOG_INFO, "%08x vs %08x", op->hdr.spi,
+			    offer->local.spi);
+			break;
+		}
+
+		if (!(offer->flags & OFFER_INCLUDE_KEM_PK))
+			break;
+
+		offer->flags &= ~OFFER_INCLUDE_KEM_PK;
+
+		nyfe_memcpy(offer->local.kem.ct,
+		    key->kem, sizeof(offer->local.kem.ct));
+		sanctum_mlkem768_decapsulate(&offer->local.kem);
+		chapel_derive_session_key(op, SANCTUM_KEY_DIRECTION_TX);
+		break;
+	default:
+		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
+		break;
 	}
+}
+
+/*
+ * Derive a new session key for the given direction based upon the
+ * shared secrets we negotiated, in combination with a derivative
+ * of our shared symmetrical secret.
+ */
+static void
+chapel_derive_session_key(struct sanctum_offer *op, u_int8_t dir)
+{
+	struct sanctum_kex		kex;
+	struct sanctum_key_offer	*key;
+	struct exchange_info		*info;
+	u_int8_t			okm[SANCTUM_KEY_LENGTH];
+
+	PRECOND(op != NULL);
+	PRECOND(offer != NULL);
+	PRECOND(dir == SANCTUM_KEY_DIRECTION_RX ||
+	    dir == SANCTUM_KEY_DIRECTION_TX);
+
+	key = &op->data.offer.key;
 
 	nyfe_zeroize_register(okm, sizeof(okm));
 	nyfe_zeroize_register(&kex, sizeof(kex));
 
 	nyfe_memcpy(kex.remote, key->key, sizeof(key->key));
-	nyfe_memcpy(kex.private, offer->key, sizeof(offer->key));
+
+	if (dir == SANCTUM_KEY_DIRECTION_RX) {
+		info = &offer->remote;
+		nyfe_memcpy(kex.kem, offer->remote.kem.ss, sizeof(kex.kem));
+	} else {
+		info = &offer->local;
+		nyfe_memcpy(kex.kem, offer->local.kem.ss, sizeof(kex.kem));
+	}
+
+	nyfe_memcpy(kex.private, info->private, sizeof(info->private));
 
 	if (key->id < local_id) {
-		nyfe_memcpy(kex.pub1, offer->public, sizeof(offer->public));
+		nyfe_memcpy(kex.pub1, info->public, sizeof(info->public));
 		nyfe_memcpy(kex.pub2, key->key, sizeof(key->key));
 	} else {
 		nyfe_memcpy(kex.pub1, key->key, sizeof(key->key));
-		nyfe_memcpy(kex.pub2, offer->public, sizeof(offer->public));
+		nyfe_memcpy(kex.pub2, info->public, sizeof(info->public));
 	}
 
 	if (sanctum_traffic_kdf(&kex, okm, sizeof(okm)) == -1) {
 		nyfe_zeroize(okm, sizeof(okm));
 		nyfe_zeroize(&kex, sizeof(kex));
-		return (-1);
+		return;
 	}
 
-	if (key->id < local_id) {
-		rx = &okm[0];
-		tx = &okm[SANCTUM_KEY_LENGTH];
+	if (dir == SANCTUM_KEY_DIRECTION_RX) {
+		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+		sanctum_install_key_material(io->rx,
+		    offer->local.spi, offer->local.salt, okm, sizeof(okm));
+		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 	} else {
-		tx = &okm[0];
-		rx = &okm[SANCTUM_KEY_LENGTH];
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+		sanctum_install_key_material(io->tx,
+		    offer->remote.spi, offer->remote.salt, okm, sizeof(okm));
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 	}
-
-	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-
-	sanctum_install_key_material(io->rx,
-	    offer->spi, offer->salt, rx, SANCTUM_KEY_LENGTH);
-
-	sanctum_install_key_material(io->tx,
-	    op->hdr.spi, key->salt, tx, SANCTUM_KEY_LENGTH);
-
-	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
 	nyfe_zeroize(okm, sizeof(okm));
 	nyfe_zeroize(&kex, sizeof(kex));
-
-	return (0);
 }
 
 /*

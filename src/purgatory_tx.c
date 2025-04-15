@@ -47,6 +47,9 @@ static struct sanctum_proc_io	*io = NULL;
 static u_int64_t		encap_pn = 0;
 static u_int32_t		encap_spi = 0;
 
+/* Current state of the DF bit on our outgoing socket. */
+static int			fragmentation_state = 0;
+
 /*
  * The process responsible for sending encrypted packets into purgatory.
  */
@@ -154,6 +157,15 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 
 	for (;;) {
 		data = purgatory_tx_encapsulate(pkt);
+
+		if (pkt->fragment != fragmentation_state) {
+			fragmentation_state = pkt->fragment;
+
+			if (pkt->fragment)
+				sanctum_platform_ip_fragmentation(fd, 0);
+			else
+				sanctum_platform_ip_fragmentation(fd, 1);
+		}
 
 		if (sendto(fd, data, pkt->length, 0,
 		    (struct sockaddr *)&peer, sizeof(peer)) == -1) {

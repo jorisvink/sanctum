@@ -223,13 +223,19 @@ struct sanctum_offer_hdr {
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
 
-#define SANCTUM_OFFER_FLAG_ASYMMETRY	(1 << 0)
+#define SANCTUM_OFFER_STATE_KEM_PK	(1 << 1)
+#define SANCTUM_OFFER_STATE_KEM_CT	(1 << 2)
 
 struct sanctum_key_offer {
 	u_int64_t		id;
 	u_int32_t		salt;
+	u_int32_t		state;
 	u_int8_t		key[SANCTUM_KEY_LENGTH];
-	u_int32_t		flags;
+	/*
+	 * The kem member is used for both the public key and ciphertext.
+	 * Since the public key is larger it is used as the max size for it.
+	 */
+	u_int8_t		kem[SANCTUM_MLKEM768_PUBLICKEYBYTES];
 } __attribute__((packed));
 
 struct sanctum_ambry_offer {
@@ -459,6 +465,7 @@ struct sanctum_encap_hdr {
 struct sanctum_packet {
 	struct sockaddr_in	addr;
 	u_int8_t		next;
+	u_int8_t		fragment;
 	size_t			length;
 	u_int32_t		target;
 	u_int8_t		buf[SANCTUM_PACKET_MAX_LEN];
@@ -518,9 +525,6 @@ struct sanctum_ether {
 
 /* When in liturgy mode, are we hiding ourselves or not. */
 #define SANCTUM_FLAG_LITURGY_HIDE	(1 << 8)
-
-/* If we make use of asymmetry during key offerings in tunnel mode. */
-#define SANCTUM_FLAG_DISABLE_ASYMMETRY	(1 << 9)
 
 /*
  * The modes in which sanctum can run.
@@ -754,6 +758,7 @@ struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
 /* platform bits. */
 void	sanctum_platform_init(void);
 int	sanctum_platform_tundev_create(void);
+void	sanctum_platform_ip_fragmentation(int, int);
 void	sanctum_platform_sandbox(struct sanctum_proc *);
 ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);
 ssize_t	sanctum_platform_tundev_write(int, struct sanctum_packet *);
