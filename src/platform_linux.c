@@ -293,8 +293,6 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 {
 	PRECOND(proc != NULL);
 
-	return;
-
 	linux_sandbox_netns(proc);
 	linux_sandbox_seccomp(proc);
 }
