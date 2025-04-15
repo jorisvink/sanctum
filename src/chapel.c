@@ -824,7 +824,7 @@ chapel_offer_encrypt(u_int64_t now, int which, u_int8_t frag)
 	else
 		info = &offer->local;
 
-	op = sanctum_offer_init(pkt, info->spi,
+	op = sanctum_offer_init(pkt, offer->local.spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_EXCHANGE);
 
 	if (sanctum->cathedral_flock != 0)
@@ -843,6 +843,7 @@ chapel_offer_encrypt(u_int64_t now, int which, u_int8_t frag)
 	exchange->fragment = frag;
 	exchange->salt = info->salt;
 	exchange->id = htobe64(local_id);
+	exchange->spi = htobe32(info->spi);
 
 	nyfe_memcpy(exchange->ecdh, info->public, sizeof(info->public));
 	offset = frag * SANCTUM_OFFER_KEM_FRAGMENT_SIZE;
@@ -974,10 +975,11 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 	PRECOND(op != NULL);
 
 	exchange = &op->data.offer.exchange;
+	exchange->spi = be32toh(exchange->spi);
 
 	switch (exchange->state) {
 	case SANCTUM_OFFER_STATE_KEM_PK_FRAGMENT:
-		if (op->hdr.spi == last_spi)
+		if (exchange->spi == last_spi)
 			break;
 
 		if (offer == NULL) {
@@ -987,7 +989,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		}
 
 		if (offer->pk_frag == SANCTUM_OFFER_KEM_FRAGMENTS_DONE &&
-		    op->hdr.spi == offer->remote.spi)
+		    exchange->spi == offer->remote.spi)
 			break;
 
 		if (exchange->fragment >= SANCTUM_OFFER_KEM_FRAGMENTS) {
@@ -1012,7 +1014,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 			break;
 
 		offer->ttl = offer_ttl;
-		offer->remote.spi = op->hdr.spi;
+		offer->remote.spi = exchange->spi;
 		offer->remote.salt = exchange->salt;
 		offer->flags |= OFFER_INCLUDE_KEM_CT;
 
@@ -1024,10 +1026,10 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		if (offer == NULL)
 			break;
 
-		if (op->hdr.spi != offer->local.spi) {
+		if (exchange->spi != offer->local.spi) {
 			sanctum_log(LOG_INFO,
 			    "ct fragment, wrong spi (%08x %08x)",
-			    op->hdr.spi, offer->local.spi);
+			    exchange->spi, offer->local.spi);
 			break;
 		}
 

@@ -244,6 +244,7 @@ struct sanctum_offer_hdr {
 
 struct sanctum_exchange_offer {
 	u_int64_t		id;
+	u_int32_t		spi;
 	u_int32_t		salt;
 	u_int8_t		state;
 	u_int8_t		fragment;
