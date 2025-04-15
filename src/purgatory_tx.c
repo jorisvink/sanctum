@@ -91,7 +91,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 
 		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 		    sanctum->mode != SANCTUM_MODE_LITURGY) {
-			if ((pkt = sanctum_ring_dequeue(io->offer)))
+			while ((pkt = sanctum_ring_dequeue(io->offer)))
 				purgatory_tx_send_packet(io->crypto, pkt);
 		}
 
@@ -184,6 +184,10 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 			}
 			if (errno == ENETDOWN) {
 				sanctum_log(LOG_INFO, "network is down");
+				break;
+			}
+			if (errno == ENOBUFS) {
+				sanctum_log(LOG_NOTICE, "sendto: %s", errno_s);
 				break;
 			}
 			fatal("sendto: %s", errno_s);

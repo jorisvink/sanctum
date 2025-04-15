@@ -203,7 +203,22 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	return (writev(fd, iov, 2));
 }
 
-/* Adds a new route via our tunnel device. */
+/*
+ * Enable or disable the setting of the DF bit in the IP header.
+ */
+void
+sanctum_platform_ip_fragmentation(int fd, int on)
+{
+	PRECOND(fd > 0);
+	PRECOND(on == 0 || on == 1);
+
+	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &on, sizeof(on)) == -1)
+		fatal("%s: setsockopt: %s", __func__, errno_s);
+}
+
+/*
+ * Adds a new route via our tunnel device.
+ */
 void
 sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 {

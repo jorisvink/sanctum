@@ -173,7 +173,21 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	return (writev(fd, iov, cnt));
 }
 
-/* Adds a new route via our tunnel device. */
+/*
+ * Enable or disable the setting of the DF bit in the IP header.
+ */
+void
+sanctum_platform_ip_fragmentation(int fd, int on)
+{
+	PRECOND(fd > 0);
+	PRECOND(on == 0 || on == 1);
+
+	/* no-op on OpenBSD. */
+}
+
+/*
+ * Adds a new route via our tunnel device.
+ */
 void
 sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 {

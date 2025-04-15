@@ -8,7 +8,7 @@ Sanctum 1:1
 
 ## About
 
-This is a very small, reviewable, capable, and fully privilege
+This is a very small, reviewable, capable, pq-safe and fully privilege
 separated VPN daemon capable of transporting encrypted network traffic
 between two peers.
 
@@ -83,22 +83,13 @@ interface without passing the encryption process.
 
 ## Key Exchange
 
-A sanctum instance is responsible for sending its **RX** key to
-the other side. It does this by periodically generating a new
-key uniformly at random and encrypting it with a key derived
-from the underlying shared secret between both parties.
+Sanctum is post-quantum safe due to its unique approach to
+deriving session keys based on a shared symmetrical secret in
+combination with a hybridized asymmetrical exchange. It combines
+both classic ECDH (x25519) and the PQ-safe NIST standardized
+ML-KEM-1024.
 
-See docs/crypto.md for details on the session key and shared secrets.
-
-By default sanctum will perform a key offering combining both the
-symmetrical shared secret and an asymmetric secret, providing
-Perfect Forwarding Secrecy (PFS) in case of a shared secret compromise.
-
-This can be turned off to only use symmetrical keying.
-
-If you turn off asymmetry your shared secret must be handled with
-**great care** and must be rotated **often**. When using a cathedral
-you can use the Ambry distribution to update shared secrets.
+See docs/crypto.md for details on the key exchange.
 
 ## Traffic
 
@@ -117,6 +108,9 @@ variable at compile time with either:
 
 - libsodium-aes-gcm (AES256-GCM via libsodium, default, most portable).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
+
+Note that no matter which CIPHER is selected libsodium is always
+a dependency.
 
 ## One-directional tunnels
 

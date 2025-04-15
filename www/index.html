@@ -56,7 +56,7 @@ a, a:visited {
     </div>
 
     <div class="release">
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.18.tgz">sanctum 0.9.18</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.19.tgz">sanctum 0.9.19</a>
     </div>
 
     <div class="sep"></div>
@@ -64,7 +64,7 @@ a, a:visited {
     <h2>What is sanctum?</h2>
 
     <p>
-        Sanctum is a small, reviewable, capable and <strong>fully
+        Sanctum is a small, reviewable, capable, pq-safe and <strong>fully
         privilege seperated</strong> VPN daemon capable of transporting
         encrypted network traffic between two peers.
     </p>
@@ -97,7 +97,15 @@ a, a:visited {
         vice-versa.
     </li>
 
-    <h2>Traffic encryption</h2>
+    <h2>Encryption</h2>
+
+    <p>
+        Sanctum is post-quantum safe due to its unique approach to
+        deriving session keys based on a shared symmetrical secret in
+        combination with a hybridized asymmetrical exchange. It combines
+        both classic ECDH (x25519) and the PQ-safe NIST standardized
+        ML-KEM-1024.
+    </p>
 
     <p>
         Traffic is by default encrypted under AES256-GCM with unique keys in
@@ -115,102 +123,104 @@ a, a:visited {
     <h2>Key exchange</h2>
 
     <p>
-        By default sanctum uses a strong shared symmetrical secret in
-        combination with an asymmetrical secret to derive session
-        keys for both RX and TX directions.
+        Ssanctum uses a strong shared symmetrical secret in combination
+        with two asymmetrical secrets (ECDH and ML-KEM-1024) to derive
+        session keys for both RX and TX directions.
     </p>
 
     <p>
-        The key offering process looks as follows for this:
+        The key exchange process looks as follows:
     </p>
 
 <pre>
-ss = shared secret, loaded from disk
+ss = shared symmetrical key, 256-bit, loaded from disk
 offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF"), 256-bit
 traffic_base = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.KDF"), 256-bit
 
-derive_key(seed):
+derive_offer_encryption_key(seed):
     input = len(seed) || seed
     wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
     return wk
 
-Key offer:
-    now  = wall time in seconds, 64-bit
-    priv = x25519 private key, selected uniformly at random, 256-bit
-    pub  = x25519 public key, derived from priv, 256-bit
-    id   = unique sanctum ID selected uniformly at random at start, 64-bit
-    salt = salt for nonce construction, selected uniformly at random, 32-bit
-    spi  = the spi for this association, selected uniformly at random, 32-bit
+offer_create():
+    offer.ecdh = X25519-KEYGEN()
+    offer.kem  = ML-KEM-1024-KEYGEN()
+    offer.now  = TIME(WALL_CLOCK), 64-bit
+    offer.id   = PRNG(64-bit), unique sanctum id
+    offer.salt = PRNG(32-bit), salt for nonce construction
+    offer.spi  = PRNG(32-bit), the spi for this association
 
-    internal_seed = unused and set to random data
-    internal_tag  = unused and set to random data
+    offer.internal_seed = unused and set to random data
+    offer.internal_tag  = unused and set to random data
 
-    seed = seed selected uniformly at random, 512-bit
-    dk = derive_key(seed)
+    return offer
 
-    magic = 0x53414352414D4E54, 64-bit
+offer_send_pk(offer):
+    seed = PRNG(512-bit)
+    dk = derive_offer_encryption_key(seed)
 
-    header = magic || spi || seed
-    encdata = id || salt || now || internal_seed || pub || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
+    header = 0x53414352414D4E54 || offer.spi || seed
+    pt = id || salt || now || internal_seed ||
+         offer.ecdh.pub || offer.kem.pk || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
 
-    send(header || encdata)
+    packet.header = header
+    packet.data = encdata
+    send(packet)
 
-Key derivation:
-    header, encdata = recv()
+offer_recv_pk(offer):
+    packet = recv()
 
-    dk = derive_key(header.seed)
-    offer = AES256-GCM(dk, nonce=1, aad=header, encdata)
+    dk = derive_offer_encryption_key(packet.header.seed)
+    pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
-    ikm = scalarmult(priv, offer.pub)
-    x = len(ikm) || ikm || len(pub) || pub || len(offer.pub) || offer.pub
-    rx, tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 512-bit
+    ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
+    offer.kem.ct, kem_ss = ML-KEM-1024-ENCAP(pt.kem.pk)
+
+    x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
+        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
+    rx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 256-bit
+
+    return rx
+
+offer_send_ct(offer):
+    seed = PRNG(512-bit)
+    dk = derive_offer_encryption_key(seed)
+
+    header = 0x53414352414D4E54 || spi || seed
+    pt = id || salt || now || internal_seed ||
+         offer.ecdh.pub || offer.kem.ct || internal_tag
+    encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
+
+    packet.header = header
+    packet.data = encdata
+    send(packet)
+
+offer_recv_ct(offer):
+    packet = recv()
+
+    dk = derive_offer_encryption_key(packet.header.seed)
+    pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
+
+    ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
+    kem_ss = ML-KEM-1024-DECAP(offer.kem, pt.kem.ct)
+
+    x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
+        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
+    tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 256-bit
+
+    return tx
+
+key exchange:
+    my_offer = offer_create()
+    peer_offer = offer_create()
+
+    offer_send_pk(my_offer)
+    tx = offer_recv_ct(my_offer)
+
+    rx = offer_recv_pk(peer_offer)
+    offer_send_ct(peer_offer)
 </pre>
-
-    <p>
-        The asymmetry part can be turned off, meaning sanctum only relies
-        on the strong shared symmetrical secret. From this, a key is derived
-        for wrapping a generated session key that is transmitted to its peer.
-        Each sanctum instance is responsible for sending its
-        <strong>RX</strong> session key to its configured peer periodically.
-    </p>
-
-    <p>
-        The key offering process looks as follows for this:
-    </p>
-
-<pre>
-derive_key(seed):
-    input = len(seed) || seed
-    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
-    return wk
-
-Key offer:
-    now  = wall time in seconds, 64-bit
-    sk   = session key selected uniformly at random, 256-bit
-    id   = unique sanctum ID selected uniformly at random at start, 64-bit
-    salt = salt for nonce construction, selected uniformly at random, 32-bit
-    spi  = the spi for this association, selected uniformly at random, 32-bit
-
-    internal_seed = unused and set to random data
-    internal_tag  = unused and set to random data
-
-    seed = seed selected uniformly at random, 512-bit
-    dk = derive_key(seed)
-
-    magic = 0x53414352414D4E54, 64-bit
-
-    header = magic || spi || seed
-    encdata = id || salt || now || internal_seed || sk || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
-
-    send(header || encdata)
-</pre>
-
-    <p>
-        Note that if you turn off asymmetry you no longer have PFS and
-        you should swap out your underlying shared secret often.
-    </p>
 
     <p>
         Keys are expired automatically after a given number of packets
@@ -262,7 +272,7 @@ Key offer:
     <h2>Source?</h2>
 
     <p>
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.18.tgz">sanctum 0.9.18</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.19.tgz">sanctum 0.9.19</a>
     </p>
 
     <p>

@@ -299,11 +299,11 @@ main(int argc, char *argv[])
 {
 	int		idx, ret;
 
+	if (argc < 2 || !strcmp(argv[1], "help"))
+		usage();
+
 	if (getuid() != 0)
 		fatal("Only root may change hymn configurations");
-
-	if (argc < 2)
-		usage();
 
 	umask(0077);
 	hymn_mkdir(HYMN_RUN_PATH, 1);

@@ -27,7 +27,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
-#include <sodium.h>
 
 #include "sanctum.h"
 
@@ -541,11 +540,13 @@ sanctum_offer_kdf(const char *path, const char *label,
 }
 
 /*
- * Derive new traffic key material based on our shared secret and
- * the given ikm from the asymmetrical negotiation.
+ * Derive a new traffic key based on our shared secret, the derived secret
+ * from the ecdh exchange and the direction-specific derived secret from
+ * the ML-KEM-1024 exchange.
  *
- * Note that while this looks like sanctum_offer_kdf() above its
- * slightly different in its behaviour and expectations.
+ * IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
+ *       len(local.pub) || local.pub || len(offer.pub) || offer.pub || dir
+ * OKM = KMAC256(traffic_key, IKM)
  *
  * This is ONLY used for tunnel mode traffic, pilgrim/shrine mode work
  * in a very different way as those are only one-directional.
@@ -560,19 +561,17 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 
 	PRECOND(kex != NULL);
 	PRECOND(okm != NULL);
-	PRECOND(okm_len == SANCTUM_KEY_LENGTH * 2);
+	PRECOND(okm_len == SANCTUM_KEY_LENGTH);
 	PRECOND(sanctum->secret != NULL);
-	PRECOND(!(sanctum->flags & SANCTUM_FLAG_DISABLE_ASYMMETRY));
+	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 
 	nyfe_zeroize_register(ikm, sizeof(ikm));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
+	sanctum_asymmetry_derive(kex, ikm, sizeof(ikm));
 	sanctum_key_derive(sanctum->secret,
 	    SANCTUM_KDF_PURPOSE_TRAFFIC, secret, sizeof(secret));
-
-	if (crypto_scalarmult_curve25519(ikm, kex->private, kex->remote) == -1)
-		fatal("failed to calculate shared secret");
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));
@@ -580,6 +579,10 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	len = sizeof(ikm);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ikm, sizeof(ikm));
+
+	len = sizeof(kex->kem);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, kex->kem, sizeof(kex->kem));
 
 	len = sizeof(kex->pub1);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
@@ -620,6 +623,9 @@ sanctum_offer_nonce(u_int8_t *nonce, size_t nonce_len)
 /*
  * Set the initial information for a sanctum_offer inside of the
  * given sanctum packet.
+ *
+ * Note that offers are allowed to be fragmented when sent over the
+ * wire as they are quite big these days due to the PQ stuff.
  */
 struct sanctum_offer *
 sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
@@ -633,7 +639,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	    type == SANCTUM_OFFER_TYPE_AMBRY ||
 	    type == SANCTUM_OFFER_TYPE_INFO ||
 	    type == SANCTUM_OFFER_TYPE_LITURGY ||
-	    type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
+	    type == SANCTUM_OFFER_TYPE_REMEMBRANCE ||
+	    type == SANCTUM_OFFER_TYPE_EXCHANGE);
 
 	op = sanctum_packet_head(pkt);
 
@@ -878,16 +885,7 @@ sanctum_bind_local(struct sockaddr_in *sin)
 	if (fcntl(fd, F_SETFL, val) == -1)
 		fatal("%s: fcntl: %s", __func__, errno_s);
 
-#if defined(__linux__)
-	val = IP_PMTUDISC_DO;
-	if (setsockopt(fd, IPPROTO_IP,
-	    IP_MTU_DISCOVER, &val, sizeof(val)) == -1)
-		fatal("%s: setsockopt: %s", __func__, errno_s);
-#elif !defined(__OpenBSD__)
-	val = 1;
-	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val)) == -1)
-		fatal("%s: setsockopt: %s", __func__, errno_s);
-#endif
+	sanctum_platform_ip_fragmentation(fd, 1);
 
 	return (fd);
 }

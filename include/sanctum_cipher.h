@@ -17,26 +17,49 @@
 #ifndef __H_SANCTUM_CIPHER_H
 #define __H_SANCTUM_CIPHER_H
 
+/* The KDF domain separation byte for RX keys. */
+#define SANCTUM_KEY_DIRECTION_RX		0x01
+
+/* The KDF domain separation byte for TX keys. */
+#define SANCTUM_KEY_DIRECTION_TX		0x02
+
 /* Length of our symmetrical keys, in bytes. */
-#define SANCTUM_KEY_LENGTH		32
+#define SANCTUM_KEY_LENGTH			32
+
+/* Length of x25519 scalars. */
+#define SANCTUM_X25519_SCALAR_BYTES		SANCTUM_KEY_LENGTH
+
+/* Length of the ML-KEM-1024 shared secret. */
+#define SANCTUM_MLKEM_1024_KEY_BYTES		SANCTUM_KEY_LENGTH
 
 /* Length for an encapsulation key in hex. */
-#define SANCTUM_ENCAP_HEX_LEN		(SANCTUM_KEY_LENGTH * 2)
+#define SANCTUM_ENCAP_HEX_LEN			(SANCTUM_KEY_LENGTH * 2)
 
 /* The nonce size, in our case 96-bit. */
-#define SANCTUM_NONCE_LENGTH		12
+#define SANCTUM_NONCE_LENGTH			12
 
 /* The tag size, in our case 128-bit. */
-#define SANCTUM_TAG_LENGTH		16
+#define SANCTUM_TAG_LENGTH			16
+
+/* Number of bytes for the ML-KEM-1024 secret key. */
+#define SANCTUM_MLKEM_1024_SECRETKEYBYTES	3168
+
+/* Number of bytes for the ML-KEM-1024 public key we share. */
+#define SANCTUM_MLKEM_1024_PUBLICKEYBYTES	1568
+
+/* Number of bytes for the ML-KEM-1024 ciphertext we share. */
+#define SANCTUM_MLKEM_1024_CIPHERTEXTBYTES	\
+    SANCTUM_MLKEM_1024_PUBLICKEYBYTES
 
 /*
  * Data structure used when calling sanctum_traffic_kdf().
  */
 struct sanctum_kex {
-	u_int8_t		pub1[32];
-	u_int8_t		pub2[32];
-	u_int8_t		remote[32];
-	u_int8_t		private[32];
+	u_int8_t		kem[SANCTUM_MLKEM_1024_KEY_BYTES];
+	u_int8_t		pub1[SANCTUM_X25519_SCALAR_BYTES];
+	u_int8_t		pub2[SANCTUM_X25519_SCALAR_BYTES];
+	u_int8_t		remote[SANCTUM_X25519_SCALAR_BYTES];
+	u_int8_t		private[SANCTUM_X25519_SCALAR_BYTES];
 };
 
 /*
@@ -63,8 +86,33 @@ struct sanctum_cipher {
 	size_t			aad_len;
 	size_t			data_len;
 	size_t			nonce_len;
-
 };
+
+/*
+ * Used to interface with the ML-KEM-1024 api.
+ */
+struct sanctum_mlkem1024 {
+	u_int8_t	ss[SANCTUM_KEY_LENGTH];
+	u_int8_t	sk[SANCTUM_MLKEM_1024_SECRETKEYBYTES];
+	u_int8_t	pk[SANCTUM_MLKEM_1024_PUBLICKEYBYTES];
+	u_int8_t	ct[SANCTUM_MLKEM_1024_CIPHERTEXTBYTES];
+};
+
+/* The ML-KEM-1024 API. */
+void	sanctum_mlkem1024_selftest(void);
+void	sanctum_mlkem1024_keypair(struct sanctum_mlkem1024 *);
+void	sanctum_mlkem1024_encapsulate(struct sanctum_mlkem1024 *);
+void	sanctum_mlkem1024_decapsulate(struct sanctum_mlkem1024 *);
+
+/* The mlkem1024 backend api. */
+int	pqcrystals_kyber1024_ref_keypair(u_int8_t *, u_int8_t *);
+int	pqcrystals_kyber1024_ref_keypair_derand(u_int8_t *, u_int8_t *,
+	    const u_int8_t *);
+int	pqcrystals_kyber1024_ref_enc(u_int8_t *, u_int8_t *, const u_int8_t *);
+int	pqcrystals_kyber1024_ref_enc_derand(u_int8_t *, u_int8_t *,
+	    const u_int8_t *, const u_int8_t *);
+int	pqcrystals_kyber1024_ref_dec(u_int8_t *, const u_int8_t *,
+	    const u_int8_t *);
 
 /* The cipher API. */
 void	sanctum_cipher_init(void);
@@ -72,5 +120,9 @@ void	sanctum_cipher_cleanup(void *);
 void	*sanctum_cipher_setup(struct sanctum_key *);
 void	sanctum_cipher_encrypt(struct sanctum_cipher *);
 int	sanctum_cipher_decrypt(struct sanctum_cipher *);
+
+/* The asymmetry API. */
+void	sanctum_asymmetry_keygen(u_int8_t *, size_t, u_int8_t *, size_t);
+void	sanctum_asymmetry_derive(struct sanctum_kex *, u_int8_t *, size_t);
 
 #endif

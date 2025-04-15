@@ -130,6 +130,7 @@ static struct sock_filter purgatory_rx_seccomp_filter[] = {
 
 static struct sock_filter purgatory_tx_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(getrandom),
+	KORE_SYSCALL_ALLOW(setsockopt),
 };
 
 static struct sock_filter keying_seccomp_filter[] = {
@@ -261,6 +262,27 @@ sanctum_platform_tundev_write(int fd, struct sanctum_packet *pkt)
 	data = sanctum_packet_data(pkt);
 
 	return (write(fd, data, pkt->length));
+}
+
+/*
+ * Enable or disable the setting of the DF bit in the IP header.
+ */
+void
+sanctum_platform_ip_fragmentation(int fd, int on)
+{
+	int		val;
+
+	PRECOND(fd > 0);
+	PRECOND(on == 0 || on == 1);
+
+	if (on)
+		val = IP_PMTUDISC_DO;
+	else
+		val = IP_PMTUDISC_DONT;
+
+	if (setsockopt(fd, IPPROTO_IP,
+	    IP_MTU_DISCOVER, &val, sizeof(val)) == -1)
+		fatal("%s: setsockopt: %s", __func__, errno_s);
 }
 
 /*
