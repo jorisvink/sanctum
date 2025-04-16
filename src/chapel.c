@@ -988,8 +988,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 				break;
 		}
 
-		if (offer->pk_frag == SANCTUM_OFFER_KEM_FRAGMENTS_DONE &&
-		    exchange->spi == offer->remote.spi)
+		if (offer->pk_frag == SANCTUM_OFFER_KEM_FRAGMENTS_DONE)
 			break;
 
 		if (exchange->fragment >= SANCTUM_OFFER_KEM_FRAGMENTS) {
@@ -1018,7 +1017,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		offer->remote.salt = exchange->salt;
 		offer->flags |= OFFER_INCLUDE_KEM_CT;
 
-		last_spi = op->hdr.spi;
+		last_spi = exchange->spi;
 		sanctum_mlkem1024_encapsulate(&offer->remote.kem);
 		chapel_derive_session_key(op, SANCTUM_KEY_DIRECTION_RX);
 		break;
