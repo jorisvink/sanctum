@@ -112,7 +112,7 @@ static u_int32_t		last_spi = 0;
 static u_int64_t		cathedral_next = 0;
 
 /* Current offer TTL and next send intervals. */
-static u_int64_t		offer_ttl = 25;
+static u_int64_t		offer_ttl = 15;
 static u_int64_t		offer_next_send = 1;
 
 /* Randomly generated local ID. */
@@ -299,7 +299,7 @@ chapel_peer_check(u_int64_t now)
 		offer_next = now;
 	}
 
-	offer_ttl = 25;
+	offer_ttl = 15;
 	offer_next_send = 1;
 
 	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
@@ -887,7 +887,7 @@ chapel_offer_clear(void)
 
 	sanctum_log(LOG_INFO, "key offer cleared (spi=%08x)", offer->local.spi);
 
-	offer_ttl = 25;
+	offer_ttl = 15;
 	offer_next = 0;
 	offer_next_send = 1;
 
