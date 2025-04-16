@@ -89,7 +89,7 @@ combination with a hybridized asymmetrical exchange. It combines
 both classic ECDH (x25519) and the PQ-safe NIST standardized
 ML-KEM-1024.
 
-See docs/crypto.md for details on the key exchange.
+See [docs/crypto.md](docs/crypto.md) for details on the key exchange.
 
 ## Traffic
 
