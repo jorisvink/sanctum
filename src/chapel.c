@@ -91,8 +91,8 @@ static void	chapel_session_key_exchange(struct sanctum_offer *, u_int64_t);
 static void	chapel_offer_clear(void);
 static void	chapel_offer_send(u_int64_t);
 static void	chapel_offer_check(u_int64_t);
+static void	chapel_offer_encrypt(int, u_int8_t);
 static void	chapel_offer_create(u_int64_t, const char *);
-static void	chapel_offer_encrypt(u_int64_t, int, u_int8_t);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
 static void	chapel_drop_access(void);
@@ -791,12 +791,12 @@ chapel_offer_send(u_int64_t now)
 
 	if (offer->flags & OFFER_INCLUDE_KEM_PK) {
 		for (frag = 0; frag < SANCTUM_OFFER_KEM_FRAGMENTS; frag++)
-			chapel_offer_encrypt(now, OFFER_INCLUDE_KEM_PK, frag);
+			chapel_offer_encrypt(OFFER_INCLUDE_KEM_PK, frag);
 	}
 
 	if (offer->flags & OFFER_INCLUDE_KEM_CT) {
 		for (frag = 0; frag < SANCTUM_OFFER_KEM_FRAGMENTS; frag++)
-			chapel_offer_encrypt(now, OFFER_INCLUDE_KEM_CT, frag);
+			chapel_offer_encrypt(OFFER_INCLUDE_KEM_CT, frag);
 	}
 
 	if (offer->ttl == 0)
@@ -808,7 +808,7 @@ chapel_offer_send(u_int64_t now)
  * is based on the which parameter.
  */
 static void
-chapel_offer_encrypt(u_int64_t now, int which, u_int8_t frag)
+chapel_offer_encrypt(int which, u_int8_t frag)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
