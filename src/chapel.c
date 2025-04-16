@@ -902,9 +902,8 @@ chapel_offer_clear(void)
  * Attempt to verify the given key offer that should be in pkt.
  *
  * If we can verify that it was sent by the peer, and it is not
- * too old we will finalize our asymmetrical exchange based on
- * the current offer we are sending (or we create one) and derive
- * fresh session keys for both RX/TX directions.
+ * too old we will use it to perform a key exchange which may either
+ * already be active or needs to be started.
  */
 static void
 chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
@@ -1011,7 +1010,6 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 	struct sanctum_exchange_offer	*xchg;
 
 	PRECOND(op != NULL);
-	PRECOND(offer != NULL);
 
 	xchg = &op->data.offer.exchange;
 
