@@ -17,10 +17,10 @@
 #ifndef __H_SANCTUM_CIPHER_H
 #define __H_SANCTUM_CIPHER_H
 
-/* The KDF domain separation byte for RX keys. */
+/* The RX direction for session key derivation. */
 #define SANCTUM_KEY_DIRECTION_RX		0x01
 
-/* The KDF domain separation byte for TX keys. */
+/* The TX direction for session key derivation. */
 #define SANCTUM_KEY_DIRECTION_TX		0x02
 
 /* Length of our symmetrical keys, in bytes. */
