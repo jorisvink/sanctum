@@ -5,26 +5,26 @@
 The algorithm used to provide confidentiality and integrity for
 user traffic and management traffic is AES256-GCM.
 
-For user traffic, unique session keys (defined below) are used in both
-directions with a 64-bit packet counter used to construct the nonce
+For user traffic, unique session keys (defined below) are used in each
+direction with a 64-bit packet counter used to construct the nonce
 value (in combination with a unique salt). The ESP header and tail are
 included in the AAD.
 
 For management traffic, unique encryption keys are derived from the
-shared secret (defined below) per packet. In this case because the
-keys are freshly derived the nonces used in this construction
-are fixed as there is no risk for (key, nonce) pair re-use
-in this specific scenario.
+shared symmetric secret (defined below) per packet. In this case
+because the keys are freshly derived the nonces used in this
+construction are fixed as there is no risk for (key, nonce)
+pair re-use in this specific scenario.
 
 Key derivation for session keys is done by combing unique
 per-direction shared secrets from ECDH (x25519) and ML-KEM-1024,
-together with our shared symmetrical key.
+together with a derivative of our shared symmetrical key.
 
 IKM = len(ecdh_ss) || ecdh_ss || len(mlkem768_ss) || mlkem768_ss ||
       len(local.pub) || local.pub || len(offer.pub) || offer.pub
 
-This IKM is run through KMAC256() instantiated with a derived key
-from the shared symmetrical secret, to produce strong and unique
+This IKM is run through KMAC256() instantiated with the derived
+key from the shared symmetrical secret, to produce strong and unique
 session keys in both RX and TX directions.
 
 ## Keys
