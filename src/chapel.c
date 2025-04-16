@@ -118,6 +118,9 @@ static u_int64_t		offer_next_send = 1;
 /* Randomly generated local ID. */
 static u_int64_t		local_id = 0;
 
+/* The last peer ID received during an exchange. */
+static u_int64_t		peer_id = 0;
+
 /* The ambry generation, initially 0. */
 static u_int32_t		ambry_generation = 0;
 
@@ -988,8 +991,15 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 				break;
 		}
 
-		if (offer->pk_frag == SANCTUM_OFFER_KEM_FRAGMENTS_DONE)
+		if (offer->pk_frag == SANCTUM_OFFER_KEM_FRAGMENTS_DONE) {
+			if (exchange->id != peer_id && offer != NULL) {
+				chapel_offer_clear();
+				chapel_offer_create(now, "peer restarted");
+				if (offer == NULL)
+					break;
+			}
 			break;
+		}
 
 		if (exchange->fragment >= SANCTUM_OFFER_KEM_FRAGMENTS) {
 			sanctum_log(LOG_NOTICE,
@@ -1000,7 +1010,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 
 		if (offer->pk_frag & (1 << exchange->fragment)) {
 			sanctum_log(LOG_INFO,
-			    "pk frag %u seen", exchange->fragment);
+			    "pk fragment %u already seen", exchange->fragment);
 			break;
 		}
 
@@ -1027,7 +1037,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 
 		if (exchange->spi != offer->local.spi) {
 			sanctum_log(LOG_INFO,
-			    "ct fragment, wrong spi (%08x %08x)",
+			    "ct fragment, wrong spi (got:%08x - expected:%08x)",
 			    exchange->spi, offer->local.spi);
 			break;
 		}
@@ -1037,7 +1047,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 
 		if (offer->ct_frag & (1 << exchange->fragment)) {
 			sanctum_log(LOG_INFO,
-			    "ct frag %u seen", exchange->fragment);
+			    "ct fragment %u already seen", exchange->fragment);
 			break;
 		}
 
@@ -1064,6 +1074,8 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
 		break;
 	}
+
+	peer_id = exchange->id;
 }
 
 /*
