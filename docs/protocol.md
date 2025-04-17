@@ -29,7 +29,7 @@ payload = AES-GCM256(packet || esp_tail, aad=esp_header)
 +--------------------------------------------------+
 ```
 
-## Manager data
+## Management data
 
 Management traffic such as key exchanges of cathedral messages
 are called **offers**. Several different types of offers
