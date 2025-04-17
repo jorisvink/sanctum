@@ -56,12 +56,14 @@ struct sanctum_offer {
 
 ### Offer header
 
+```
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
 	u_int64_t		flock;
 	u_int32_t		spi;
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
+```
 
 The **hdr** field is transmitted in plaintext while the **data** field
 is encrypted under offer_key (see docs/crypto.md) and **tag** contains
