@@ -58,6 +58,8 @@ The **hdr** field is transmitted in plaintext while the **data** field
 is encrypted under offer_key (see docs/crypto.md) and **tag** contains
 an AES-GCM authentication tag for said encrypted data.
 
+Note that **hdr** is added as AAD.
+
 ### Offer header
 
 ```
