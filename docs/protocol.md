@@ -54,6 +54,10 @@ struct sanctum_offer {
 } __attribute__((packed));
 ```
 
+The **hdr** field is transmitted in plaintext while the **data** field
+is encrypted under offer_key (see docs/crypto.md) and **tag** contains
+an AES-GCM authentication tag for said encrypted data.
+
 ### Offer header
 
 ```
@@ -64,10 +68,6 @@ struct sanctum_offer_hdr {
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
 ```
-
-The **hdr** field is transmitted in plaintext while the **data** field
-is encrypted under offer_key (see docs/crypto.md) and **tag** contains
-an AES-GCM authentication tag for said encrypted data.
 
 The offer header contains a **magic** field that is set to the
 type of offer the packet contains:
