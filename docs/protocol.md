@@ -78,7 +78,7 @@ Cathedral offers magic value        = 0x4b4154454452414c (KATEDRAL)
 Cathedral nat detection magic value = 0x4349424f5249554d (CIBORIUM)
 ```
 
-The header also contains a **flock* identity in case the packet
+The header also contains a **flock** identity in case the packet
 traverses a cathedral, this way the cathedral knows in which
 flock it needs to look for forwarding the offer.
 
