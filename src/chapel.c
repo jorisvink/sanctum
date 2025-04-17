@@ -980,6 +980,11 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 	exchange = &op->data.offer.exchange;
 	exchange->spi = be32toh(exchange->spi);
 
+	if (exchange->spi == 0) {
+		sanctum_log(LOG_NOTICE, "peer sent invalid spi of 0x00");
+		return;
+	}
+
 	switch (exchange->state) {
 	case SANCTUM_OFFER_STATE_KEM_PK_FRAGMENT:
 		chapel_session_encapsulate(op, now);
