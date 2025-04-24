@@ -68,7 +68,7 @@ void		vicar_read_secret(const char *, u_int8_t *, size_t);
 void
 usage(void)
 {
-	printf("vicar: [tunnnel] [flock] [device] [kek] [cathedral] [out]\n");
+	printf("vicar: [tunnel] [flock] [device] [kek] [cathedral] [out]\n");
 	printf("\n");
 	printf("Creates a configuration file that can be used with certain\n");
 	printf("types of applications using sanctum.\n");
