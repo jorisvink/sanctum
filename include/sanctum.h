@@ -158,13 +158,17 @@ extern int daemon(int, int);
 
 /* KDF purposes for use with our shared secret. */
 #define SANCTUM_KDF_PURPOSE_OFFER	1
-#define SANCTUM_KDF_PURPOSE_TRAFFIC	2
+#define SANCTUM_KDF_PURPOSE_TRAFFIC_RX	2
+#define SANCTUM_KDF_PURPOSE_TRAFFIC_TX	3
 
 /* The KDF label for offer key derivation from shared secret. */
 #define SANCTUM_KEY_OFFER_KDF_LABEL	"SANCTUM.KEY.OFFER.KDF"
 
-/* The KDF label for traffic key derivation from shared secret. */
-#define SANCTUM_KEY_TRAFFIC_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.KDF"
+/* The KDF label for traffic key derivation from shared secret (RX). */
+#define SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.RX.KDF"
+
+/* The KDF label for traffic key derivation from shared secret (TX). */
+#define SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.TX.KDF"
 
 /* The half-time window in which offers are valid. */
 #define SANCTUM_OFFER_VALID		5
