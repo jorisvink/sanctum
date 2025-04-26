@@ -1156,9 +1156,19 @@ chapel_session_key_derive(struct sanctum_offer *op, u_int8_t dir)
 	if (exchange->id < local_id) {
 		nyfe_memcpy(kex.pub1, info->public, sizeof(info->public));
 		nyfe_memcpy(kex.pub2, exchange->ecdh, sizeof(exchange->ecdh));
+
+		if (dir == SANCTUM_KEY_DIRECTION_RX)
+			kex.purpose = SANCTUM_KDF_PURPOSE_TRAFFIC_RX;
+		else
+			kex.purpose = SANCTUM_KDF_PURPOSE_TRAFFIC_TX;
 	} else {
 		nyfe_memcpy(kex.pub1, exchange->ecdh, sizeof(exchange->ecdh));
 		nyfe_memcpy(kex.pub2, info->public, sizeof(info->public));
+
+		if (dir == SANCTUM_KEY_DIRECTION_RX)
+			kex.purpose = SANCTUM_KDF_PURPOSE_TRAFFIC_TX;
+		else
+			kex.purpose = SANCTUM_KDF_PURPOSE_TRAFFIC_RX;
 	}
 
 	if (sanctum_traffic_kdf(&kex, okm, sizeof(okm)) == -1) {

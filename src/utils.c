@@ -450,8 +450,7 @@ sanctum_file_open(const char *path, struct stat *st)
  * Derive a new key from the given shared secret for the intented purpose.
  * Essentially doing this:
  *	shared_secret = load_from_file()
- *	label = "SANCTUM.KEY.TRAFFIC.KDF" or label = "SANCTUM.KEY.OFFER.KDF"
- *	K = KMAC256(shared_secret, label), 256-bit
+ *	K = KMAC256(shared_secret, label_for_purpose), 256-bit
  */
 int
 sanctum_key_derive(const char *path, u_int32_t purpose, void *out, size_t len)
@@ -469,8 +468,11 @@ sanctum_key_derive(const char *path, u_int32_t purpose, void *out, size_t len)
 	case SANCTUM_KDF_PURPOSE_OFFER:
 		label = SANCTUM_KEY_OFFER_KDF_LABEL;
 		break;
-	case SANCTUM_KDF_PURPOSE_TRAFFIC:
-		label = SANCTUM_KEY_TRAFFIC_KDF_LABEL;
+	case SANCTUM_KDF_PURPOSE_TRAFFIC_RX:
+		label = SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL;
+		break;
+	case SANCTUM_KDF_PURPOSE_TRAFFIC_TX:
+		label = SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL;
 		break;
 	default:
 		fatal("unknown purpose %u", purpose);
@@ -571,7 +573,7 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 
 	sanctum_asymmetry_derive(kex, ikm, sizeof(ikm));
 	sanctum_key_derive(sanctum->secret,
-	    SANCTUM_KDF_PURPOSE_TRAFFIC, secret, sizeof(secret));
+	    kex->purpose, secret, sizeof(secret));
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));

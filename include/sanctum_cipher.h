@@ -55,6 +55,7 @@
  * Data structure used when calling sanctum_traffic_kdf().
  */
 struct sanctum_kex {
+	u_int32_t		purpose;
 	u_int8_t		kem[SANCTUM_MLKEM_1024_KEY_BYTES];
 	u_int8_t		pub1[SANCTUM_X25519_SCALAR_BYTES];
 	u_int8_t		pub2[SANCTUM_X25519_SCALAR_BYTES];

@@ -77,7 +77,8 @@ one for each specific purpose:
 ```
     ss = shared secret, loaded from disk
     offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF"), 256-bit
-    traffic_base = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.KDF"), 256-bit
+    traffic_base_rx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.RX.KDF"), 256-bit
+    traffic_base_tx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.TX.KDF"), 256-bit
 ```
 
 Shared secrets can either be distributed invididually to all locations, or
@@ -85,9 +86,9 @@ these can be distributed via a cathedral as an ambry, see docs/cathedral.md.
 
 ## A session key (SK)
 
-Session keys (SK) are derived from the **traffic_base** key in combination
-with directional unique ECDH (x25519) and ML-KEM-1024 shared secrets,
-using KMAC256() as the KDF.
+Session keys (SK) are derived from the **traffic_base_rx** or
+**traffic_base_tx** keys in combination with directional unique
+ECDH (x25519) and ML-KEM-1024 shared secrets, using KMAC256() as the KDF.
 
 Both sides start by sending out offerings that contain an ML-KEM-1024
 public key and an x25519 public key.
@@ -152,9 +153,14 @@ offer_recv_pk(offer):
     ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
     offer.kem.ct, kem_ss = ML-KEM-1024-ENCAP(pt.kem.pk)
 
+    if pt.instance < local_id
+        traffic_key = traffic_base_rx
+    else
+        traffic_key = traffic_base_tx
+
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
-    rx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 256-bit
+    rx = KMAC256(traffic_key, "SANCTUM.TRAFFIC.KDF", x), 256-bit
 
     return rx
 
@@ -180,9 +186,14 @@ offer_recv_ct(offer):
     ecdh_ss = X25519-SCALAR-MULT(pt.ecdh.pub, offer.ecdh.private)
     kem_ss = ML-KEM-1024-DECAP(offer.kem, pt.kem.ct)
 
+    if pt.instance < local_id
+        traffic_key = traffic_base_tx
+    else
+        traffic_key = traffic_base_rx
+
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
-    tx = KMAC256(traffic_base, "SANCTUM.TRAFFIC.KDF", x), 256-bit
+    tx = KMAC256(traffic_key, "SANCTUM.TRAFFIC.KDF", x), 256-bit
 
     return tx
 
