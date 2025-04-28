@@ -137,6 +137,9 @@ $(LIBNYFE):
 	$(MAKE) -C nyfe
 
 $(LIBMLKEM1024): $(LIBNYFE)
+	$(MAKE) -C mlkem1024
+
+mlkem1024-tests: $(LIBNYFE)
 	$(MAKE) -C mlkem1024 tests
 
 src/sanctum.c: $(VERSION)

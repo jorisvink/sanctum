@@ -1006,7 +1006,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
  * do ML-KEM-1024-ENCAP(). This will create a ciphertext which we
  * will send out next time we pulse out offers (OFFER_INCLUDE_KEM_CT).
  *
- * The resulting secret is then installed as the RX key.
+ * We then derive an RX session key using all of the input key material.
  */
 static void
 chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
@@ -1069,7 +1069,7 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
  * We received the encapsulated secret as ciphertext. We will do
  * ML-KEM-1024-DECAP() using our secret key.
  *
- * The resulting secret is then installed as the TX session key.
+ * We then derive a TX session key using all of the input key material.
  */
 static void
 chapel_session_decapsulate(struct sanctum_offer *op)
@@ -1090,6 +1090,9 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 		    xchg->spi, offer->local.spi);
 		return;
 	}
+
+	if (offer->remote.spi == 0)
+		return;
 
 	if (!(offer->flags & OFFER_INCLUDE_KEM_PK))
 		return;
