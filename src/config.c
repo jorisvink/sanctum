@@ -18,6 +18,8 @@
 #include <sys/socket.h>
 
 #include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
 
 #include <ctype.h>
 #include <limits.h>
@@ -69,6 +71,8 @@ static void	config_parse_unix(char *, struct sanctum_sun *);
 static void	config_parse_ip_port(char *, struct sockaddr_in *);
 static void	config_parse_ip_mask(char *, struct sockaddr_in *,
 		    struct sockaddr_in *);
+
+static void	config_mtu_check(void);
 static void	config_unix_set(struct sanctum_sun *,
 		    const char *, const char *);
 
@@ -224,6 +228,11 @@ sanctum_config_load(const char *file)
 				    sanctum->cathedral.sin_addr.s_addr);
 			}
 		}
+		config_mtu_check();
+		break;
+	case SANCTUM_MODE_SHRINE:
+	case SANCTUM_MODE_PILGRIM:
+		config_mtu_check();
 		break;
 	default:
 		break;
@@ -954,4 +963,32 @@ config_parse_ip_mask(char *in, struct sockaddr_in *ip, struct sockaddr_in *mask)
 
 	sanctum_inet_addr(ip, in);
 	sanctum_inet_mask(mask, val);
+}
+
+/*
+ * Check that the configured tunnel MTU makes sense in correlation
+ * to the overhead required by the crypto side.
+ */
+static void
+config_mtu_check(void)
+{
+	size_t		overhead;
+
+	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL ||
+	    sanctum->mode == SANCTUM_MODE_SHRINE ||
+	    sanctum->mode == SANCTUM_MODE_PILGRIM);
+
+	overhead = sizeof(struct ip) + sizeof(struct udphdr) +
+	    sizeof(struct sanctum_ipsec_hdr) +
+	    sizeof(struct sanctum_ipsec_tail) + SANCTUM_TAG_LENGTH;
+
+	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)
+		overhead += sizeof(struct sanctum_encap_hdr);
+
+	VERIFY(SANCTUM_PACKET_DATA_LEN > overhead);
+
+	if (sanctum->tun_mtu > SANCTUM_PACKET_DATA_LEN - overhead) {
+		fatal("mtu misconfigured, %d cannot be set (%zu max)",
+		    sanctum->tun_mtu, SANCTUM_PACKET_DATA_LEN - overhead);
+	}
 }
