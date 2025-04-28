@@ -16,3 +16,5 @@ The purgatory-rx process does the following:
   number comes from the fact that sanctum has a packet pool of 1024 packets
   in total and we account for the fact that 1023 packets may be waiting
   in the ring queue for confess.
+
+Note that the anti-replay checks are done again in the confess process.
