@@ -24,7 +24,7 @@ If everything checks out the packet is given to the confess process.
 
 ## confess
 
-### Tag validation
+### Input validation
 
 The confess process receives packets from purgatory-rx. It performs
 a lot of the same packet validation that purtatory-rx did.
@@ -36,6 +36,8 @@ It will do the following:
 * Check if the spi is known to us.
 * Perform the initial anti-replay check to see if the packet falls
   in the anti-replay window (of 64 packets wide).
+
+### Tag validation
 
 After these initial checks it will attempt to verify and decrypt
 the packet using the current RX key. If this succeeds the packet
