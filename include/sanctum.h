@@ -171,7 +171,7 @@ extern int daemon(int, int);
 #define SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.TX.KDF"
 
 /* The half-time window in which offers are valid. */
-#define SANCTUM_OFFER_VALID		5
+#define SANCTUM_OFFER_VALID		10
 
 /* The magic for a key offer packet (SACRAMNT). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x53414352414D4E54
