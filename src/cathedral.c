@@ -32,9 +32,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The half-time window in which offers are valid. */
-#define CATHEDRAL_REG_VALID		5
-
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
 
