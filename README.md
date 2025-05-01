@@ -108,9 +108,10 @@ variable at compile time with either:
 
 - libsodium-aes-gcm (AES256-GCM via libsodium, default, most portable).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
+- nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
 
 Note that no matter which CIPHER is selected libsodium is always
-a dependency.
+a dependency as it is used for x25519.
 
 ## One-directional tunnels
 
