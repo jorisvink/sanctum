@@ -68,23 +68,17 @@ sanctum_cipher_setup(struct sanctum_key *key)
 {
 	struct nyfe_kmac256	kdf;
 	struct cipher_agelas	*cipher;
-	u_int32_t		spi, salt;
 
 	PRECOND(key != NULL);
 
 	if ((cipher = calloc(1, sizeof(*cipher))) == NULL)
 		fatal("failed to allocate cipher context");
 
-	spi = sanctum_atomic_read(&key->spi);
-	salt = sanctum_atomic_read(&key->salt);
-
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(cipher, sizeof(*cipher));
 
 	nyfe_kmac256_init(&kdf, key->key, sizeof(key->key),
 	    AGELAS_KDF_LABEL, sizeof(AGELAS_KDF_LABEL) - 1);
-	nyfe_kmac256_update(&kdf, &spi, sizeof(spi));
-	nyfe_kmac256_update(&kdf, &salt, sizeof(salt));
 	nyfe_kmac256_final(&kdf, cipher->key, sizeof(cipher->key));
 
 	nyfe_zeroize(&kdf, sizeof(kdf));
@@ -130,6 +124,9 @@ sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 	nyfe_agelas_encrypt(&ctx->agelas,
 	    cipher->pt, cipher->ct, cipher->data_len);
 	nyfe_agelas_authenticate(&ctx->agelas, cipher->tag, SANCTUM_TAG_LENGTH);
+
+	nyfe_mem_zero(block, sizeof(block));
+	nyfe_mem_zero(&ctx->agelas, sizeof(ctx->agelas));
 }
 
 /*
@@ -172,8 +169,8 @@ sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 	    cipher->ct, cipher->pt, cipher->data_len);
 	nyfe_agelas_authenticate(&ctx->agelas, tag, sizeof(tag));
 
-	sanctum_mem_zero(block, sizeof(block));
-	sanctum_mem_zero(&ctx->agelas, sizeof(ctx->agelas));
+	nyfe_mem_zero(block, sizeof(block));
+	nyfe_mem_zero(&ctx->agelas, sizeof(ctx->agelas));
 
 	if (nyfe_mem_cmp(cipher->tag, tag, sizeof(tag)))
 		return (-1);
