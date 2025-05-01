@@ -66,6 +66,11 @@ else ifeq ("$(CIPHER)", "intel-aes-gcm")
 	CFLAGS+=$(shell pkg-config libisal_crypto --cflags)
 	LDFLAGS+=$(shell pkg-config libisal_crypto --libs)
 	SRC+=src/intel_aes_gcm.c
+else ifeq ("$(CIPHER)", "nyfe-agelas")
+	CFLAGS+=$(shell pkg-config libsodium --cflags)
+	LDFLAGS+=$(shell pkg-config libsodium --libs)
+	CFLAGS+=-DSANCTUM_USE_AGELAS
+	SRC+=src/nyfe_agelas.c
 else
 $(error "No CIPHER selected")
 endif

@@ -39,7 +39,11 @@
 #define SANCTUM_NONCE_LENGTH			12
 
 /* The tag size, in our case 128-bit. */
+#if defined(SANCTUM_USE_AGELAS)
+#define SANCTUM_TAG_LENGTH			32
+#else
 #define SANCTUM_TAG_LENGTH			16
+#endif
 
 /* Number of bytes for the ML-KEM-1024 secret key. */
 #define SANCTUM_MLKEM_1024_SECRETKEYBYTES	3168
