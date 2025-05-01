@@ -91,7 +91,7 @@ ML-KEM-1024.
 
 See [docs/crypto.md](docs/crypto.md) for details on the key exchange.
 
-## Traffic
+## Encryption
 
 The encrypted traffic is encapsulated with ESP in tunnel mode, using
 incrementing 64-bit sequence numbers. The traffic is encrypted with
