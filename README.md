@@ -106,7 +106,7 @@ nonce = 32-bit salt from key exchange || 64-bit packet counter
 You can select what cipher to use by specifying a CIPHER environment
 variable at compile time with either:
 
-- libsodium-aes-gcm (AES256-GCM via libsodium) **the default**
+- libsodium-aes-gcm (AES256-GCM via libsodium) **[default]**
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 - nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
 
