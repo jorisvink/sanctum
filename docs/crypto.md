@@ -3,7 +3,8 @@
 ## Algorithms
 
 The algorithm used to provide confidentiality and integrity for
-user traffic and management traffic is AES256-GCM.
+user traffic and management traffic is AES256-GCM, alternatively
+Agelas if selected at compile-time.
 
 For user traffic, unique session keys (defined below) are used in each
 direction with a 64-bit packet counter used to construct the nonce
