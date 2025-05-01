@@ -51,7 +51,11 @@
 #define CATHEDRAL_CATACOMB_LABEL	"SANCTUM.CATHEDRAL.CATACOMB"
 
 /* The length of an ambry bundle. */
+#if defined(SANCTUM_USE_AGELAS)
+#define CATHEDRAL_AMBRY_BUNDLE_LEN	8486416
+#else
 #define CATHEDRAL_AMBRY_BUNDLE_LEN	7441936
+#endif
 
 /*
  * A known tunnel and its endpoint, or a federated cathedral.
