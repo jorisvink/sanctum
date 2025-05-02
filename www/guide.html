@@ -124,16 +124,8 @@ figure out a way to securely transfer it to the other peer :)
 </pre>
 
 <p>
-Note that the wrapping of session keys is done using a symmetrical
-key derived from a strong shared secret and is thus by itself
-not PFS. The underlying shared secret may be swapped out via
-an OOB mechanic while sanctum is running however.
-</p>
-
-<p>
-It is therefor imperative that you have good control over your hardware
-and that you find a good OOB method to update your underlying shared
-secrets.
+Sanctum will automatically combine this symmetric key with an
+asymmetric key exchange that consists of ECDH (x25519) and MLKEM-1024.
 </p>
 
 <h3>Configurations</h3>
