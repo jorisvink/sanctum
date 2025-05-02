@@ -208,3 +208,9 @@ run bishop as root
 # Run chapel for the key exchange as yet another user.
 run chapel as _chapel
 ```
+
+## As a library
+
+You can use [libkyrka](https://github.com/jorisvink/libkyrka) to implement
+the sanctum protocol and tunnels into your application directly. Note that
+this does not provide the same type of sandboxing as the daemon.
