@@ -1,16 +1,9 @@
 # Sanctum
 
-"Thee packets that are chosen needeth not fear purgatory, for thee
-shall be safe with my blessing. Confess thy sins and thy shall enter
-the heavens."
-
-Sanctum 1:1
-
 ## About
 
-This is a very small, reviewable, capable, pq-safe and fully privilege
-separated VPN daemon capable of transporting encrypted network traffic
-between two peers.
+This is a small, reviewable, capable, pq-safe and fully privilege
+separated VPN daemon for OpenBSD, Linux and MacOS.
 
 Due to its privilege separated design, sanctum guarantees that
 all of its important assets are separated from the processes
@@ -18,15 +11,11 @@ that talk to the internet or handle non-cryptography related
 things.
 
 Additionally when making use of sanctum's cathedrals one can
-get full end-to-end encrypted and peer-to-peer tunnels that
-are able to traverse NAT, allowing your devices to talk to
-each other directly no matter where they are.
+get full **end-to-end** and **peer-to-peer** tunnels that are
+able to traverse NAT, allowing your devices to talk to each other
+directly no matter where they are.
 
-### Mythology
-
-Whats with the weird mythology around this project?
-
-It's fun, but it doesn't make it less of a serious project.
+See [The Reliquary](https://reliquary.se) for an example on this.
 
 ## Privilege separation
 
@@ -46,12 +35,14 @@ There are several processes that make up a sanctum instance:
 | cathedral | The process forwarding traffic when running in cathedral mode.
 | liturgy | The process responsible for autodiscovery of peers in a cathedral.
 | bishop | The process responsible for configuring autodiscovered tunnels.
+| guardian | The process monitoring all other processes.
 
-Each process can run as its own user.
+Each process should be run as its own user.
 
 Each process is sandboxed and only has access to the system calls
-required to perform its task. There are two exceptions, guardian
-(the main process) is not sandboxed nor seccomped, and bishop.
+required to perform its task. There are two exceptions: guardian
+(the main process), and bishop (liturgy manager), neither of these
+are sandboxed due what they are responsible for.
 
 The guardian process is only monitoring its child processes and has no
 other external interfaces. The bishop process must be privileged due to
@@ -93,18 +84,18 @@ See [docs/crypto.md](docs/crypto.md) for details on the key exchange.
 
 ## Encryption
 
-The encrypted traffic is encapsulated with ESP in tunnel mode, using
-incrementing 64-bit sequence numbers. The traffic is encrypted with
-AES256-GCM and are encrypted under keys exchanged as described above.
+Traffic is encapsulated with ESP in tunnel mode, using incrementing 64-bit
+sequence numbers. It is encrypted under AES256-GCM using keys negotiated
+as described above.
 
-The 96-bit nonce constructed as follows is used:
+A 96-bit nonce is used, constructed as follows:
 
 ```
 nonce = 32-bit salt from key exchange || 64-bit packet counter
 ```
 
-You can select what cipher to use by specifying a CIPHER environment
-variable at compile time with either:
+You can select what cipher sanctum will use by specifying a CIPHER environment
+variable at compile time with one of the following:
 
 - libsodium-aes-gcm (AES256-GCM via libsodium) **[default]**
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
@@ -116,7 +107,7 @@ a dependency as it is used for x25519.
 ## One-directional tunnels
 
 Sanctum supports one-directional tunnels, this is called the pilgrim
-or shrine mode.
+and shrine mode.
 
 In pilgrim mode, sanctum will be able to send encrypted traffic to its
 shrine peer. It will however never send an **RX** key to its peer (a shrine).
@@ -131,16 +122,23 @@ with a strong guarantee that the shrine cannot send data back
 ## Cathedrals
 
 A cathedral is a sanctum mode that can run on a machine somewhere
-and will relay packets between tunnel end-points without being able
-to read, inject or modify packets.
+and is an authenticated delay and key distribution point. A cathedral
+can never read, modify or inject valid traffic as it does not hold
+any of the session keys.
 
 Peers can use a cathedral to move to a peer-to-peer end-to-end encrypted
 connection if both peers are behind a not too restrictive NAT.
 
 A cathedral may also be used as an Ambry distribution point for
-shared secret rollover.
+shared secret rollover. These ambry bundles are wrapped with
+unique per-device KEKs and are unable to be read by the cathedral.
 
-Please read docs/cathedral.md for more.
+This essentiallys solves the key distribution problem with symmetrical
+keys by providing you with a way to allow the cathedrals to hand out
+black keys to devices.
+
+See [docs/crypto.md](docs/crypto.md) for details on the ambries and
+[docs/cathedral.md](docs/cathedral.md) for details on a cathedral.
 
 ## Building
 
