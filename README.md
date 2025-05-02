@@ -122,7 +122,7 @@ with a strong guarantee that the shrine cannot send data back
 ## Cathedrals
 
 A cathedral is a sanctum mode that can run on a machine somewhere
-and is an authenticated delay and key distribution point. A cathedral
+and is an authenticated relay and key distribution point. A cathedral
 can never read, modify or inject valid traffic as it does not hold
 any of the session keys.
 
