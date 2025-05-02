@@ -11,9 +11,9 @@ that talk to the internet or handle non-cryptography related
 things.
 
 Additionally when making use of sanctum's cathedrals one can
-get full **end-to-end** and **peer-to-peer** tunnels that are
-able to traverse NAT, allowing your devices to talk to each other
-directly no matter where they are.
+get **peer-to-peer** tunnels that are able to traverse NAT,
+allowing your devices to talk to each other directly no matter
+where they are.
 
 See [The Reliquary](https://reliquary.se) for an example on this.
 
