@@ -13,7 +13,8 @@ things.
 Additionally when making use of sanctum's cathedrals one can
 get **peer-to-peer** tunnels that are able to traverse NAT,
 allowing your devices to talk to each other directly no matter
-where they are.
+where they are without having to open pesky firewall ports
+or fiddle with forward rules.
 
 See [The Reliquary](https://reliquary.se) for an example on this.
 
