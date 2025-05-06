@@ -21,7 +21,7 @@ Key derivation for session keys is done by combing unique
 per-direction shared secrets from ECDH (x25519) and ML-KEM-1024,
 together with a derivative of our shared symmetrical key.
 
-IKM = len(ecdh_ss) || ecdh_ss || len(mlkem768_ss) || mlkem768_ss ||
+IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
       len(local.pub) || local.pub || len(offer.pub) || offer.pub
 
 This IKM is run through KMAC256() instantiated with the derived
