@@ -211,6 +211,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	if (op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE) {
+		sanctum->cathedral_last = now;
 		sanctum_offer_remembrance(op, now);
 		return;
 	}
@@ -218,6 +219,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	if (op->data.type != SANCTUM_OFFER_TYPE_LITURGY)
 		return;
 
+	sanctum->cathedral_last = now;
 	lit = &op->data.offer.liturgy;
 	lit->group = be16toh(lit->group);
 
