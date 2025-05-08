@@ -276,7 +276,7 @@ struct sanctum_remembrance_offer {
 } __attribute__((packed));
 
 /* Set in an info offer if peer wants remembrance. */
-#define SANCTUM_INFO_FLAG_REMEMBRANCE	(1 << 0)
+#define SANCTUM_INFO_FLAG_REMEMBRANCE		(1 << 0)
 
 struct sanctum_info_offer {
 	u_int32_t		flags;
@@ -295,6 +295,10 @@ struct sanctum_info_offer {
 
 	u_int64_t		instance;
 } __attribute__((packed));
+
+/* Liturgy offer flags. */
+#define SANCTUM_LITURGY_FLAG_REMEMBRANCE	SANCTUM_INFO_FLAG_REMEMBRANCE
+#define SANCTUM_LITURGY_FLAG_SIGNALING		(1 << 1)
 
 struct sanctum_liturgy_offer {
 	u_int8_t		id;

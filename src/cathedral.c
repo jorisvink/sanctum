@@ -105,9 +105,11 @@ struct liturgy {
 	u_int64_t		age;
 	u_int16_t		id;
 	u_int16_t		port;
+	u_int32_t		flags;
 	u_int16_t		group;
 	u_int8_t		hidden;
 	u_int64_t		update;
+	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -662,13 +664,16 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	entry->age = now;
 	entry->group = group;
+	entry->flags = lit->flags;
 	entry->hidden = lit->hidden;
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
 
+	memcpy(entry->peers, lit->peers, sizeof(lit->peers));
+
 	if (now >= entry->update &&
-	    (lit->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
+	    (lit->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE)) {
 		entry->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
 		cathedral_remembrance_send(flock, &pkt->addr, id);
 	}
@@ -1053,8 +1058,8 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	struct sanctum_packet		*pkt;
 	struct sanctum_liturgy_offer	*lit;
 	struct liturgy			*entry;
-	int				visible;
 	char				secret[1024];
+	int				visible, wanted;
 
 	PRECOND(flock != NULL);
 	PRECOND(src != NULL);
@@ -1078,7 +1083,17 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 		else
 			visible = 0;
 
-		if (entry->group == src->group && visible)
+		if ((entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING) &&
+		    (src->flags & SANCTUM_LITURGY_FLAG_SIGNALING)) {
+			if (src->peers[entry->id] || entry->peers[src->id])
+				wanted = 1;
+			else
+				wanted = 0;
+		} else {
+			wanted = 1;
+		}
+
+		if (entry->group == src->group && visible && wanted)
 			lit->peers[entry->id] = 1;
 	}
 
