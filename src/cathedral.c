@@ -1048,7 +1048,7 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 
 /*
  * Send a liturgy offering to a client. In this message we will include
- * all peers in the same flock that are part of the liturgy.
+ * all peers in the same flock that are part of the same liturgy.
  */
 static void
 cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
