@@ -963,7 +963,7 @@ cathedral_tunnel_expire(u_int64_t now)
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
 				sanctum_log(LOG_INFO,
 				    "liturgy %" PRIx64 ":%02x (%04x) removed",
-				    flock->id, liturgy->group, liturgy->id);
+				    flock->id, liturgy->id, liturgy->group);
 				LIST_REMOVE(liturgy, list);
 				free(liturgy);
 			}
