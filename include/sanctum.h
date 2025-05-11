@@ -171,7 +171,7 @@ extern int daemon(int, int);
 #define SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.TX.KDF"
 
 /* The half-time window in which offers are valid. */
-#define SANCTUM_OFFER_VALID		5
+#define SANCTUM_OFFER_VALID		10
 
 /* The magic for a key offer packet (SACRAMNT). */
 #define SANCTUM_KEY_OFFER_MAGIC		0x53414352414D4E54
@@ -276,7 +276,7 @@ struct sanctum_remembrance_offer {
 } __attribute__((packed));
 
 /* Set in an info offer if peer wants remembrance. */
-#define SANCTUM_INFO_FLAG_REMEMBRANCE	(1 << 0)
+#define SANCTUM_INFO_FLAG_REMEMBRANCE		(1 << 0)
 
 struct sanctum_info_offer {
 	u_int32_t		flags;
@@ -295,6 +295,10 @@ struct sanctum_info_offer {
 
 	u_int64_t		instance;
 } __attribute__((packed));
+
+/* Liturgy offer flags. */
+#define SANCTUM_LITURGY_FLAG_REMEMBRANCE	SANCTUM_INFO_FLAG_REMEMBRANCE
+#define SANCTUM_LITURGY_FLAG_SIGNALING		(1 << 1)
 
 struct sanctum_liturgy_offer {
 	u_int8_t		id;

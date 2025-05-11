@@ -38,8 +38,15 @@
 /* The nonce size, in our case 96-bit. */
 #define SANCTUM_NONCE_LENGTH			12
 
-/* The tag size, in our case 128-bit. */
+/*
+ * The packet tag size depends on the select cipher. For AES-GCM the tag
+ * size is 128-bit while for Agelas we have a 256-bit tag.
+ */
+#if defined(SANCTUM_USE_AGELAS)
+#define SANCTUM_TAG_LENGTH			32
+#else
 #define SANCTUM_TAG_LENGTH			16
+#endif
 
 /* Number of bytes for the ML-KEM-1024 secret key. */
 #define SANCTUM_MLKEM_1024_SECRETKEYBYTES	3168

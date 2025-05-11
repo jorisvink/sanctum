@@ -56,15 +56,6 @@ to 0.0.0.0:0 for non cathedrals.
 
 .SH TUNNEL SPECIFIC OPTIONS
 .TP
-.BR asymmetry " " yes/no
-Enables or disables the use of asymmetry during the key offering. Note that
-this is turned
-.I on
-by default to provide PFS (Perfect Forwarding Secrecy) in case of a shared
-secret compromise. If this is set to no, sanctum will not include an asymmetric
-offering in the session key derivation and will instead only depend on the
-secrecy of the shared secret.
-.TP
 .BR tunnel " " ip/mask " " mtu
 Configure the tunnel settings, including the IP address, subnet mask,
 and MTU (Maximum Transmission Unit).

@@ -3,7 +3,8 @@
 ## Algorithms
 
 The algorithm used to provide confidentiality and integrity for
-user traffic and management traffic is AES256-GCM.
+user traffic and management traffic is AES256-GCM, alternatively
+Agelas if selected at compile-time.
 
 For user traffic, unique session keys (defined below) are used in each
 direction with a 64-bit packet counter used to construct the nonce
@@ -20,7 +21,7 @@ Key derivation for session keys is done by combing unique
 per-direction shared secrets from ECDH (x25519) and ML-KEM-1024,
 together with a derivative of our shared symmetrical key.
 
-IKM = len(ecdh_ss) || ecdh_ss || len(mlkem768_ss) || mlkem768_ss ||
+IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
       len(local.pub) || local.pub || len(offer.pub) || offer.pub
 
 This IKM is run through KMAC256() instantiated with the derived

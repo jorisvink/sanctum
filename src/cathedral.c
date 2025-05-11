@@ -32,9 +32,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The half-time window in which offers are valid. */
-#define CATHEDRAL_REG_VALID		5
-
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
 
@@ -54,7 +51,11 @@
 #define CATHEDRAL_CATACOMB_LABEL	"SANCTUM.CATHEDRAL.CATACOMB"
 
 /* The length of an ambry bundle. */
+#if defined(SANCTUM_USE_AGELAS)
+#define CATHEDRAL_AMBRY_BUNDLE_LEN	8486416
+#else
 #define CATHEDRAL_AMBRY_BUNDLE_LEN	7441936
+#endif
 
 /*
  * A known tunnel and its endpoint, or a federated cathedral.
@@ -104,9 +105,11 @@ struct liturgy {
 	u_int64_t		age;
 	u_int16_t		id;
 	u_int16_t		port;
+	u_int32_t		flags;
 	u_int16_t		group;
 	u_int8_t		hidden;
 	u_int64_t		update;
+	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -661,13 +664,16 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	entry->age = now;
 	entry->group = group;
+	entry->flags = lit->flags;
 	entry->hidden = lit->hidden;
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
 
+	memcpy(entry->peers, lit->peers, sizeof(lit->peers));
+
 	if (now >= entry->update &&
-	    (lit->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
+	    (lit->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE)) {
 		entry->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
 		cathedral_remembrance_send(flock, &pkt->addr, id);
 	}
@@ -957,7 +963,7 @@ cathedral_tunnel_expire(u_int64_t now)
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
 				sanctum_log(LOG_INFO,
 				    "liturgy %" PRIx64 ":%02x (%04x) removed",
-				    flock->id, liturgy->group, liturgy->id);
+				    flock->id, liturgy->id, liturgy->group);
 				LIST_REMOVE(liturgy, list);
 				free(liturgy);
 			}
@@ -1042,7 +1048,7 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 
 /*
  * Send a liturgy offering to a client. In this message we will include
- * all peers in the same flock that are part of the liturgy.
+ * all peers in the same flock that are part of the same liturgy.
  */
 static void
 cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
@@ -1052,8 +1058,8 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	struct sanctum_packet		*pkt;
 	struct sanctum_liturgy_offer	*lit;
 	struct liturgy			*entry;
-	int				visible;
 	char				secret[1024];
+	int				visible, wanted;
 
 	PRECOND(flock != NULL);
 	PRECOND(src != NULL);
@@ -1077,7 +1083,17 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 		else
 			visible = 0;
 
-		if (entry->group == src->group && visible)
+		if ((entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING) &&
+		    (src->flags & SANCTUM_LITURGY_FLAG_SIGNALING)) {
+			if (src->peers[entry->id] || entry->peers[src->id])
+				wanted = 1;
+			else
+				wanted = 0;
+		} else {
+			wanted = 1;
+		}
+
+		if (entry->group == src->group && visible && wanted)
 			lit->peers[entry->id] = 1;
 	}
 

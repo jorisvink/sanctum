@@ -19,10 +19,13 @@
  *
  * It is used to generate encrypted sanctum configurations that contain
  * a device its cathedral id, flock id, Key-Encryption-Key and cathedral
- * secret.
+ * secret. It also holds the initial cathedral to bootstrap a device.
  */
 
 #include <sys/types.h>
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -47,7 +50,9 @@ struct config {
 
 	struct {
 		u_int32_t	id;
+		u_int32_t	ip;
 		u_int64_t	flock;
+		u_int16_t	port;
 		u_int16_t	tunnel;
 		u_int8_t	kek[32];
 		u_int8_t	secret[32];
@@ -68,10 +73,27 @@ void		vicar_read_secret(const char *, u_int8_t *, size_t);
 void
 usage(void)
 {
-	printf("vicar: [tunnel] [flock] [device] [kek] [cathedral] [out]\n");
+	printf("usage: vicar [arguments]\n");
 	printf("\n");
 	printf("Creates a configuration file that can be used with certain\n");
 	printf("types of applications using sanctum.\n");
+	printf("\n");
+	printf("arguments:\n");
+	printf("  [tunnel] [flock] [cid] [kek-path] [cs-path] "
+	    "[ip] [port] [out]\n");
+	printf("\n");
+	printf("  tunnel     - The device ID (matches your KEK)\n");
+	printf("  flock      - The flock the device belongs too\n");
+	printf("  cid        - The device its cathedral ID\n");
+	printf("  kek-path   - The path to the KEK secret\n");
+	printf("  cs-path    - The path to the cathedral secret\n");
+	printf("  ip         - The ip address of the initial cathedral\n");
+	printf("  port       - The port of the initial cathedral\n");
+	printf("  out        - The file where to save the configuration\n");
+	printf("\n");
+	printf("Example:\n");
+	printf("  $ vicar 0x0200 2e976eddb2203a0c 1af4279e cfg/kek-0x02 \\\n");
+	printf("          cfg/id-1af4279e 127.0.0.1 4500 phone-2.cfg\n");
 
 	exit(1);
 }
@@ -97,7 +119,7 @@ main(int argc, char *argv[])
 {
 	struct config		cfg;
 
-	if (argc != 7)
+	if (argc != 9)
 		usage();
 
 	nyfe_random_init();
@@ -112,11 +134,23 @@ main(int argc, char *argv[])
 	vicar_read_secret(argv[4], cfg.data.kek, sizeof(cfg.data.kek));
 	vicar_read_secret(argv[5], cfg.data.secret, sizeof(cfg.data.secret));
 
+	cfg.data.ip = inet_addr(argv[6]);
+	cfg.data.port = vicar_strtonum(argv[7], 10);
+	cfg.data.port = htons(cfg.data.port);
+
 	vicar_wrap_config(&cfg);
-	vicar_config_write(argv[6], &cfg);
+	vicar_config_write(argv[8], &cfg);
 
 	nyfe_zeroize(&cfg, sizeof(cfg));
 	nyfe_zeroize_all();
+
+	printf("configuration written:\n");
+	printf("   tunnel      %s\n", argv[1]);
+	printf("   flock       %s\n", argv[2]);
+	printf("   identity    %s\n", argv[3]);
+	printf("   kek-path    %s\n", argv[4]);
+	printf("   cs-path     %s\n", argv[5]);
+	printf("   cathedral   %s:%s\n", argv[6], argv[7]);
 
 	return (0);
 }
@@ -170,6 +204,7 @@ vicar_read_secret(const char *path, u_int8_t *secret, size_t len)
 void
 vicar_wrap_config(struct config *cfg)
 {
+	const char		*pass;
 	struct nyfe_agelas	cipher;
 	u_int8_t		okm[VICAR_KEY_LEN], passphrase[256];
 
@@ -180,7 +215,15 @@ vicar_wrap_config(struct config *cfg)
 	nyfe_zeroize_register(passphrase, sizeof(passphrase));
 
 	nyfe_mem_zero(passphrase, sizeof(passphrase));
-	vicar_read_passphrase(passphrase, sizeof(passphrase));
+
+	if ((pass = getenv("VICAR_PASSPHRASE")) != NULL) {
+		if (strlen(pass) >= sizeof(passphrase))
+			fatal("VICAR_PASSPHRASE too long");
+		memcpy(passphrase, pass, strlen(pass));
+		printf("using VICAR_PASSPHRASE\n");
+	} else {
+		vicar_read_passphrase(passphrase, sizeof(passphrase));
+	}
 
 	nyfe_passphrase_kdf(passphrase, sizeof(passphrase),
 	    cfg->salt, sizeof(cfg->salt), okm, sizeof(okm),
