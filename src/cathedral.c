@@ -622,6 +622,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	struct sanctum_offer		*op;
 	struct sanctum_liturgy_offer	*lit;
 	u_int16_t			group;
+	const char			*mode;
 	struct liturgy			*entry;
 
 	PRECOND(pkt != NULL);
@@ -642,7 +643,9 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	LIST_FOREACH(entry, &flock->liturgies, list) {
-		if (entry->id == lit->id)
+		if (entry->id == lit->id &&
+		    (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING) ==
+		    (lit->flags & SANCTUM_LITURGY_FLAG_SIGNALING))
 			break;
 	}
 
@@ -652,19 +655,24 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 		entry->id = lit->id;
 		entry->update = now;
+		entry->flags = lit->flags;
 
 		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
 	}
 
+	if (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
+		mode = "signaling";
+	else
+		mode = "discovery";
+
 	if (entry->age == 0 || entry->group != group) {
 		sanctum_log(LOG_INFO,
-		    "liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
-		    flock->id, lit->id, group, catacomb, lit->hidden);
+		    "%s liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
+		    mode, flock->id, lit->id, group, catacomb, lit->hidden);
 	}
 
 	entry->age = now;
 	entry->group = group;
-	entry->flags = lit->flags;
 	entry->hidden = lit->hidden;
 
 	entry->port = pkt->addr.sin_port;
@@ -951,6 +959,7 @@ cathedral_tunnel_prune(struct flockent *flock)
 static void
 cathedral_tunnel_expire(u_int64_t now)
 {
+	const char		*mode;
 	struct flockent		*flock;
 	struct tunnel		*tunnel, *tunnel_next;
 	struct liturgy		*liturgy, *liturgy_next;
@@ -960,10 +969,15 @@ cathedral_tunnel_expire(u_int64_t now)
 		    liturgy != NULL; liturgy = liturgy_next) {
 			liturgy_next = LIST_NEXT(liturgy, list);
 
+			if (liturgy->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
+				mode = "signaling";
+			else
+				mode = "discovery";
+
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
-				sanctum_log(LOG_INFO,
-				    "liturgy %" PRIx64 ":%02x (%04x) removed",
-				    flock->id, liturgy->id, liturgy->group);
+				sanctum_log(LOG_INFO, "%s liturgy %" PRIx64
+				    ":%02x (%04x) removed", mode, flock->id,
+				    liturgy->id, liturgy->group);
 				LIST_REMOVE(liturgy, list);
 				free(liturgy);
 			}
