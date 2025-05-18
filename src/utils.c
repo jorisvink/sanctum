@@ -753,6 +753,7 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 	cipher.data_len = sizeof(op->data);
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
+		sanctum_log(LOG_INFO, "offer rejected, integrity failure");
 		sanctum_cipher_cleanup(cipher.ctx);
 		return (-1);
 	}
@@ -763,8 +764,12 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 	op->data.timestamp = be64toh(op->data.timestamp);
 
 	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - valid) ||
-	    op->data.timestamp > ((u_int64_t)ts.tv_sec + valid))
+	    op->data.timestamp > ((u_int64_t)ts.tv_sec + valid)) {
+		sanctum_log(LOG_INFO,
+		    "offer %02x rejected, time different too large",
+		    op->data.type);
 		return (-1);
+	}
 
 	return (0);
 }
