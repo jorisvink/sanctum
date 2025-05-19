@@ -215,7 +215,6 @@ sanctum_proc_create(u_int16_t type,
 	struct passwd		*pw;
 	struct sanctum_proc	*proc;
 	struct timespec		timeo;
-	u_int32_t		started;
 
 	PRECOND(type == SANCTUM_PROC_HEAVEN_RX ||
 	    type == SANCTUM_PROC_HEAVEN_TX ||
@@ -270,8 +269,7 @@ sanctum_proc_create(u_int16_t type,
 
 	for (i = 0; i < 50; i++) {
 		nanosleep(&timeo, NULL);
-		started = sanctum_atomic_read(&sanctum->started[type]);
-		if (started)
+		if (sanctum_atomic_read(&sanctum->started[type]))
 			break;
 	}
 
