@@ -170,6 +170,8 @@ sanctum_chapel(struct sanctum_proc *proc)
 	    sanctum->cathedral_remembrance != NULL)
 		sanctum_cathedrals_remembrance();
 
+	sanctum_proc_started(proc);
+
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
 			sanctum_log(LOG_NOTICE, "received signal %d", sig);

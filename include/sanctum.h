@@ -684,6 +684,9 @@ struct sanctum_state {
 
 	/* Process wakeup states. */
 	u_int32_t		wstate[SANCTUM_PROC_MAX];
+
+	/* Process startup signaling. */
+	u_int32_t		started[SANCTUM_PROC_MAX];
 };
 
 extern struct sanctum_state	*sanctum;
@@ -711,6 +714,7 @@ void	sanctum_proc_shutdown(void);
 void	sanctum_proc_suspend(int64_t);
 void	sanctum_proc_wakeup(u_int16_t);
 void	sanctum_proc_title(const char *);
+void	sanctum_proc_started(struct sanctum_proc *);
 void	sanctum_proc_privsep(struct sanctum_proc *);
 void	sanctum_proc_create(u_int16_t,
 	    void (*entry)(struct sanctum_proc *), void *);

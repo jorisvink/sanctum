@@ -239,6 +239,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 	cathedral_settings_reload();
+	sanctum_proc_started(proc);
 
 	running = 1;
 	next_expire = 0;

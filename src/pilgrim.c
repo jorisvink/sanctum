@@ -98,6 +98,7 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+	sanctum_proc_started(proc);
 
 	running = 1;
 
