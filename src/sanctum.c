@@ -117,12 +117,12 @@ main(int argc, char *argv[])
 	sanctum_packet_init();
 	sanctum_cipher_init();
 
+	sanctum_proc_start();
+
 	if (foreground == 0) {
 		if (daemon(1, 0) == -1)
 			fatal("daemon: %s", errno_s);
 	}
-
-	sanctum_proc_start();
 
 	if (sigfillset(&sigset) == -1)
 		fatal("sigfillset: %s", errno_s);
