@@ -1526,8 +1526,9 @@ static void
 hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 {
 	pid_t		pid;
-	int		status, wait;
-	char		path[PATH_MAX], *ap[32];
+	ssize_t		ret;
+	int		status, wait, pipes[2];
+	char		path[PATH_MAX], *ap[32], buf[256];
 
 	hymn_pid_path(path ,sizeof(path), flock, src, dst);
 
@@ -1536,10 +1537,17 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 		return;
 	}
 
+	if (pipe(pipes) == -1)
+		fatal("pipe: %s", errno_s);
+
 	if ((pid = fork()) == -1)
 		fatal("fork: %s", errno_s);
 
 	if (pid == 0) {
+		if (dup2(pipes[1], STDOUT_FILENO) == -1 ||
+		    dup2(pipes[1], STDERR_FILENO) == -1)
+			fatal("dup2: %s", errno_s);
+
 		hymn_conf_path(path, sizeof(path), flock, src, dst);
 
 		ap[0] = "sanctum";
@@ -1562,8 +1570,16 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 		break;
 	}
 
-	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+		if ((ret = read(pipes[0], buf, sizeof(buf))) > 0) {
+			printf("%.*s", (int)ret, buf);
+			if (buf[ret - 1] != '\n')
+				printf("\n");
+		} else {
+			printf("no information available (%s)\n", errno_s);
+		}
 		fatal("sanctum failed to start");
+	}
 
 	printf("waiting for %s-%02x-%02x to go up ... ", flock, src, dst);
 	fflush(stdout);
