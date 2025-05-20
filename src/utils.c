@@ -547,7 +547,7 @@ sanctum_offer_kdf(const char *path, const char *label,
  * the ML-KEM-1024 exchange.
  *
  * IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
- *       len(local.pub) || local.pub || len(offer.pub) || offer.pub || dir
+ *       len(local.pub) || local.pub || len(offer.pub) || offer.pub
  * OKM = KMAC256(traffic_key, IKM)
  *
  * This is ONLY used for tunnel mode traffic, pilgrim/shrine mode work
