@@ -35,7 +35,6 @@ static void	sanctum_pidfile_check(void);
 static void	sanctum_pidfile_write(void);
 static void	sanctum_pidfile_unlink(void);
 
-static int			early = 1;
 volatile sig_atomic_t		sig_recv = -1;
 struct sanctum_state		*sanctum = NULL;
 
@@ -117,12 +116,13 @@ main(int argc, char *argv[])
 	sanctum_packet_init();
 	sanctum_cipher_init();
 
-	sanctum_proc_start();
-
 	if (foreground == 0) {
+		openlog("sanctum", LOG_NDELAY | LOG_PID, LOG_DAEMON);
 		if (daemon(1, 0) == -1)
 			fatal("daemon: %s", errno_s);
 	}
+
+	sanctum_proc_start();
 
 	if (sigfillset(&sigset) == -1)
 		fatal("sigfillset: %s", errno_s);
@@ -134,12 +134,8 @@ main(int argc, char *argv[])
 	sigdelset(&sigset, SIGQUIT);
 	(void)sigprocmask(SIG_BLOCK, &sigset, NULL);
 
-	early = 0;
-
-	openlog("sanctum", LOG_NDELAY | LOG_PID, LOG_DAEMON);
-	sanctum_proc_title("guardian");
-
 	running = 1;
+	sanctum_proc_title("guardian");
 
 	if (sanctum_last_signal() == SIGCHLD) {
 		if (sanctum_proc_reap()) {
@@ -238,25 +234,16 @@ void
 fatal(const char *fmt, ...)
 {
 	va_list			args;
-	struct sanctum_proc	*proc;
 
 	PRECOND(fmt != NULL);
 
 	nyfe_zeroize_all();
 
-	proc = sanctum_process();
 	va_start(args, fmt);
-
-	if (early && proc == NULL) {
-		vfprintf(stderr, fmt, args);
-		fprintf(stderr, "\n");
-	} else {
-		sanctum_logv(LOG_ERR, fmt, args);
-	}
-
+	sanctum_logv(LOG_ERR, fmt, args);
 	va_end(args);
 
-	if (proc == NULL) {
+	if (sanctum_process() == NULL) {
 		sanctum_proc_shutdown();
 		sanctum_pidfile_unlink();
 	}

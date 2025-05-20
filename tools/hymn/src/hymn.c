@@ -1526,9 +1526,8 @@ static void
 hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 {
 	pid_t		pid;
-	ssize_t		ret;
 	int		status, wait, pipes[2];
-	char		path[PATH_MAX], *ap[32], buf[256];
+	char		path[PATH_MAX], *ap[32];
 
 	hymn_pid_path(path ,sizeof(path), flock, src, dst);
 
@@ -1570,16 +1569,8 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 		break;
 	}
 
-	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-		if ((ret = read(pipes[0], buf, sizeof(buf))) > 0) {
-			printf("%.*s", (int)ret, buf);
-			if (buf[ret - 1] != '\n')
-				printf("\n");
-		} else {
-			printf("no information available (%s)\n", errno_s);
-		}
-		fatal("sanctum failed to start");
-	}
+	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+		fatal("sanctum failed to daemonize");
 
 	printf("waiting for %s-%02x-%02x to go up ... ", flock, src, dst);
 	fflush(stdout);
@@ -1591,7 +1582,8 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	if (wait == 10) {
-		printf("no response after 10 seconds\n");
+		printf("failed\n");
+		printf("please see syslog for more information\n");
 	} else {
 		printf("done\n");
 	}
