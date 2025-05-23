@@ -997,7 +997,7 @@ cathedral_tunnel_expire(u_int64_t now)
 {
 	const char		*mode;
 	struct flockent		*flock;
-	struct flockdom		*domain;
+	struct flockdom		*domain, *domain_next;
 	struct tunnel		*tunnel, *tunnel_next;
 	struct liturgy		*liturgy, *liturgy_next;
 
@@ -1020,7 +1020,10 @@ cathedral_tunnel_expire(u_int64_t now)
 			}
 		}
 
-		LIST_FOREACH(domain, &flock->domains, list) {
+		for (domain = LIST_FIRST(&flock->domains);
+		    domain != NULL; domain = domain_next) {
+			domain_next = LIST_NEXT(domain, list);
+
 			for (tunnel = LIST_FIRST(&domain->tunnels);
 			    tunnel != NULL; tunnel = tunnel_next) {
 				tunnel_next = LIST_NEXT(tunnel, list);
