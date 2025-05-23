@@ -937,16 +937,14 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 static struct tunnel *
 cathedral_tunnel_lookup(struct flockent *flock, u_int16_t spi)
 {
-	struct flockdom		*domain;
 	struct tunnel		*tunnel;
 
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 
-	LIST_FOREACH(domain, &flock->domains, list) {
-		LIST_FOREACH(tunnel, &domain->tunnels, list) {
-			if (tunnel->id == spi)
-				return (tunnel);
-		}
+	LIST_FOREACH(tunnel, &flock->domain->tunnels, list) {
+		if (tunnel->id == spi)
+			return (tunnel);
 	}
 
 	return (NULL);
