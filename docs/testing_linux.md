@@ -1,6 +1,6 @@
 # Test setup on Linux
 
-The **test* directory contains configuration files and helpful scripts
+The **test** directory contains configuration files and helpful scripts
 to test several features of sanctum on Linux.
 
 In order to run these you have to first configure your Linux environment.
