@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "sanctum.h"
@@ -210,8 +211,10 @@ void
 sanctum_proc_create(u_int16_t type,
     void (*entry)(struct sanctum_proc *), void *arg)
 {
+	int			i;
 	struct passwd		*pw;
 	struct sanctum_proc	*proc;
+	struct timespec		timeo;
 
 	PRECOND(type == SANCTUM_PROC_HEAVEN_RX ||
 	    type == SANCTUM_PROC_HEAVEN_TX ||
@@ -261,6 +264,18 @@ sanctum_proc_create(u_int16_t type,
 		/* NOTREACHED */
 	}
 
+	timeo.tv_sec = 0;
+	timeo.tv_nsec = 20000000;
+
+	for (i = 0; i < 50; i++) {
+		nanosleep(&timeo, NULL);
+		if (sanctum_atomic_read(&sanctum->started[type]))
+			break;
+	}
+
+	if (i == 50)
+		fatal("failed to start %s", proc->name);
+
 #if defined(__linux__)
 	sanctum_linux_trace_start(proc);
 #endif
@@ -300,6 +315,17 @@ sanctum_proc_privsep(struct sanctum_proc *proc)
 	    setgid(proc->gid) == -1 || setegid(proc->gid) == -1 ||
 	    setuid(proc->uid) == -1 || seteuid(proc->uid) == -1)
 		fatal("failed to drop privileges (%s)", errno_s);
+}
+
+/*
+ * A process marks itself as started.
+ */
+void
+sanctum_proc_started(struct sanctum_proc *proc)
+{
+	PRECOND(proc != NULL);
+
+	sanctum_atomic_write(&sanctum->started[proc->type], 1);
 }
 
 /*

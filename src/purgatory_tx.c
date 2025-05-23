@@ -75,6 +75,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 	}
 
 	running = 1;
+	sanctum_proc_started(proc);
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {

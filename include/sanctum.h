@@ -684,6 +684,9 @@ struct sanctum_state {
 
 	/* Process wakeup states. */
 	u_int32_t		wstate[SANCTUM_PROC_MAX];
+
+	/* Process startup signaling. */
+	u_int32_t		started[SANCTUM_PROC_MAX];
 };
 
 extern struct sanctum_state	*sanctum;
@@ -711,6 +714,7 @@ void	sanctum_proc_shutdown(void);
 void	sanctum_proc_suspend(int64_t);
 void	sanctum_proc_wakeup(u_int16_t);
 void	sanctum_proc_title(const char *);
+void	sanctum_proc_started(struct sanctum_proc *);
 void	sanctum_proc_privsep(struct sanctum_proc *);
 void	sanctum_proc_create(u_int16_t,
 	    void (*entry)(struct sanctum_proc *), void *);
@@ -763,13 +767,13 @@ void	sanctum_peer_update(u_int32_t, u_int16_t);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 char	*sanctum_config_read(FILE *, char *, size_t);
-int	sanctum_key_derive(const char *, u_int32_t, void *, size_t);
+int	sanctum_key_derive(const char *, u_int64_t, u_int32_t, void *, size_t);
 int	sanctum_traffic_kdf(struct sanctum_kex *, u_int8_t *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *, struct sanctum_sa *);
 int	sanctum_offer_kdf(const char *, const char *,
-	    struct sanctum_key *, void *, size_t);
+	    struct sanctum_key *, void *, size_t, u_int64_t);
 void	sanctum_offer_nonce(u_int8_t *, size_t);
 void	sanctum_offer_tfc(struct sanctum_packet *);
 void	sanctum_offer_remembrance(struct sanctum_offer *, u_int64_t);

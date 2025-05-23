@@ -60,6 +60,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 	sanctum_config_routes();
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
+	sanctum_proc_started(proc);
 
 	pfd.revents = 0;
 	pfd.fd = io->clear;

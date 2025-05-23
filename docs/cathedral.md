@@ -24,6 +24,17 @@ A cathedral can create different flocks (networks) that allows for
 separation of different clients while sharing the same identity
 and tunnel names.
 
+Each flock consists of a 64-bit id that is separated into two parts:
+
+* 56-bit flock id
+* 8-bit flock domain
+
+The domain allows separation inside of the same flock so that you
+can use the same shared secrets and tunnel setups for different purposes.
+
+The key derivation takes this into account and generates different
+base keys for each different domain in the same flock.
+
 See below for an example.
 
 ## Authentication
@@ -76,7 +87,7 @@ The settings file contains the flocks and their configuration
 and can be reloaded while the cathedral is running.
 
 ```
-flock cafebabe {
+flock cafeba00 {
     allow deadbeef spi 01
     allow badf00d spi 02
 

@@ -82,6 +82,8 @@ sanctum_liturgy(struct sanctum_proc *proc)
 	    sanctum->cathedral_remembrance != NULL)
 		sanctum_cathedrals_remembrance();
 
+	sanctum_proc_started(proc);
+
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
 			sanctum_log(LOG_NOTICE, "received signal %d", sig);
@@ -143,9 +145,11 @@ liturgy_offer_send(void)
 		lit->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    op->hdr.seed, sizeof(op->hdr.seed),
+	    sanctum->cathedral_flock) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -194,7 +198,8 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    op->hdr.seed, sizeof(op->hdr.seed),
+	    sanctum->cathedral_flock) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}

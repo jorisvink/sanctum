@@ -216,8 +216,10 @@ sanctum_platform_tundev_create(void)
 	else
 		ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
 
-	if (ioctl(fd, TUNSETIFF, &ifr) == -1)
-		fatal("ioctl: %s", errno_s);
+	if (ioctl(fd, TUNSETIFF, &ifr) == -1) {
+		fatal("failed to create tunnel device %s: %s",
+		    sanctum->instance, errno_s);
+	}
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1)
 		fatal("fcntl: %s", errno_s);

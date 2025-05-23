@@ -134,7 +134,7 @@ A cathedral may also be used as an Ambry distribution point for
 shared secret rollover. These ambry bundles are wrapped with
 unique per-device KEKs and are unable to be read by the cathedral.
 
-This essentiallys solves the key distribution problem with symmetrical
+This essentially solves the key distribution problem with symmetrical
 keys by providing you with a way to allow the cathedrals to hand out
 black keys to devices.
 

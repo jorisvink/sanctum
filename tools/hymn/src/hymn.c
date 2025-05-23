@@ -1526,7 +1526,7 @@ static void
 hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 {
 	pid_t		pid;
-	int		status, wait;
+	int		status, wait, pipes[2];
 	char		path[PATH_MAX], *ap[32];
 
 	hymn_pid_path(path ,sizeof(path), flock, src, dst);
@@ -1536,10 +1536,17 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 		return;
 	}
 
+	if (pipe(pipes) == -1)
+		fatal("pipe: %s", errno_s);
+
 	if ((pid = fork()) == -1)
 		fatal("fork: %s", errno_s);
 
 	if (pid == 0) {
+		if (dup2(pipes[1], STDOUT_FILENO) == -1 ||
+		    dup2(pipes[1], STDERR_FILENO) == -1)
+			fatal("dup2: %s", errno_s);
+
 		hymn_conf_path(path, sizeof(path), flock, src, dst);
 
 		ap[0] = "sanctum";
@@ -1563,7 +1570,7 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-		fatal("sanctum failed to start");
+		fatal("sanctum failed to daemonize");
 
 	printf("waiting for %s-%02x-%02x to go up ... ", flock, src, dst);
 	fflush(stdout);
@@ -1575,7 +1582,8 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	if (wait == 10) {
-		printf("no response after 10 seconds\n");
+		printf("failed\n");
+		printf("please see syslog for more information\n");
 	} else {
 		printf("done\n");
 	}

@@ -170,6 +170,8 @@ sanctum_chapel(struct sanctum_proc *proc)
 	    sanctum->cathedral_remembrance != NULL)
 		sanctum_cathedrals_remembrance();
 
+	sanctum_proc_started(proc);
+
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
 			sanctum_log(LOG_NOTICE, "received signal %d", sig);
@@ -405,9 +407,11 @@ chapel_cathedral_send_info(u_int64_t magic)
 		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    op->hdr.seed, sizeof(op->hdr.seed),
+	    sanctum->cathedral_flock) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -454,9 +458,11 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    op->hdr.seed, sizeof(op->hdr.seed),
+	    sanctum->cathedral_flock) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -836,8 +842,10 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 		op->hdr.flock = htobe64(sanctum->cathedral_flock);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
+	    sanctum->cathedral_flock) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -917,10 +925,11 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	PRECOND(pkt->length >= sizeof(*op));
 
 	op = sanctum_packet_head(pkt);
-
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
+	    sanctum->cathedral_flock) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}

@@ -32,6 +32,11 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
+/* The number of domains per flock. */
+#define CATHEDRAL_FLOCK_DOMAIN_BITS	8
+#define CATHEDRAL_FLOCK_DOMAINS		(1 << CATHEDRAL_FLOCK_DOMAIN_BITS)
+#define CATHEDRAL_FLOCK_DOMAIN_MASK	(CATHEDRAL_FLOCK_DOMAINS - 1)
+
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
 
@@ -122,18 +127,34 @@ struct ambry {
 };
 
 /*
+ * A flock domain that is allocated and contains potential tunnel peers.
+ */
+struct flockdom {
+	u_int8_t		id;
+	LIST_HEAD(, tunnel)	tunnels;
+	LIST_ENTRY(flockdom)	list;
+};
+
+/*
  * A flock is a group of clients that can talk to each other via the
- * cathedral.
+ * cathedral. A flock is 64-bit where 56-bit are the flock id and the
+ * remaining 8-bit are the flock domain allowing separation of applications
+ * within the same flock id.
+ *
+ * This allows for up to 256 different domains per flock.
  */
 struct flockent {
 	u_int64_t		id;
 	int			retain;
+	struct flockdom		*domain;
 	time_t			ambry_mtime;
 	u_int32_t		ambry_generation;
+
 	LIST_HEAD(, allow)	allows;
-	LIST_HEAD(, tunnel)	tunnels;
 	LIST_HEAD(, ambry)	ambries;
+	LIST_HEAD(, flockdom)	domains;
 	LIST_HEAD(, liturgy)	liturgies;
+
 	LIST_ENTRY(flockent)	list;
 };
 
@@ -153,7 +174,7 @@ static void	cathedral_offer_federate(struct flockent *,
 		    struct sanctum_packet *);
 static void	cathedral_offer_handle(struct sanctum_packet *,
 		    u_int64_t, int, int);
-static int	cathedral_offer_send(const char *,
+static int	cathedral_offer_send(struct flockent *, const char *,
 		    struct sanctum_packet *, struct sockaddr_in *);
 static int	cathedral_offer_validate(struct flockent *,
 		    struct sanctum_offer *, u_int32_t, int);
@@ -239,6 +260,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 	cathedral_settings_reload();
+	sanctum_proc_started(proc);
 
 	running = 1;
 	next_expire = 0;
@@ -396,21 +418,23 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
  * Encrypt and send a sanctum offer back to the client.
  */
 static int
-cathedral_offer_send(const char *secret, struct sanctum_packet *pkt,
-    struct sockaddr_in *sin)
+cathedral_offer_send(struct flockent *flock, const char *secret,
+    struct sanctum_packet *pkt, struct sockaddr_in *sin)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_key		cipher;
 
+	PRECOND(flock != NULL);
 	PRECOND(secret != NULL);
 	PRECOND(pkt != NULL);
 	PRECOND(sin != NULL);
 
 	op = sanctum_packet_head(pkt);
-
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
+	    flock->id | flock->domain->id) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return (-1);
 	}
@@ -462,7 +486,8 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(secret, label, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    op->hdr.seed, sizeof(op->hdr.seed),
+	    flock->id | flock->domain->id) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return (-1);
 	}
@@ -529,10 +554,10 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		tun->limit = (bw / 8) * 1024 * 1024;
 		tun->drain_per_ms = tun->limit / 1000;
 
-		LIST_INSERT_HEAD(&flock->tunnels, tun, list);
+		LIST_INSERT_HEAD(&flock->domain->tunnels, tun, list);
 		sanctum_log(LOG_INFO,
-		    "%" PRIx64 ":%04x discovered (%u mbit/sec) (%d)",
-		    flock->id, info->tunnel, bw, catacomb);
+		    "%" PRIx64 ":%04x (%02x) discovered (%u mbit/sec) (%d)",
+		    flock->id, info->tunnel, flock->domain->id, bw, catacomb);
 	 }
 
 	if (info->instance != tun->instance) {
@@ -622,6 +647,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	struct sanctum_offer		*op;
 	struct sanctum_liturgy_offer	*lit;
 	u_int16_t			group;
+	const char			*mode;
 	struct liturgy			*entry;
 
 	PRECOND(pkt != NULL);
@@ -642,7 +668,9 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	LIST_FOREACH(entry, &flock->liturgies, list) {
-		if (entry->id == lit->id)
+		if (entry->id == lit->id &&
+		    (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING) ==
+		    (lit->flags & SANCTUM_LITURGY_FLAG_SIGNALING))
 			break;
 	}
 
@@ -652,19 +680,24 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 		entry->id = lit->id;
 		entry->update = now;
+		entry->flags = lit->flags;
 
 		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
 	}
 
+	if (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
+		mode = "signaling";
+	else
+		mode = "discovery";
+
 	if (entry->age == 0 || entry->group != group) {
 		sanctum_log(LOG_INFO,
-		    "liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
-		    flock->id, lit->id, group, catacomb, lit->hidden);
+		    "%s liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
+		    mode, flock->id, lit->id, group, catacomb, lit->hidden);
 	}
 
 	entry->age = now;
 	entry->group = group;
-	entry->flags = lit->flags;
 	entry->hidden = lit->hidden;
 
 	entry->port = pkt->addr.sin_port;
@@ -713,11 +746,12 @@ cathedral_offer_federate(struct flockent *flock, struct sanctum_packet *update)
 	op = sanctum_offer_init(update, be32toh(op->hdr.spi),
 	    CATHEDRAL_CATACOMB_MAGIC, op->data.type);
 
-	op->hdr.flock = htobe64(flock->id);
-
+	op->hdr.flock = htobe64(flock->id | flock->domain->id);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
 	if (sanctum_offer_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed)) == -1) {
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
+	    flock->id | flock->domain->id) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}
@@ -800,14 +834,10 @@ cathedral_forward_offer(struct sanctum_packet *pkt, struct flockent *flock,
 
 	id = ((u_int16_t)dst << 8) | src;
 
-	LIST_FOREACH(tunnel, &flock->tunnels, list) {
-		if (tunnel->id == id)
-			break;
-	}
-
-	if (tunnel == NULL) {
+	if ((tunnel = cathedral_tunnel_lookup(flock, id)) == NULL) {
 		sanctum_log(LOG_INFO,
-		    "%" PRIx64 ":%04x not found for offer", flock->id, id);
+		    "%" PRIx64 ":%04x (%02x) not found for offer",
+		    flock->id, id, flock->domain->id);
 		return (-1);
 	}
 
@@ -835,6 +865,7 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	u_int32_t		drain;
 	u_int64_t		delta;
 	struct flockent		*flock;
+	struct flockdom		*domain;
 	struct tunnel		*tunnel;
 
 	PRECOND(pkt != NULL);
@@ -846,11 +877,16 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	 * this very much will do.
 	 */
 	LIST_FOREACH(flock, &flocks, list) {
-		LIST_FOREACH(tunnel, &flock->tunnels, list) {
-			if ((tunnel->rx_active != 0 &&
-			    tunnel->rx_active == spi) ||
-			    (tunnel->rx_pending != 0 &&
-			    tunnel->rx_pending == spi))
+		LIST_FOREACH(domain, &flock->domains, list) {
+			LIST_FOREACH(tunnel, &domain->tunnels, list) {
+				if ((tunnel->rx_active != 0 &&
+				    tunnel->rx_active == spi) ||
+				    (tunnel->rx_pending != 0 &&
+				    tunnel->rx_pending == spi))
+					break;
+			}
+
+			if (tunnel != NULL)
 				break;
 		}
 
@@ -896,21 +932,24 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 }
 
 /*
- * See if we have peer information for the other end of the tunnel given.
+ * See if we have peer information for the tunnel given in spi.
  */
 static struct tunnel *
 cathedral_tunnel_lookup(struct flockent *flock, u_int16_t spi)
 {
+	struct flockdom		*domain;
 	struct tunnel		*tunnel;
 
 	PRECOND(flock != NULL);
 
-	LIST_FOREACH(tunnel, &flock->tunnels, list) {
-		if (tunnel->id == spi)
-			break;
+	LIST_FOREACH(domain, &flock->domains, list) {
+		LIST_FOREACH(tunnel, &domain->tunnels, list) {
+			if (tunnel->id == spi)
+				return (tunnel);
+		}
 	}
 
-	return (tunnel);
+	return (NULL);
 }
 
 /*
@@ -920,26 +959,31 @@ static void
 cathedral_tunnel_prune(struct flockent *flock)
 {
 	struct allow		*allow;
+	struct flockdom		*domain;
 	struct tunnel		*tun, *next;
 
 	PRECOND(flock != NULL);
 
-	for (tun = LIST_FIRST(&flock->tunnels); tun != NULL; tun = next) {
-		next = LIST_NEXT(tun, list);
+	LIST_FOREACH(domain, &flock->domains, list) {
+		for (tun = LIST_FIRST(&domain->tunnels);
+		    tun != NULL; tun = next) {
+			next = LIST_NEXT(tun, list);
 
-		LIST_FOREACH(allow, &flock->allows, list) {
-			if (allow->spi == tun->id >> 8)
-				break;
-		}
+			LIST_FOREACH(allow, &flock->allows, list) {
+				if (allow->spi == tun->id >> 8)
+					break;
+			}
 
-		if (allow == NULL) {
-			sanctum_log(LOG_INFO, "peer 0x%02x must be deleted",
-			    tun->id >> 8);
-			LIST_REMOVE(tun, list);
-			free(tun);
-		} else {
-			sanctum_log(LOG_INFO, "peer 0x%02x retained",
-			    tun->id >> 8);
+			if (allow == NULL) {
+				sanctum_log(LOG_INFO,
+				    "peer 0x%02x must be deleted",
+				    tun->id >> 8);
+				LIST_REMOVE(tun, list);
+				free(tun);
+			} else {
+				sanctum_log(LOG_INFO,
+				    "peer 0x%02x retained", tun->id >> 8);
+			}
 		}
 	}
 }
@@ -951,7 +995,9 @@ cathedral_tunnel_prune(struct flockent *flock)
 static void
 cathedral_tunnel_expire(u_int64_t now)
 {
+	const char		*mode;
 	struct flockent		*flock;
+	struct flockdom		*domain, *domain_next;
 	struct tunnel		*tunnel, *tunnel_next;
 	struct liturgy		*liturgy, *liturgy_next;
 
@@ -960,25 +1006,41 @@ cathedral_tunnel_expire(u_int64_t now)
 		    liturgy != NULL; liturgy = liturgy_next) {
 			liturgy_next = LIST_NEXT(liturgy, list);
 
+			if (liturgy->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
+				mode = "signaling";
+			else
+				mode = "discovery";
+
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
-				sanctum_log(LOG_INFO,
-				    "liturgy %" PRIx64 ":%02x (%04x) removed",
-				    flock->id, liturgy->id, liturgy->group);
+				sanctum_log(LOG_INFO, "%s liturgy %" PRIx64
+				    ":%02x (%04x) removed", mode, flock->id,
+				    liturgy->id, liturgy->group);
 				LIST_REMOVE(liturgy, list);
 				free(liturgy);
 			}
 		}
 
-		for (tunnel = LIST_FIRST(&flock->tunnels);
-		    tunnel != NULL; tunnel = tunnel_next) {
-			tunnel_next = LIST_NEXT(tunnel, list);
+		for (domain = LIST_FIRST(&flock->domains);
+		    domain != NULL; domain = domain_next) {
+			domain_next = LIST_NEXT(domain, list);
 
-			if ((now - tunnel->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
-				sanctum_log(LOG_INFO,
-				    "tunnel %" PRIx64 ":%04x removed",
-				    flock->id, tunnel->id);
-				LIST_REMOVE(tunnel, list);
-				free(tunnel);
+			for (tunnel = LIST_FIRST(&domain->tunnels);
+			    tunnel != NULL; tunnel = tunnel_next) {
+				tunnel_next = LIST_NEXT(tunnel, list);
+
+				if ((now - tunnel->age) >=
+				    CATHEDRAL_TUNNEL_MAX_AGE) {
+					sanctum_log(LOG_INFO,
+					    "tunnel %" PRIx64 ":%04x removed",
+					    flock->id, tunnel->id);
+					LIST_REMOVE(tunnel, list);
+					free(tunnel);
+				}
+			}
+
+			if (LIST_EMPTY(&domain->tunnels)) {
+				LIST_REMOVE(domain, list);
+				free(domain);
 			}
 		}
 	}
@@ -1042,7 +1104,7 @@ cathedral_info_send(struct flockent *flock, struct sanctum_info_offer *info,
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
 
-	if (cathedral_offer_send(secret, pkt, sin) == -1)
+	if (cathedral_offer_send(flock, secret, pkt, sin) == -1)
 		sanctum_packet_release(pkt);
 }
 
@@ -1099,7 +1161,7 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
 
-	if (cathedral_offer_send(secret, pkt, sin) == -1)
+	if (cathedral_offer_send(flock, secret, pkt, sin) == -1)
 		sanctum_packet_release(pkt);
 }
 
@@ -1145,7 +1207,7 @@ cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
 
-	if (cathedral_offer_send(secret, pkt, sin) == -1)
+	if (cathedral_offer_send(flock, secret, pkt, sin) == -1)
 		sanctum_packet_release(pkt);
 }
 
@@ -1196,21 +1258,52 @@ cathedral_ambry_send(struct flockent *flock, struct sanctum_info_offer *info,
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
 
-	if (cathedral_offer_send(secret, pkt, s) == -1)
+	if (cathedral_offer_send(flock, secret, pkt, s) == -1)
 		sanctum_packet_release(pkt);
 }
 
 /*
- * Lookup the flock for the given id.
+ * Lookup the flock for the given id, we explictly clear out the domain
+ * bits so we can lookup the main flock. The returned flock has the
+ * domain bits set inside of it, these are overwritten everytime
+ * this is called with the correct bits so the rest of the code
+ * following the cathedral_flock_lookup() call can use the
+ * flockent data structure to refer to both id and domain.
+ *
+ * If the domain does not exist, an entry is explicitly created for it
+ * which will automatically be expired once no more tunnels exist in it.
  */
 static struct flockent *
 cathedral_flock_lookup(u_int64_t id)
 {
+	struct flockdom		*dom;
 	struct flockent		*flock;
+	u_int8_t		domain;
+
+	domain = id & CATHEDRAL_FLOCK_DOMAIN_MASK;
+	id &= ~CATHEDRAL_FLOCK_DOMAIN_MASK;
 
 	LIST_FOREACH(flock, &flocks, list) {
-		if (flock->id == id)
+		if (flock->id == id) {
+			LIST_FOREACH(dom, &flock->domains, list) {
+				if (dom->id == domain) {
+					flock->domain = dom;
+					return (flock);
+				}
+			}
+
+			if ((dom = calloc(1, sizeof(*dom))) == NULL)
+				fatal("failed to allocate flockdom entry");
+
+
+			dom->id = domain;
+			LIST_INIT(&dom->tunnels);
+
+			flock->domain = dom;
+			LIST_INSERT_HEAD(&flock->domains, dom, list);
+
 			return (flock);
+		}
 	}
 
 	return (NULL);
@@ -1235,21 +1328,27 @@ cathedral_flock_allows_clear(struct flockent *flock)
 }
 
 /*
- * Clear all tunnels from a flock.
+ * Clear all domains and their tunnels from a flock.
  */
 static void
 cathedral_flock_tunnels_clear(struct flockent *flock)
 {
-	struct tunnel	*entry;
+	struct tunnel		*entry;
+	struct flockdom		*domain;
 
 	PRECOND(flock != NULL);
 
-	while ((entry = LIST_FIRST(&flock->tunnels)) != NULL) {
-		LIST_REMOVE(entry, list);
-		free(entry);
-	}
+	while ((domain = LIST_FIRST(&flock->domains)) != NULL) {
+		while ((entry = LIST_FIRST(&domain->tunnels)) != NULL) {
+			LIST_REMOVE(entry, list);
+			free(entry);
+		}
 
-	LIST_INIT(&flock->tunnels);
+		LIST_REMOVE(domain, list);
+		free(domain);
+
+		LIST_INIT(&flock->domains);
+	}
 }
 
 /*
@@ -1487,6 +1586,7 @@ cathedral_settings_flock(const char *option, struct flockent **out)
 		return;
 	}
 
+	id = id & ~(CATHEDRAL_FLOCK_DOMAIN_MASK);
 	if ((flock = cathedral_flock_lookup(id)) != NULL) {
 		flock->retain = 1;
 		cathedral_flock_allows_clear(flock);
@@ -1499,7 +1599,7 @@ cathedral_settings_flock(const char *option, struct flockent **out)
 
 		LIST_INIT(&flock->allows);
 		LIST_INIT(&flock->ambries);
-		LIST_INIT(&flock->tunnels);
+		LIST_INIT(&flock->domains);
 		LIST_INIT(&flock->liturgies);
 		LIST_INSERT_HEAD(&flocks, flock, list);
 	}
