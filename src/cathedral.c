@@ -127,11 +127,12 @@ struct ambry {
 };
 
 /*
- * A flock domain that is allocated and contains potential tunnel peers.
+ * A flock domain that is allocated and contains tunnels and liturgies.
  */
 struct flockdom {
 	u_int8_t		id;
 	LIST_HEAD(, tunnel)	tunnels;
+	LIST_HEAD(, liturgy)	liturgies;
 	LIST_ENTRY(flockdom)	list;
 };
 
@@ -153,7 +154,6 @@ struct flockent {
 	LIST_HEAD(, allow)	allows;
 	LIST_HEAD(, ambry)	ambries;
 	LIST_HEAD(, flockdom)	domains;
-	LIST_HEAD(, liturgy)	liturgies;
 
 	LIST_ENTRY(flockent)	list;
 };
@@ -163,9 +163,9 @@ static struct flockent	*cathedral_flock_lookup(u_int64_t);
 static struct tunnel	*cathedral_tunnel_lookup(struct flockent *, u_int16_t);
 
 static void	cathedral_flock_allows_clear(struct flockent *);
-static void	cathedral_flock_tunnels_clear(struct flockent *);
+static void	cathedral_flock_domain_clear(struct flockdom *);
+static void	cathedral_flock_domains_clear(struct flockent *);
 static void	cathedral_flock_ambries_clear(struct flockent *);
-static void	cathedral_flock_liturgies_clear(struct flockent *);
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
@@ -200,8 +200,8 @@ static void	cathedral_liturgy_send(struct flockent *,
 static void	cathedral_remembrance_send(struct flockent *,
 		    struct sockaddr_in *, u_int32_t);
 
-static void	cathedral_tunnel_expire(u_int64_t);
 static void	cathedral_tunnel_prune(struct flockent *);
+static void	cathedral_tunnel_expire(struct flockent *, u_int64_t);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
 		    u_int8_t, u_int32_t, u_int32_t *);
 
@@ -241,6 +241,7 @@ void
 sanctum_cathedral(struct sanctum_proc *proc)
 {
 	struct sanctum_packet	*pkt;
+	struct flockent		*flock;
 	int			sig, running;
 	u_int64_t		now, next_expire, next_settings;
 
@@ -286,7 +287,8 @@ sanctum_cathedral(struct sanctum_proc *proc)
 
 		if (now >= next_expire) {
 			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
-			cathedral_tunnel_expire(now);
+			LIST_FOREACH(flock, &flocks, list)
+				cathedral_tunnel_expire(flock, now);
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)))
@@ -652,6 +654,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	PRECOND(pkt != NULL);
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(pkt->length >= sizeof(*op));
 
 	op = sanctum_packet_head(pkt);
@@ -667,7 +670,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		return;
 	}
 
-	LIST_FOREACH(entry, &flock->liturgies, list) {
+	LIST_FOREACH(entry, &flock->domain->liturgies, list) {
 		if (entry->id == lit->id &&
 		    (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING) ==
 		    (lit->flags & SANCTUM_LITURGY_FLAG_SIGNALING))
@@ -682,7 +685,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		entry->update = now;
 		entry->flags = lit->flags;
 
-		LIST_INSERT_HEAD(&flock->liturgies, entry, list);
+		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
 	}
 
 	if (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
@@ -692,8 +695,9 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	if (entry->age == 0 || entry->group != group) {
 		sanctum_log(LOG_INFO,
-		    "%s liturgy for %" PRIx64 ":%02x (%04x) (%d) (%u)",
-		    mode, flock->id, lit->id, group, catacomb, lit->hidden);
+		    "%s liturgy for %" PRIx64 ":%02x (%02x) (%04x) (%d) (%u)",
+		    mode, flock->id, lit->id, flock->domain->id, group,
+		    catacomb, lit->hidden);
 	}
 
 	entry->age = now;
@@ -991,16 +995,19 @@ cathedral_tunnel_prune(struct flockent *flock)
  * from the known list.
  */
 static void
-cathedral_tunnel_expire(u_int64_t now)
+cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 {
 	const char		*mode;
-	struct flockent		*flock;
-	struct flockdom		*domain, *domain_next;
+	struct flockdom		*dom, *dom_next;
 	struct tunnel		*tunnel, *tunnel_next;
 	struct liturgy		*liturgy, *liturgy_next;
 
-	LIST_FOREACH(flock, &flocks, list) {
-		for (liturgy = LIST_FIRST(&flock->liturgies);
+	PRECOND(flock != NULL);
+
+	for (dom = LIST_FIRST(&flock->domains); dom != NULL; dom = dom_next) {
+		dom_next = LIST_NEXT(dom, list);
+
+		for (liturgy = LIST_FIRST(&dom->liturgies);
 		    liturgy != NULL; liturgy = liturgy_next) {
 			liturgy_next = LIST_NEXT(liturgy, list);
 
@@ -1018,28 +1025,24 @@ cathedral_tunnel_expire(u_int64_t now)
 			}
 		}
 
-		for (domain = LIST_FIRST(&flock->domains);
-		    domain != NULL; domain = domain_next) {
-			domain_next = LIST_NEXT(domain, list);
+		for (tunnel = LIST_FIRST(&dom->tunnels);
+		    tunnel != NULL; tunnel = tunnel_next) {
+			tunnel_next = LIST_NEXT(tunnel, list);
 
-			for (tunnel = LIST_FIRST(&domain->tunnels);
-			    tunnel != NULL; tunnel = tunnel_next) {
-				tunnel_next = LIST_NEXT(tunnel, list);
-
-				if ((now - tunnel->age) >=
-				    CATHEDRAL_TUNNEL_MAX_AGE) {
-					sanctum_log(LOG_INFO,
-					    "tunnel %" PRIx64 ":%04x removed",
-					    flock->id, tunnel->id);
-					LIST_REMOVE(tunnel, list);
-					free(tunnel);
-				}
+			if ((now - tunnel->age) >=
+			    CATHEDRAL_TUNNEL_MAX_AGE) {
+				sanctum_log(LOG_INFO,
+				    "tunnel %" PRIx64 ":%04x removed",
+				    flock->id, tunnel->id);
+				LIST_REMOVE(tunnel, list);
+				free(tunnel);
 			}
+		}
 
-			if (LIST_EMPTY(&domain->tunnels)) {
-				LIST_REMOVE(domain, list);
-				free(domain);
-			}
+		if (LIST_EMPTY(&dom->tunnels) &&
+		    LIST_EMPTY(&dom->liturgies)) {
+			LIST_REMOVE(dom, list);
+			free(dom);
 		}
 	}
 }
@@ -1134,7 +1137,7 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	lit = &op->data.offer.liturgy;
 	lit->group = htobe16(src->group);
 
-	LIST_FOREACH(entry, &flock->liturgies, list) {
+	LIST_FOREACH(entry, &flock->domain->liturgies, list) {
 		if (entry == src)
 			continue;
 
@@ -1326,27 +1329,45 @@ cathedral_flock_allows_clear(struct flockent *flock)
 }
 
 /*
- * Clear all domains and their tunnels from a flock.
+ * Clear all domains and their tunnels or liturgies.
  */
 static void
-cathedral_flock_tunnels_clear(struct flockent *flock)
+cathedral_flock_domains_clear(struct flockent *flock)
 {
-	struct tunnel		*entry;
 	struct flockdom		*domain;
 
-	PRECOND(flock != NULL);
-
 	while ((domain = LIST_FIRST(&flock->domains)) != NULL) {
-		while ((entry = LIST_FIRST(&domain->tunnels)) != NULL) {
-			LIST_REMOVE(entry, list);
-			free(entry);
-		}
-
+		cathedral_flock_domain_clear(domain);
 		LIST_REMOVE(domain, list);
 		free(domain);
-
-		LIST_INIT(&flock->domains);
 	}
+
+	LIST_INIT(&flock->domains);
+}
+
+/*
+ * Clear all all tunnels and liturgies from a flock domain.
+ */
+static void
+cathedral_flock_domain_clear(struct flockdom *domain)
+{
+	struct tunnel		*tunnel;
+	struct liturgy		*liturgy;
+
+	PRECOND(domain != NULL);
+
+	while ((tunnel = LIST_FIRST(&domain->tunnels)) != NULL) {
+		LIST_REMOVE(tunnel, list);
+		free(tunnel);
+	}
+
+	while ((liturgy = LIST_FIRST(&domain->liturgies)) != NULL) {
+		LIST_REMOVE(liturgy, list);
+		free(liturgy);
+	}
+
+	LIST_INIT(&domain->tunnels);
+	LIST_INIT(&domain->liturgies);
 }
 
 /*
@@ -1366,24 +1387,6 @@ cathedral_flock_ambries_clear(struct flockent *flock)
 	}
 
 	LIST_INIT(&flock->ambries);
-}
-
-/*
- * Clear all liturgies from a flock.
- */
-static void
-cathedral_flock_liturgies_clear(struct flockent *flock)
-{
-	struct liturgy	*entry;
-
-	PRECOND(flock != NULL);
-
-	while ((entry = LIST_FIRST(&flock->liturgies)) != NULL) {
-		LIST_REMOVE(entry, list);
-		free(entry);
-	}
-
-	LIST_INIT(&flock->liturgies);
 }
 
 /*
@@ -1501,8 +1504,7 @@ cathedral_settings_reload(void)
 
 		cathedral_flock_allows_clear(flock);
 		cathedral_flock_ambries_clear(flock);
-		cathedral_flock_tunnels_clear(flock);
-		cathedral_flock_liturgies_clear(flock);
+		cathedral_flock_domains_clear(flock);
 
 		free(flock);
 	}
@@ -1598,7 +1600,6 @@ cathedral_settings_flock(const char *option, struct flockent **out)
 		LIST_INIT(&flock->allows);
 		LIST_INIT(&flock->ambries);
 		LIST_INIT(&flock->domains);
-		LIST_INIT(&flock->liturgies);
 		LIST_INSERT_HEAD(&flocks, flock, list);
 	}
 
