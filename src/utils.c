@@ -448,15 +448,22 @@ sanctum_file_open(const char *path, struct stat *st)
 
 /*
  * Derive a new key from the given shared secret for the intented purpose.
+ *
  * Essentially doing this:
  *	shared_secret = load_from_file()
- *	K = KMAC256(shared_secret, label_for_purpose), 256-bit
+ *	K = KMAC256(shared_secret, label_for_purpose, domain), 256-bit
+ *
+ * The domain is either 0 or the configured flock-id if a cathedral is in
+ * use (or we are the cathedral). This is done to separate the base keys
+ * for different flock domains from each other.
  */
 int
-sanctum_key_derive(const char *path, u_int32_t purpose, void *out, size_t len)
+sanctum_key_derive(const char *path, u_int64_t domain, u_int32_t purpose,
+    void *out, size_t len)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;
+	u_int8_t			dlen;
 	const char			*label;
 	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
@@ -493,8 +500,13 @@ sanctum_key_derive(const char *path, u_int32_t purpose, void *out, size_t len)
 
 	(void)close(fd);
 
+	dlen = sizeof(domain);
+	domain = htobe64(domain);
+
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
+	nyfe_kmac256_update(&kdf, &dlen, sizeof(dlen));
+	nyfe_kmac256_update(&kdf, &domain, sizeof(domain));
 	nyfe_kmac256_final(&kdf, out, len);
 
 	nyfe_zeroize(&kdf, sizeof(kdf));
@@ -510,7 +522,7 @@ sanctum_key_derive(const char *path, u_int32_t purpose, void *out, size_t len)
  */
 int
 sanctum_offer_kdf(const char *path, const char *label,
-    struct sanctum_key *key, void *seed, size_t seed_len)
+    struct sanctum_key *key, void *seed, size_t seed_len, u_int64_t domain)
 {
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
@@ -525,7 +537,7 @@ sanctum_offer_kdf(const char *path, const char *label,
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_key_derive(path,
+	sanctum_key_derive(path, domain,
 	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret));
 
 	len = seed_len;
@@ -548,7 +560,8 @@ sanctum_offer_kdf(const char *path, const char *label,
  *
  * IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
  *       len(local.pub) || local.pub || len(offer.pub) || offer.pub
- * OKM = KMAC256(traffic_key, IKM)
+ *
+ * OKM = KMAC256(traffic_key, SANCTUM_TRAFFIC_KDF_LABEL, IKM)
  *
  * This is ONLY used for tunnel mode traffic, pilgrim/shrine mode work
  * in a very different way as those are only one-directional.
@@ -572,7 +585,7 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	nyfe_zeroize_register(secret, sizeof(secret));
 
 	sanctum_asymmetry_derive(kex, ikm, sizeof(ikm));
-	sanctum_key_derive(sanctum->secret,
+	sanctum_key_derive(sanctum->secret, sanctum->cathedral_flock,
 	    kex->purpose, secret, sizeof(secret));
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
