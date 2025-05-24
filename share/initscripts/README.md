@@ -2,6 +2,8 @@
 These initscripts can be used to integrate one or several sanctum tunnels with your service manager.
 Currently there are initscripts offered for OpenRC and systemd.
 
+For both OpenRC and systemd, the tunnel name that is chosen will be used to find an appropriate configuration in the configuration directory that is configured (default /etc/sanctum for openrc, /etc/sanctum for sanctum@ and /etc/hymn for sanctum-hymn@ for systemd).
+
 ## OpenRC
 In the openrc directory, there are two files, sanctum.confd and sanctum.initd.
 The confd file should be copied to /etc/conf.d/sanctum and the initd file should be copied to /etc/init.d/sanctum.
