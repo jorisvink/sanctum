@@ -451,19 +451,19 @@ sanctum_file_open(const char *path, struct stat *st)
  *
  * Essentially doing this:
  *	shared_secret = load_from_file()
- *	K = KMAC256(shared_secret, label_for_purpose, domain), 256-bit
+ *	K = KMAC256(shared_secret, label_for_purpose, flock), 256-bit
  *
- * The domain is either 0 or the configured flock-id if a cathedral is in
- * use (or we are the cathedral). This is done to separate the base keys
- * for different flock domains from each other.
+ * The flock is the configured cathedral flock-id if a cathedral is in use
+ * (or we are the cathedral), otherwise it is 0. This is done to separate
+ * base key derivation between different flock domains.
  */
 int
-sanctum_key_derive(const char *path, u_int64_t domain, u_int32_t purpose,
+sanctum_key_derive(const char *path, u_int64_t flock, u_int32_t purpose,
     void *out, size_t len)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;
-	u_int8_t			dlen;
+	u_int8_t			flen;
 	const char			*label;
 	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
@@ -500,13 +500,13 @@ sanctum_key_derive(const char *path, u_int64_t domain, u_int32_t purpose,
 
 	(void)close(fd);
 
-	dlen = sizeof(domain);
-	domain = htobe64(domain);
+	flen = sizeof(flock);
+	flock = htobe64(flock);
 
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
-	nyfe_kmac256_update(&kdf, &dlen, sizeof(dlen));
-	nyfe_kmac256_update(&kdf, &domain, sizeof(domain));
+	nyfe_kmac256_update(&kdf, &flen, sizeof(flen));
+	nyfe_kmac256_update(&kdf, &flock, sizeof(flock));
 	nyfe_kmac256_final(&kdf, out, len);
 
 	nyfe_zeroize(&kdf, sizeof(kdf));
@@ -522,7 +522,7 @@ sanctum_key_derive(const char *path, u_int64_t domain, u_int32_t purpose,
  */
 int
 sanctum_offer_kdf(const char *path, const char *label,
-    struct sanctum_key *key, void *seed, size_t seed_len, u_int64_t domain)
+    struct sanctum_key *key, void *seed, size_t seed_len, u_int64_t flock)
 {
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
@@ -537,7 +537,7 @@ sanctum_offer_kdf(const char *path, const char *label,
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_key_derive(path, domain,
+	sanctum_key_derive(path, flock,
 	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret));
 
 	len = seed_len;
