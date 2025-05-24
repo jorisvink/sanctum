@@ -1,0 +1,6 @@
+# Change this to the path to the configuration if not using hymn to setup
+# the tunnels
+sanctum_args="-c /etc/hymn/${tunnel}.conf"
+
+# Change this to the path set in the configuration file
+pidfile="/run/hymn/${tunnel}.pid"

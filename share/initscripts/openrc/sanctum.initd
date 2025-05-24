@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+# Copyright 2024 Gentoo Authors
+# Distributed under the terms of the GNU General Public License v2
+
+tunnel="${RC_SVCNAME#sanctum.}"
+_CONFD_FILE="/etc/conf.d/sanctum.${tunnel}"
+if [ -r "${_CONFD_FILE}" ]; then
+	. "${_CONFD_FILE}"
+else
+	. "/etc/conf.d/sanctum"
+fi
+
+name="Sanctum daemon (${tunnel})"
+command="/usr/bin/sanctum"
+command_args="${sanctum_args}"
+command_args_background="-d"
+pidfile="${pidfile}"
+
+depend() {
+	need net
+}
