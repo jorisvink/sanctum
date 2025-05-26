@@ -34,8 +34,12 @@ in /etc/conf.d/sanctum.
 
 ## Systemd
 
-In the systemd directory there are two service files.
-They should be put in /usr/lib/systemd/system.
+In the systemd directory there are two service files, one for manual tunnels
+and one for hymn managed tunnels. Install both of these in the correct place:
+
+```
+# cp shared/initscripts/systemd/* /usr/lib/systemd/system
+```
 
 The sanctum@.service file is for manually setup sanctum tunnels,
 it has an environment variable set in the service file that can be
