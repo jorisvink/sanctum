@@ -66,5 +66,5 @@ name like
 for manual tunnels, or for ones managed via hymn:
 
 ```
-# systemctl start sanctum-hymn@hymn-01-02.
+# systemctl start sanctum-hymn@hymn-01-02
 ```
