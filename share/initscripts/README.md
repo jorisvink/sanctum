@@ -25,7 +25,7 @@ The way the initscript is structured is that you symlink your actual tunnels
 to the /etc/init.d/sanctum service for example:
 
 ```
-$ ln -s /etc/init.d/sanctum /etc/init.d/sanctum.manual-setup.
+# ln -s /etc/init.d/sanctum /etc/init.d/sanctum.manual-setup
 ```
 
 Then you either set tunnel specific options in **/etc/conf.d/sanctum.<tunnel>**
