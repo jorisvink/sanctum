@@ -55,12 +55,16 @@ Environment=CONF_DIR=/path/to/foo
 The sanctum-hymn@.service file is for tunnels that are created and
 managed by the hymn tool. It uses the hymn tool to start, stop and
 restart the tunnels instead of directly invoking the sanctum binary.
+
 The way they are used is by starting/enabling a service with a tunnel
 name like
+
 ```
 # systemctl start sanctum-manual@test
 ```
-or
+
+for manual tunnels, or for ones managed via hymn:
+
 ```
 # systemctl start sanctum-hymn@hymn-01-02.
 ```
