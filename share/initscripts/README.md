@@ -1,5 +1,4 @@
 # Initscripts
-
 These initscripts can be used to integrate one or several sanctum tunnels
 with your service manager. Currently there are initscripts offered for
 OpenRC and systemd.
@@ -36,6 +35,7 @@ in /etc/conf.d/sanctum.
 ## Systemd
 
 In the systemd directory there are two service files.
+They should be put in /usr/lib/systemd/system.
 
 The sanctum@.service file is for manually setup sanctum tunnels,
 it has an environment variable set in the service file that can be
@@ -45,12 +45,22 @@ overriden by executing
 $ systemctl edit sanctum@<tunnel name>
 ```
 
-and writing your own [Unit] section with the following:
+and writing your own [Unit] section like this:
 
 ```
-Environment=CONF_DIR=/path/to/foo variable.
+[Unit]
+Environment=CONF_DIR=/path/to/foo
 ```
 
 The sanctum-hymn@.service file is for tunnels that are created and
 managed by the hymn tool. It uses the hymn tool to start, stop and
 restart the tunnels instead of directly invoking the sanctum binary.
+The way they are used is by starting/enabling a service with a tunnel
+name like
+```
+# systemctl start sanctum-manual@test
+```
+or
+```
+# systemctl start sanctum-hymn@hymn-01-02.
+```
