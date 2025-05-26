@@ -39,6 +39,7 @@ and one for hymn managed tunnels. Install both of these in the correct place:
 
 ```
 # cp share/initscripts/systemd/* /usr/lib/systemd/system
+# systemctl daemon-reload
 ```
 
 The sanctum@.service file is for manually setup sanctum tunnels,
