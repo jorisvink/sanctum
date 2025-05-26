@@ -7,7 +7,7 @@ After=network.target
 Type=forking
 ExecStart=hymn up %i
 ExecStop=hymn down %i
-PIDFile="/run/hymn/%i.pid"
+PIDFile=/run/hymn/%i.pid
 
 [Install]
 WantedBy=multi-user.target
