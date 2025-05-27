@@ -77,11 +77,11 @@ one for each specific purpose:
 
 ```
     ss = shared secret, loaded from disk
-    domain = (cathedral_flock & 0xff) or 0 if no cathedral is in use, 64-bit
+    flock = cathedral_flock or 0 if no cathedral is in use, 64-bit
 
     offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF", domain), 256-bit
-    traffic_base_rx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.RX.KDF", domain), 256-bit
-    traffic_base_tx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.TX.KDF", domain), 256-bit
+    traffic_base_rx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.RX.KDF", flock), 256-bit
+    traffic_base_tx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.TX.KDF", flock), 256-bit
 ```
 
 Shared secrets can either be distributed invididually to all locations, or

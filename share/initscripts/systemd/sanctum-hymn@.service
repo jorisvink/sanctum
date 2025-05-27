@@ -1,0 +1,13 @@
+[Unit]
+Description=Sanctum daemon, managed by hymn tool
+Wants=network.target
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=hymn up %i
+ExecStop=hymn down %i
+PIDFile=/run/hymn/%i.pid
+
+[Install]
+WantedBy=multi-user.target
