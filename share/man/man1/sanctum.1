@@ -44,22 +44,15 @@ Traffic is by default encrypted under AES256-GCM with unique keys in
 both the RX and TX directions using a 96-bit nonce consisting of a 32-bit
 salt and 64-bit packet counter (see rfc4106).
 
-For management traffic unique encryption keys are derived from the
-shared secret on a per-message basis.
-
 .I Sanctum
-uses strong shared symmetrical secrets from which an encryption key
-is derived for wrapping generated session keys that are exchanged
-between peers. Each sanctum instance is responsible for sending
-its
-.I RX
-session key to its configured peer periodically.
+uses a strong shared symmetrical secret shared between two peers that wish to
+communicate. This key is primarily used for key offers and key encryption.
+Session keys are derived partially from the shared secret and partially from a
+post-quantum safe, forward-secrecy protecting ECDH (x25519) and ML-KEM-1024
+handshake.
 
 Keys are automatically expired after a given number of packets
 have been sent on them (1 << 34), or after a 1-hour period.
-
-Note that due to the symmetrical keying there is no PFS and thus
-the shared secret must be kept a secret.
 
 .SH AUTHORS
 
