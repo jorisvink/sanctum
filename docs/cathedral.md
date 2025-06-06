@@ -16,7 +16,8 @@ It is imperative that peers and cathedrals their clocks are in-sync as
 messages include timestamps which are checked after the integrity
 of the packets are validated.
 
-Packets are valid for 10 seconds.
+Clocks are allowed to be out of sync within a period of 20 seconds,
+from -10 seconds to +10 seconds.
 
 ## Flocks
 
