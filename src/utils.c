@@ -571,7 +571,7 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 {
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
-	u_int8_t			ikm[SANCTUM_KEY_LENGTH];
+	u_int8_t			ecdh[SANCTUM_KEY_LENGTH];
 	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
 	PRECOND(kex != NULL);
@@ -580,20 +580,20 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	PRECOND(sanctum->secret != NULL);
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 
-	nyfe_zeroize_register(ikm, sizeof(ikm));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
+	nyfe_zeroize_register(ecdh, sizeof(ecdh));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_asymmetry_derive(kex, ikm, sizeof(ikm));
+	sanctum_asymmetry_derive(kex, ecdh, sizeof(ecdh));
 	sanctum_key_derive(sanctum->secret, sanctum->cathedral_flock,
 	    kex->purpose, secret, sizeof(secret));
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));
 
-	len = sizeof(ikm);
+	len = sizeof(ecdh);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
-	nyfe_kmac256_update(&kdf, ikm, sizeof(ikm));
+	nyfe_kmac256_update(&kdf, ecdh, sizeof(ecdh));
 
 	len = sizeof(kex->kem);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
@@ -609,8 +609,8 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 
 	nyfe_kmac256_final(&kdf, okm, okm_len);
 
-	nyfe_zeroize(ikm, sizeof(ikm));
 	nyfe_zeroize(&kdf, sizeof(kdf));
+	nyfe_zeroize(ecdh, sizeof(ecdh));
 	nyfe_zeroize(secret, sizeof(secret));
 
 	return (0);
