@@ -3,10 +3,8 @@
 CC?=cc
 OBJDIR?=obj
 BIN=sanctum
-LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
-LIBMLKEM1024=$(CURDIR)/mlkem1024/libmlkem1024.a
-
 VERSION=$(OBJDIR)/version.c
+LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
 
 DESTDIR?=
 PREFIX?=/usr/local
@@ -15,7 +13,13 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
+KEM?=mlkem1024-ref
 CIPHER?=libsodium-aes-gcm
+ASYMMETRY?=libsodium-x25519
+
+KEM_MK_PATH?=mk/kem/$(KEM).mk
+CIPHER_MK_PATH=mk/ciphers/$(CIPHER).mk
+ASYMMETRY_MK_PATH=mk/asymmetry/$(ASYMMETRY).mk
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
@@ -34,8 +38,6 @@ SRC=	src/sanctum.c \
 	src/control.c \
 	src/heaven_rx.c \
 	src/heaven_tx.c \
-	src/mlkem1024.c \
-	src/libsodium_x25519.c \
 	src/liturgy.c \
 	src/proc.c \
 	src/packet.c \
@@ -52,27 +54,10 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
-LDFLAGS+=$(LIBNYFE) $(LIBMLKEM1024)
+LDFLAGS+=$(LIBNYFE)
 
 ifeq ("$(JUMBO_FRAMES)", "1")
 	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
-endif
-
-ifeq ("$(CIPHER)", "libsodium-aes-gcm")
-	CFLAGS+=$(shell pkg-config libsodium --cflags)
-	LDFLAGS+=$(shell pkg-config libsodium --libs)
-	SRC+=src/libsodium_aes_gcm.c
-else ifeq ("$(CIPHER)", "intel-aes-gcm")
-	CFLAGS+=$(shell pkg-config libisal_crypto --cflags)
-	LDFLAGS+=$(shell pkg-config libisal_crypto --libs)
-	SRC+=src/intel_aes_gcm.c
-else ifeq ("$(CIPHER)", "nyfe-agelas")
-	CFLAGS+=$(shell pkg-config libsodium --cflags)
-	LDFLAGS+=$(shell pkg-config libsodium --libs)
-	CFLAGS+=-DSANCTUM_USE_AGELAS
-	SRC+=src/nyfe_agelas.c
-else
-$(error "No CIPHER selected")
 endif
 
 INSTALL_TARGETS=install-bin install-man
@@ -91,15 +76,19 @@ else ifeq ("$(OSNAME)", "openbsd")
 	SRC+=src/platform_openbsd.c
 endif
 
-OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
-OBJS+=	$(OBJDIR)/version.o
-
 all: $(BIN)
 	$(MAKE) -C tools/hymn
 	$(MAKE) -C tools/ambry
 	$(MAKE) -C tools/vicar
 
-$(BIN): $(OBJDIR) $(LIBNYFE) $(LIBMLKEM1024) $(OBJS) $(VERSION)
+include $(KEM_MK_PATH)
+include $(CIPHER_MK_PATH)
+include $(ASYMMETRY_MK_PATH)
+
+OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
+OBJS+=	$(OBJDIR)/version.o
+
+$(BIN): $(OBJDIR) $(LIBNYFE) $(KEMLIB) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
 $(VERSION): $(OBJDIR) force
@@ -141,18 +130,13 @@ install-darwin-sb:
 $(LIBNYFE):
 	$(MAKE) -C nyfe
 
-$(LIBMLKEM1024): $(LIBNYFE)
-	$(MAKE) -C mlkem1024
-
-mlkem1024-tests: $(LIBNYFE)
-	$(MAKE) -C mlkem1024 tests
-
 src/sanctum.c: $(VERSION)
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-$(OBJDIR)/%.o: src/%.c
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
