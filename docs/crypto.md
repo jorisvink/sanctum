@@ -219,7 +219,7 @@ is used to wrap ambries carrying a new SS.
 ```
 kek_derive_key_for_wrapping_ambry(seed):
     kek = key-encryption-key, 256-bit
-    wk = KMAC256(kek, "SANCTUM.AMBRY.KDF", len(seed) || seed), 512-bit
+    wk = KMAC256(kek, "SANCTUM.AMBRY.KDF", len(seed) || seed), 256-bit
     return wk
 ```
 
