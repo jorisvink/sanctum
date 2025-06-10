@@ -23,7 +23,7 @@
 /*
  * Generate a new x25519 private key and derive its public key from it.
  */
-void
+int
 sanctum_asymmetry_keygen(u_int8_t *priv, size_t privlen,
     u_int8_t *pub, size_t publen)
 {
@@ -39,13 +39,15 @@ sanctum_asymmetry_keygen(u_int8_t *priv, size_t privlen,
 	 * private key as required.
 	 */
 	if (crypto_scalarmult_curve25519_base(pub, priv) == -1)
-		fatal("failed to calculate x25519 public key");
+		return (-1);
+
+	return (0);
 }
 
 /*
  * Using the peer its public key derive a shared secret.
  */
-void
+int
 sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 {
 	PRECOND(kex != NULL);
@@ -53,5 +55,7 @@ sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 	PRECOND(len == crypto_scalarmult_curve25519_SCALARBYTES);
 
 	if (crypto_scalarmult_curve25519(out, kex->private, kex->remote) == -1)
-		fatal("failed to calculate shared secret");
+		return (-1);
+
+	return (0);
 }

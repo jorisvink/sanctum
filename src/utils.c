@@ -580,11 +580,18 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	PRECOND(sanctum->secret != NULL);
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 
-	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(ecdh, sizeof(ecdh));
+
+	if (sanctum_asymmetry_derive(kex, ecdh, sizeof(ecdh)) == -1) {
+		nyfe_zeroize(ecdh, sizeof(ecdh));
+		sanctum_log(LOG_NOTICE,
+		    "failed to calculate ecdh shared secret");
+		return (-1);
+	}
+
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_asymmetry_derive(kex, ecdh, sizeof(ecdh));
 	sanctum_key_derive(sanctum->secret, sanctum->cathedral_flock,
 	    kex->purpose, secret, sizeof(secret));
 

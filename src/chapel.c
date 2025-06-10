@@ -767,13 +767,23 @@ chapel_offer_create(u_int64_t now, const char *reason)
 
 	sanctum_mlkem1024_keypair(&offer->local.kem);
 
-	sanctum_asymmetry_keygen(offer->local.private,
+	if (sanctum_asymmetry_keygen(offer->local.private,
 	    sizeof(offer->local.private), offer->local.public,
-	    sizeof(offer->local.public));
+	    sizeof(offer->local.public)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to calculate ecdh public key (local)");
+		chapel_offer_clear();
+		return;
+	}
 
-	sanctum_asymmetry_keygen(offer->remote.private,
+	if (sanctum_asymmetry_keygen(offer->remote.private,
 	    sizeof(offer->remote.private), offer->remote.public,
-	    sizeof(offer->remote.public));
+	    sizeof(offer->remote.public)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to calculate ecdh public key (remote)");
+		chapel_offer_clear();
+		return;
+	}
 
 	sanctum_log(LOG_INFO, "starting new key offering (%s) "
 	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
