@@ -120,6 +120,8 @@ This allows one-way traffic to flow from a pilgrim to the shrine
 with a strong guarantee that the shrine cannot send data back
 (there are no keys nor are there any processes to do so).
 
+Note that no asymmetry is available for one-directional tunnels.
+
 ## Cathedrals
 
 A cathedral is a sanctum mode that can run on a machine somewhere
