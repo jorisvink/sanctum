@@ -193,8 +193,8 @@ ambry_bundle_generate(int argc, char **argv)
 	nyfe_mem_zero(&hdr, sizeof(hdr));
 	fd = nyfe_file_open(argv[0], NYFE_FILE_CREATE);
 
-	nyfe_random_init();
-	nyfe_random_bytes(&gen, sizeof(gen));
+	sanctum_random_init();
+	sanctum_random_bytes(&gen, sizeof(gen));
 
 	hdr.generation = htonl(gen);
 	nyfe_file_write(fd, &hdr, sizeof(hdr));
@@ -208,9 +208,9 @@ ambry_bundle_generate(int argc, char **argv)
 			if (src == dst)
 				continue;
 
-			nyfe_random_init();
-			nyfe_random_bytes(key, sizeof(key));
-			nyfe_random_init();
+			sanctum_random_init();
+			sanctum_random_bytes(key, sizeof(key));
+			sanctum_random_init();
 
 			tunnel = src << 8 | dst;
 			reverse = dst << 8 | src;
@@ -264,7 +264,7 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 
 	entry.tunnel = htons(tunnel);
 	nyfe_memcpy(entry.key, key, len);
-	nyfe_random_bytes(entry.seed, sizeof(entry.seed));
+	sanctum_random_bytes(entry.seed, sizeof(entry.seed));
 
 	if (nyfe_file_read(fd, kek, sizeof(kek)) != sizeof(kek))
 		fatal("bad read on KEK file %s", path);
@@ -316,13 +316,13 @@ ambry_kek_gen(const char *path)
 	int		fd;
 	u_int8_t	kek[SANCTUM_AMBRY_KEK_LEN];
 
-	nyfe_random_init();
+	sanctum_random_init();
 	nyfe_zeroize_register(kek, sizeof(kek));
 
 	printf("generating KEK in %s\n", path);
 	fd = nyfe_file_open(path, NYFE_FILE_CREATE);
 
-	nyfe_random_bytes(kek, sizeof(kek));
+	sanctum_random_bytes(kek, sizeof(kek));
 	nyfe_file_write(fd, kek, sizeof(kek));
 	nyfe_file_close(fd);
 

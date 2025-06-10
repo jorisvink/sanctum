@@ -30,7 +30,9 @@ ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 endif
 
-OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
+include $(TOPDIR)/mk/random/$(RANDOM).mk
+
+OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 
 $(BIN): $(OBJDIR) $(OBJS) $(LIBNYFE)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
@@ -48,7 +50,8 @@ uninstall:
 $(LIBNYFE):
 	$(MAKE) -C ../../nyfe
 
-$(OBJDIR)/%.o: src/%.c
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

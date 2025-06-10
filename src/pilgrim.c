@@ -87,8 +87,8 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
 
-	nyfe_random_init();
-	nyfe_random_bytes(&local_id, sizeof(local_id));
+	sanctum_random_init();
+	sanctum_random_bytes(&local_id, sizeof(local_id));
 
 	io = proc->arg;
 	pilgrim_drop_access();
@@ -190,9 +190,9 @@ pilgrim_offer_check(u_int64_t now)
 	offer->pulse = now;
 	offer->ttl = offer_ttl;
 
-	nyfe_random_bytes(offer->key, sizeof(offer->key));
-	nyfe_random_bytes(&offer->spi, sizeof(offer->spi));
-	nyfe_random_bytes(&offer->salt, sizeof(offer->salt));
+	sanctum_random_bytes(offer->key, sizeof(offer->key));
+	sanctum_random_bytes(&offer->spi, sizeof(offer->spi));
+	sanctum_random_bytes(&offer->salt, sizeof(offer->salt));
 
 	sanctum_install_key_material(io->tx, offer->spi,
 	    offer->salt, offer->key, sizeof(offer->key));

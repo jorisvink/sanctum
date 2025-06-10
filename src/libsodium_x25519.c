@@ -32,7 +32,7 @@ sanctum_asymmetry_keygen(u_int8_t *priv, size_t privlen,
 	PRECOND(pub != NULL);
 	PRECOND(publen == crypto_scalarmult_curve25519_SCALARBYTES);
 
-	nyfe_random_bytes(priv, privlen);
+	sanctum_random_bytes(priv, privlen);
 
 	/*
 	 * The libsodium scalarmult base function will clamp the

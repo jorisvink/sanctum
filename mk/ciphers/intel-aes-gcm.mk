@@ -5,4 +5,4 @@
 CFLAGS+=	$(shell pkg-config libisal_crypto --cflags)
 LDFLAGS+=	$(shell pkg-config libisal_crypto --libs)
 
-SRC+=		$(CURDIR)/src/intel_aes_gcm.c
+SRC+=		src/intel_aes_gcm.c

@@ -63,7 +63,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 	PRECOND(proc->arg != NULL);
 	PRECOND(sanctum->mode == SANCTUM_MODE_LITURGY);
 
-	nyfe_random_init();
+	sanctum_random_init();
 	io = proc->arg;
 
 	sanctum_signal_trap(SIGQUIT);

@@ -3,6 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=ambry
+TOPDIR?=../../
 LIBNYFE=../../nyfe/libnyfe.a
 
 DESTDIR?=
@@ -23,22 +24,17 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
-CFLAGS+=$(shell pkg-config libsodium --cflags)
-LDFLAGS+=$(shell pkg-config libsodium --libs)
-
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 endif
 
-OBJS=	$(OBJDIR)/ambry.o
+SRC=	src/ambry.c
 
-ifeq ("$(CIPHER)", "nyfe-agelas")
-	CFLAGS+=-DSANCTUM_USE_AGELAS
-	OBJS+=$(OBJDIR)/nyfe_agelas.o
-else
-	OBJS+=$(OBJDIR)/libsodium_aes_gcm.o
-endif
+include $(TOPDIR)/mk/random/$(RANDOM).mk
+include $(TOPDIR)/mk/ciphers/$(CIPHER).mk
+
+OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 
 $(BIN): $(OBJDIR) $(OBJS) $(LIBNYFE)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
@@ -56,13 +52,8 @@ uninstall:
 $(LIBNYFE):
 	$(MAKE) -C ../../nyfe
 
-$(OBJDIR)/ambry.o: src/ambry.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(OBJDIR)/libsodium_aes_gcm.o: ../../src/libsodium_aes_gcm.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(OBJDIR)/nyfe_agelas.o: ../../src/nyfe_agelas.c
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

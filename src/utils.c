@@ -663,8 +663,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	op->hdr.spi = htobe32(spi);
 	op->hdr.magic = htobe64(magic);
 
-	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
-	nyfe_random_bytes(&op->hdr.flock, sizeof(op->hdr.flock));
+	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+	sanctum_random_bytes(&op->hdr.flock, sizeof(op->hdr.flock));
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
@@ -731,7 +731,7 @@ sanctum_offer_tfc(struct sanctum_packet *pkt)
 		    sizeof(struct sanctum_ipsec_tail) +
 		    SANCTUM_TAG_LENGTH;
 		data = sanctum_packet_head(pkt);
-		nyfe_random_bytes(&data[offset], pkt->length - offset);
+		sanctum_random_bytes(&data[offset], pkt->length - offset);
 	}
 }
 

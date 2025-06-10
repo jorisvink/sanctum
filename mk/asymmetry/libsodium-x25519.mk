@@ -9,4 +9,4 @@ endif
 
 LIBSODIUM=	1
 
-SRC+=		$(CURDIR)/src/libsodium_x25519.c
+SRC+=		src/libsodium_x25519.c

@@ -70,7 +70,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 	sanctum_platform_sandbox(proc);
 
 	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE) {
-		nyfe_random_init();
+		sanctum_random_init();
 		purgatory_tx_encap_reset();
 	}
 
@@ -206,7 +206,7 @@ static void
 purgatory_tx_encap_reset(void)
 {
 	encap_pn = 1;
-	nyfe_random_bytes(&encap_spi, sizeof(encap_spi));
+	sanctum_random_bytes(&encap_spi, sizeof(encap_spi));
 
 	sanctum_log(LOG_INFO, "encapsulation active (spi=%08x)", encap_spi);
 }
@@ -246,7 +246,7 @@ purgatory_tx_encapsulate(struct sanctum_packet *pkt)
 	hdr->ipsec.esp.seq = htobe32(hdr->ipsec.pn & 0xffffffff);
 	hdr->ipsec.pn = htobe64(hdr->ipsec.pn);
 
-	nyfe_random_bytes(hdr->seed, sizeof(hdr->seed));
+	sanctum_random_bytes(hdr->seed, sizeof(hdr->seed));
 	nyfe_kmac256_init(&kdf, sanctum->tek, sizeof(sanctum->tek),
 	    SANCTUM_ENCAP_LABEL, sizeof(SANCTUM_ENCAP_LABEL) - 1);
 	nyfe_kmac256_update(&kdf, hdr, sizeof(*hdr));

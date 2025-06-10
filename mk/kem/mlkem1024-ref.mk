@@ -11,4 +11,4 @@ $(KEMLIB): $(LIBNYFE)
 mlkem-tests: $(LIBNYFE)
 	$(MAKE) -C mlkem1024 tests
 
-SRC+=		$(CURDIR)/src/mlkem1024_ref.c
+SRC+=		src/mlkem1024_ref.c

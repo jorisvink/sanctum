@@ -9,4 +9,4 @@ endif
 
 LIBSODIUM=	1
 
-SRC+=		$(CURDIR)/src/libsodium_aes_gcm.c
+SRC+=		$(TOPDIR)/src/libsodium_aes_gcm.c

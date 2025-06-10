@@ -10,7 +10,7 @@ CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2 -fPIC
 CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common
-CFLAGS+=-fno-builtin -I../nyfe/include -DKYBER_K=4
+CFLAGS+=-fno-builtin -I../include -I../nyfe/include -DKYBER_K=4
 
 ifeq ("$(SANITIZE)", "1")
 	CFLAGS+=-fsanitize=address,undefined

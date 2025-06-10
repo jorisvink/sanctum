@@ -3,6 +3,7 @@
 CC?=cc
 OBJDIR?=obj
 BIN=sanctum
+TOPDIR?=$(CURDIR)
 VERSION=$(OBJDIR)/version.c
 LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
 
@@ -13,13 +14,15 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
+RANDOM?=nyfe
 KEM?=mlkem1024-ref
 CIPHER?=libsodium-aes-gcm
 ASYMMETRY?=libsodium-x25519
 
 KEM_MK_PATH?=mk/kem/$(KEM).mk
-CIPHER_MK_PATH=mk/ciphers/$(CIPHER).mk
-ASYMMETRY_MK_PATH=mk/asymmetry/$(ASYMMETRY).mk
+RANDOM_MK_PATH?=mk/random/$(RANDOM).mk
+CIPHER_MK_PATH?=mk/ciphers/$(CIPHER).mk
+ASYMMETRY_MK_PATH?=mk/asymmetry/$(ASYMMETRY).mk
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
@@ -60,6 +63,7 @@ ifeq ("$(JUMBO_FRAMES)", "1")
 	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
 endif
 
+TOOLS=hymn vicar ambry
 INSTALL_TARGETS=install-bin install-man
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
@@ -77,12 +81,13 @@ else ifeq ("$(OSNAME)", "openbsd")
 endif
 
 all: $(BIN)
-	$(MAKE) -C tools/hymn
-	$(MAKE) -C tools/ambry
-	$(MAKE) -C tools/vicar
+	$(MAKE) tools-build-hymn
+	$(MAKE) tools-build-vicar
+	$(MAKE) tools-build-ambry
 
 include $(KEM_MK_PATH)
 include $(CIPHER_MK_PATH)
+include $(RANDOM_MK_PATH)
 include $(ASYMMETRY_MK_PATH)
 
 OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
@@ -113,9 +118,9 @@ install: $(INSTALL_TARGETS)
 install-bin: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/
-	$(MAKE) -C tools/hymn install
-	$(MAKE) -C tools/ambry install
-	$(MAKE) -C tools/vicar install
+	$(MAKE) tools-install-hymn
+	$(MAKE) tools-install-vicar
+	$(MAKE) tools-install-ambry
 
 install-man:
 	mkdir -p $(DESTDIR)$(MAN_DIR)/man1
@@ -126,6 +131,17 @@ install-man:
 install-darwin-sb:
 	mkdir -p $(DARWIN_SB_PATH)
 	install -m 644 share/sb/*.sb $(DARWIN_SB_PATH)
+
+tools-build-%: $(LIBNYFE)
+	$(MAKE) -C tools/$* TOPDIR=$(TOPDIR) RANDOM=$(RANDOM) CIPHER=$(CIPHER)
+
+tools-install-%:
+	$(MAKE) -C tools/$* install \
+	    TOPDIR=$(TOPDIR) RANDOM=$(RANDOM) CIPHER=$(CIPHER)
+
+tools-clean-%:
+	$(MAKE) -C tools/$* clean \
+	    TOPDIR=$(TOPDIR) RANDOM=$(RANDOM) CIPHER=$(CIPHER)
 
 $(LIBNYFE):
 	$(MAKE) -C nyfe
@@ -143,9 +159,9 @@ clean:
 	rm -f $(VERSION)
 	$(MAKE) -C nyfe clean
 	$(MAKE) -C mlkem1024 clean
-	$(MAKE) -C tools/hymn clean
-	$(MAKE) -C tools/ambry clean
-	$(MAKE) -C tools/vicar clean
+	$(MAKE) tools-clean-hymn
+	$(MAKE) tools-clean-vicar
+	$(MAKE) tools-clean-ambry
 	rm -rf $(OBJDIR) $(BIN)
 
 .PHONY: all clean force

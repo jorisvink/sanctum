@@ -62,7 +62,7 @@ sanctum_shrine(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
 
-	nyfe_random_init();
+	sanctum_random_init();
 
 	io = proc->arg;
 	shrine_drop_access();
