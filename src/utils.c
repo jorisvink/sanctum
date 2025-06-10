@@ -289,7 +289,7 @@ sanctum_alloc_shared(size_t len, int *key)
 	int		tmp;
 	void		*ptr;
 
-	tmp = shmget(IPC_PRIVATE, len, IPC_CREAT | IPC_EXCL | 0700);
+	tmp = shmget(IPC_PRIVATE, len, IPC_CREAT | IPC_EXCL | 0600);
 	if (tmp == -1)
 		fatal("%s: shmget: %s", __func__, errno_s);
 
