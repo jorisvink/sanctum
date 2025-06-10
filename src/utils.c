@@ -289,7 +289,7 @@ sanctum_alloc_shared(size_t len, int *key)
 	int		tmp;
 	void		*ptr;
 
-	tmp = shmget(IPC_PRIVATE, len, IPC_CREAT | IPC_EXCL | 0700);
+	tmp = shmget(IPC_PRIVATE, len, IPC_CREAT | IPC_EXCL | 0600);
 	if (tmp == -1)
 		fatal("%s: shmget: %s", __func__, errno_s);
 
@@ -571,7 +571,7 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 {
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
-	u_int8_t			ikm[SANCTUM_KEY_LENGTH];
+	u_int8_t			ecdh[SANCTUM_KEY_LENGTH];
 	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
 	PRECOND(kex != NULL);
@@ -580,20 +580,27 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	PRECOND(sanctum->secret != NULL);
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 
-	nyfe_zeroize_register(ikm, sizeof(ikm));
+	nyfe_zeroize_register(ecdh, sizeof(ecdh));
+
+	if (sanctum_asymmetry_derive(kex, ecdh, sizeof(ecdh)) == -1) {
+		nyfe_zeroize(ecdh, sizeof(ecdh));
+		sanctum_log(LOG_NOTICE,
+		    "failed to calculate ecdh shared secret");
+		return (-1);
+	}
+
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_asymmetry_derive(kex, ikm, sizeof(ikm));
 	sanctum_key_derive(sanctum->secret, sanctum->cathedral_flock,
 	    kex->purpose, secret, sizeof(secret));
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));
 
-	len = sizeof(ikm);
+	len = sizeof(ecdh);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
-	nyfe_kmac256_update(&kdf, ikm, sizeof(ikm));
+	nyfe_kmac256_update(&kdf, ecdh, sizeof(ecdh));
 
 	len = sizeof(kex->kem);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
@@ -609,8 +616,8 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 
 	nyfe_kmac256_final(&kdf, okm, okm_len);
 
-	nyfe_zeroize(ikm, sizeof(ikm));
 	nyfe_zeroize(&kdf, sizeof(kdf));
+	nyfe_zeroize(ecdh, sizeof(ecdh));
 	nyfe_zeroize(secret, sizeof(secret));
 
 	return (0);
@@ -663,8 +670,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	op->hdr.spi = htobe32(spi);
 	op->hdr.magic = htobe64(magic);
 
-	nyfe_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
-	nyfe_random_bytes(&op->hdr.flock, sizeof(op->hdr.flock));
+	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+	sanctum_random_bytes(&op->hdr.flock, sizeof(op->hdr.flock));
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
@@ -731,7 +738,7 @@ sanctum_offer_tfc(struct sanctum_packet *pkt)
 		    sizeof(struct sanctum_ipsec_tail) +
 		    SANCTUM_TAG_LENGTH;
 		data = sanctum_packet_head(pkt);
-		nyfe_random_bytes(&data[offset], pkt->length - offset);
+		sanctum_random_bytes(&data[offset], pkt->length - offset);
 	}
 }
 

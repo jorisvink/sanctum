@@ -115,3 +115,51 @@ member in the data structure.
 A **timestamp** is given so that offers can get some form of replay
 protection. Offers that are out of range of -5,+5 seconds of the
 receiver their clock are dropped.
+
+## Liturgies
+
+A liturgy is a feature of a cathedral that clients can use
+when talking to said cathedral to do auto-discovery of peers
+in the same flock.
+
+Liturgies are carried in an **offer**.
+
+```
+struct sanctum_liturgy_offer {
+	u_int8_t		id;
+	u_int16_t		group;
+	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
+	u_int8_t		hidden;
+	u_int32_t		flags;
+} __attribute__((packed));
+```
+
+The **id** member carries the peer id in the flock.
+
+The **group** member designates in which group this liturgy lives, allowing
+different liturgies at the same time for different purposes.
+
+The **peers** array carries the peers that are online or are signaling
+when this message is received from the cathedral. When sending this
+message to the cathedral it carries the peers you are trying to signal,
+or is zeroed for discovery.
+
+The **hidden** member indicates if a peer is hidden in discovery mode,
+this can be used to build automatic hub-and-spoke networks where hubs
+set **hidden** to 0 while the spokes set it to 1. It is unfortunate that
+this was never rolled into the **flags** member.
+
+The **flags** member indicate if a peer is interested in a discovery
+or signaling (1 << 1) mode and wether or not it wants a remembrance (1 << 0).
+
+There are two types of liturgies:
+
+### Discovery
+
+The discovery liturgy can be used to auto-discover what other
+peers in the same flock are currently also online.
+
+### Signaling
+
+The signaling liturgy can be used to signal to other peers
+in the same flock that you are trying to reach them.

@@ -120,6 +120,8 @@ This allows one-way traffic to flow from a pilgrim to the shrine
 with a strong guarantee that the shrine cannot send data back
 (there are no keys nor are there any processes to do so).
 
+Note that no asymmetry is available for one-directional tunnels.
+
 ## Cathedrals
 
 A cathedral is a sanctum mode that can run on a machine somewhere
@@ -151,8 +153,6 @@ $ cd sanctum
 $ make
 # make install
 ```
-
-If this is to complicated for you, this isn't your software.
 
 ## Platforms
 
@@ -214,3 +214,10 @@ run chapel as _chapel
 You can use [libkyrka](https://github.com/jorisvink/libkyrka) to implement
 the sanctum protocol and tunnels into your application directly. Note that
 this does not provide the same type of sandboxing as the daemon.
+
+## Review canaries
+
+The review canaries are SHA256 hashes for known things that will
+eventually be fixed, they act as proof that I am aware of an issue.
+
+e0f199332bf6f72ce2ab4aaf9eb1dbede1004c9eb3d482a48bf3f538a586bea0

@@ -40,6 +40,7 @@
 
 #include "libnyfe.h"
 #include "sanctum_ctl.h"
+#include "sanctum_cipher.h"
 
 #define errno_s			strerror(errno)
 
@@ -1148,7 +1149,7 @@ hymn_keygen(int argc, char *argv[])
 	if (argc == 0)
 		usage_keygen();
 
-	nyfe_random_init();
+	sanctum_random_init();
 	nyfe_zeroize_register(key, sizeof(key));
 
 	for (idx = 0; idx < argc; idx++) {
@@ -1156,7 +1157,7 @@ hymn_keygen(int argc, char *argv[])
 
 		fd = nyfe_file_open(argv[idx], NYFE_FILE_CREATE);
 
-		nyfe_random_bytes(key, sizeof(key));
+		sanctum_random_bytes(key, sizeof(key));
 		nyfe_file_write(fd, key, sizeof(key));
 		nyfe_file_close(fd);
 	}

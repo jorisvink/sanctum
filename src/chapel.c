@@ -148,8 +148,8 @@ sanctum_chapel(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
 
-	nyfe_random_init();
-	nyfe_random_bytes(&local_id, sizeof(local_id));
+	sanctum_random_init();
+	sanctum_random_bytes(&local_id, sizeof(local_id));
 
 	io = proc->arg;
 	chapel_drop_access();
@@ -201,7 +201,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			delay_check = 10;
 			if (offer != NULL)
 				chapel_offer_clear();
-			nyfe_random_bytes(&local_id, sizeof(local_id));
+			sanctum_random_bytes(&local_id, sizeof(local_id));
 			chapel_offer_create(now, "clock jump");
 		}
 
@@ -757,8 +757,8 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	offer->ttl = offer_ttl;
 	offer->flags = OFFER_INCLUDE_KEM_PK;
 
-	nyfe_random_bytes(&offer->local.spi, sizeof(offer->local.spi));
-	nyfe_random_bytes(&offer->local.salt, sizeof(offer->local.salt));
+	sanctum_random_bytes(&offer->local.spi, sizeof(offer->local.spi));
+	sanctum_random_bytes(&offer->local.salt, sizeof(offer->local.salt));
 
 	if (sanctum->tun_spi != 0) {
 		offer->local.spi = (offer->local.spi & 0x0000ffff) |
@@ -767,13 +767,23 @@ chapel_offer_create(u_int64_t now, const char *reason)
 
 	sanctum_mlkem1024_keypair(&offer->local.kem);
 
-	sanctum_asymmetry_keygen(offer->local.private,
+	if (sanctum_asymmetry_keygen(offer->local.private,
 	    sizeof(offer->local.private), offer->local.public,
-	    sizeof(offer->local.public));
+	    sizeof(offer->local.public)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to calculate ecdh public key (local)");
+		chapel_offer_clear();
+		return;
+	}
 
-	sanctum_asymmetry_keygen(offer->remote.private,
+	if (sanctum_asymmetry_keygen(offer->remote.private,
 	    sizeof(offer->remote.private), offer->remote.public,
-	    sizeof(offer->remote.public));
+	    sizeof(offer->remote.public)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to calculate ecdh public key (remote)");
+		chapel_offer_clear();
+		return;
+	}
 
 	sanctum_log(LOG_INFO, "starting new key offering (%s) "
 	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",

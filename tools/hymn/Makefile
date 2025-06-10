@@ -1,21 +1,19 @@
 # hymn Makefile
 
-CC?=cc
-OBJDIR?=obj
+ifeq ("$(TOPDIR)", "")
+	error("No TOPDIR set")
+endif
+
+include $(TOPDIR)/mk/defaults.mk
+
 BIN=hymn
-LIBNYFE=../../nyfe/libnyfe.a
-
-DESTDIR?=
-PREFIX?=/usr/local
-INSTALL_DIR=$(PREFIX)/bin
-
-SRC=	src/hymn.c
+OBJDIR?=obj
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
-CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I../../include
-CFLAGS+=-I../../nyfe/include
+CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I$(TOPDIR)/include
+CFLAGS+=-I$(TOPDIR)/nyfe/include
 CFLAGS+=-g
 
 LDFLAGS+=$(LIBNYFE)
@@ -30,7 +28,11 @@ ifeq ("$(OSNAME)", "linux")
 	CFLAGS+=-D_GNU_SOURCE=1 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
 endif
 
-OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
+SRC=	src/hymn.c
+
+include $(RANDOM_MK_PATH)
+
+OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 
 $(BIN): $(OBJDIR) $(OBJS) $(LIBNYFE)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
@@ -46,9 +48,10 @@ uninstall:
 	rm -f $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 
 $(LIBNYFE):
-	$(MAKE) -C ../../nyfe
+	$(MAKE) -C $(TOPDIR)/nyfe
 
-$(OBJDIR)/%.o: src/%.c
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

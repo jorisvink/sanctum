@@ -31,6 +31,8 @@ static void	control_status_request(int, struct sockaddr_un *);
 
 /*
  * The control process, handles incoming control requests.
+ * We start as the first process so we do not have anything to unmap
+ * or detach from in the io space like all other processes.
  */
 void
 sanctum_control(struct sanctum_proc *proc)

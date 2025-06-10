@@ -130,7 +130,11 @@ void	sanctum_cipher_encrypt(struct sanctum_cipher *);
 int	sanctum_cipher_decrypt(struct sanctum_cipher *);
 
 /* The asymmetry API. */
-void	sanctum_asymmetry_keygen(u_int8_t *, size_t, u_int8_t *, size_t);
-void	sanctum_asymmetry_derive(struct sanctum_kex *, u_int8_t *, size_t);
+int	sanctum_asymmetry_keygen(u_int8_t *, size_t, u_int8_t *, size_t);
+int	sanctum_asymmetry_derive(struct sanctum_kex *, u_int8_t *, size_t);
+
+/* The random API. */
+void	sanctum_random_init(void);
+void	sanctum_random_bytes(void *, size_t);
 
 #endif

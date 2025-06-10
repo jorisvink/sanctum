@@ -38,6 +38,7 @@
 #include <unistd.h>
 
 #include "libnyfe.h"
+#include "sanctum_cipher.h"
 
 #define VICAR_KEY_LEN			64
 #define VICAR_SALT_LEN			32
@@ -122,7 +123,7 @@ main(int argc, char *argv[])
 	if (argc != 9)
 		usage();
 
-	nyfe_random_init();
+	sanctum_random_init();
 
 	memset(&cfg, 0, sizeof(cfg));
 	nyfe_zeroize_register(&cfg, sizeof(cfg));
@@ -208,7 +209,7 @@ vicar_wrap_config(struct config *cfg)
 	struct nyfe_agelas	cipher;
 	u_int8_t		okm[VICAR_KEY_LEN], passphrase[256];
 
-	nyfe_random_bytes(cfg->salt, sizeof(cfg->salt));
+	sanctum_random_bytes(cfg->salt, sizeof(cfg->salt));
 
 	nyfe_zeroize_register(okm, sizeof(okm));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));

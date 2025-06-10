@@ -1,12 +1,12 @@
 # sanctum Makefile
 
-CC?=cc
+TOPDIR?=$(CURDIR)
+export TOPDIR
+
 OBJDIR?=obj
 BIN=sanctum
-LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
-LIBMLKEM1024=$(CURDIR)/mlkem1024/libmlkem1024.a
-
 VERSION=$(OBJDIR)/version.c
+LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
 
 DESTDIR?=
 PREFIX?=/usr/local
@@ -15,7 +15,7 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
-CIPHER?=libsodium-aes-gcm
+include $(TOPDIR)/mk/defaults.mk
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
@@ -34,8 +34,6 @@ SRC=	src/sanctum.c \
 	src/control.c \
 	src/heaven_rx.c \
 	src/heaven_tx.c \
-	src/mlkem1024.c \
-	src/libsodium_x25519.c \
 	src/liturgy.c \
 	src/proc.c \
 	src/packet.c \
@@ -52,29 +50,13 @@ ifeq ("$(SANITIZE)", "1")
 	LDFLAGS+=-fsanitize=address,undefined
 endif
 
-LDFLAGS+=$(LIBNYFE) $(LIBMLKEM1024)
+LDFLAGS+=$(LIBNYFE)
 
 ifeq ("$(JUMBO_FRAMES)", "1")
 	CFLAGS+=-DSANCTUM_JUMBO_FRAMES=1
 endif
 
-ifeq ("$(CIPHER)", "libsodium-aes-gcm")
-	CFLAGS+=$(shell pkg-config libsodium --cflags)
-	LDFLAGS+=$(shell pkg-config libsodium --libs)
-	SRC+=src/libsodium_aes_gcm.c
-else ifeq ("$(CIPHER)", "intel-aes-gcm")
-	CFLAGS+=$(shell pkg-config libisal_crypto --cflags)
-	LDFLAGS+=$(shell pkg-config libisal_crypto --libs)
-	SRC+=src/intel_aes_gcm.c
-else ifeq ("$(CIPHER)", "nyfe-agelas")
-	CFLAGS+=$(shell pkg-config libsodium --cflags)
-	LDFLAGS+=$(shell pkg-config libsodium --libs)
-	CFLAGS+=-DSANCTUM_USE_AGELAS
-	SRC+=src/nyfe_agelas.c
-else
-$(error "No CIPHER selected")
-endif
-
+TOOLS=hymn vicar ambry
 INSTALL_TARGETS=install-bin install-man
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
@@ -91,15 +73,20 @@ else ifeq ("$(OSNAME)", "openbsd")
 	SRC+=src/platform_openbsd.c
 endif
 
-OBJS=	$(SRC:src/%.c=$(OBJDIR)/%.o)
+all: $(BIN)
+	$(MAKE) tools-build-hymn
+	$(MAKE) tools-build-vicar
+	$(MAKE) tools-build-ambry
+
+include $(KEM_MK_PATH)
+include $(CIPHER_MK_PATH)
+include $(RANDOM_MK_PATH)
+include $(ASYMMETRY_MK_PATH)
+
+OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
-all: $(BIN)
-	$(MAKE) -C tools/hymn
-	$(MAKE) -C tools/ambry
-	$(MAKE) -C tools/vicar
-
-$(BIN): $(OBJDIR) $(LIBNYFE) $(LIBMLKEM1024) $(OBJS) $(VERSION)
+$(BIN): $(OBJDIR) $(LIBNYFE) $(KEMLIB) $(OBJS) $(VERSION)
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
 $(VERSION): $(OBJDIR) force
@@ -124,9 +111,9 @@ install: $(INSTALL_TARGETS)
 install-bin: $(BIN)
 	mkdir -p $(DESTDIR)$(INSTALL_DIR)
 	install -m 555 $(BIN) $(DESTDIR)$(INSTALL_DIR)/
-	$(MAKE) -C tools/hymn install
-	$(MAKE) -C tools/ambry install
-	$(MAKE) -C tools/vicar install
+	$(MAKE) tools-install-hymn
+	$(MAKE) tools-install-vicar
+	$(MAKE) tools-install-ambry
 
 install-man:
 	mkdir -p $(DESTDIR)$(MAN_DIR)/man1
@@ -138,30 +125,34 @@ install-darwin-sb:
 	mkdir -p $(DARWIN_SB_PATH)
 	install -m 644 share/sb/*.sb $(DARWIN_SB_PATH)
 
+tools-build-%: $(LIBNYFE)
+	$(MAKE) -C tools/$*
+
+tools-install-%:
+	$(MAKE) -C tools/$* install
+
+tools-clean-%:
+	$(MAKE) -C tools/$* clean
+
 $(LIBNYFE):
 	$(MAKE) -C nyfe
-
-$(LIBMLKEM1024): $(LIBNYFE)
-	$(MAKE) -C mlkem1024
-
-mlkem1024-tests: $(LIBNYFE)
-	$(MAKE) -C mlkem1024 tests
 
 src/sanctum.c: $(VERSION)
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-$(OBJDIR)/%.o: src/%.c
+$(OBJDIR)/%.o: %.c
+	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(VERSION)
 	$(MAKE) -C nyfe clean
 	$(MAKE) -C mlkem1024 clean
-	$(MAKE) -C tools/hymn clean
-	$(MAKE) -C tools/ambry clean
-	$(MAKE) -C tools/vicar clean
+	$(MAKE) tools-clean-hymn
+	$(MAKE) tools-clean-vicar
+	$(MAKE) tools-clean-ambry
 	rm -rf $(OBJDIR) $(BIN)
 
 .PHONY: all clean force
