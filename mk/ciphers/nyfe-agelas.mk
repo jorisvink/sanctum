@@ -4,4 +4,4 @@
 
 CFLAGS+=	-DSANCTUM_USE_AGELAS
 
-SRC+=		src/nyfe_agelas.c
+SRC+=		$(TOPDIR)/src/nyfe_agelas.c

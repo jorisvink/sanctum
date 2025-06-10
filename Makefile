@@ -1,9 +1,10 @@
 # sanctum Makefile
 
-CC?=cc
+TOPDIR?=$(CURDIR)
+export TOPDIR
+
 OBJDIR?=obj
 BIN=sanctum
-TOPDIR?=$(CURDIR)
 VERSION=$(OBJDIR)/version.c
 LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
 
@@ -14,15 +15,7 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
-RANDOM?=nyfe
-KEM?=mlkem1024-ref
-CIPHER?=libsodium-aes-gcm
-ASYMMETRY?=libsodium-x25519
-
-KEM_MK_PATH?=mk/kem/$(KEM).mk
-RANDOM_MK_PATH?=mk/random/$(RANDOM).mk
-CIPHER_MK_PATH?=mk/ciphers/$(CIPHER).mk
-ASYMMETRY_MK_PATH?=mk/asymmetry/$(ASYMMETRY).mk
+include $(TOPDIR)/mk/defaults.mk
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
@@ -133,15 +126,13 @@ install-darwin-sb:
 	install -m 644 share/sb/*.sb $(DARWIN_SB_PATH)
 
 tools-build-%: $(LIBNYFE)
-	$(MAKE) -C tools/$* TOPDIR=$(TOPDIR) RANDOM=$(RANDOM) CIPHER=$(CIPHER)
+	$(MAKE) -C tools/$*
 
 tools-install-%:
-	$(MAKE) -C tools/$* install \
-	    TOPDIR=$(TOPDIR) RANDOM=$(RANDOM) CIPHER=$(CIPHER)
+	$(MAKE) -C tools/$* install
 
 tools-clean-%:
-	$(MAKE) -C tools/$* clean \
-	    TOPDIR=$(TOPDIR) RANDOM=$(RANDOM) CIPHER=$(CIPHER)
+	$(MAKE) -C tools/$* clean
 
 $(LIBNYFE):
 	$(MAKE) -C nyfe

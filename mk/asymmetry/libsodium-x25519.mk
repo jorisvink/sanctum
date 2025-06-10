@@ -9,4 +9,4 @@ endif
 
 LIBSODIUM=	1
 
-SRC+=		src/libsodium_x25519.c
+SRC+=		$(TOPDIR)/src/libsodium_x25519.c

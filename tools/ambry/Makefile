@@ -1,20 +1,19 @@
 # ambry Makefile
 
-CC?=cc
-OBJDIR?=obj
-BIN=ambry
-TOPDIR?=../../
-LIBNYFE=../../nyfe/libnyfe.a
+ifeq ("$(TOPDIR)", "")
+	error("No TOPDIR set")
+endif
 
-DESTDIR?=
-PREFIX?=/usr/local
-INSTALL_DIR=$(PREFIX)/bin
+include $(TOPDIR)/mk/defaults.mk
+
+BIN=ambry
+OBJDIR?=obj
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
 CFLAGS+=-Wmissing-prototypes -Wmissing-declarations -Wshadow
 CFLAGS+=-Wpointer-arith -Wcast-qual -Wsign-compare -O2
-CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I../../include
-CFLAGS+=-I../../nyfe/include
+CFLAGS+=-fstack-protector-all -Wtype-limits -fno-common -I$(TOPDIR)/include
+CFLAGS+=-I$(TOPDIR)/nyfe/include
 CFLAGS+=-g
 
 LDFLAGS+=$(LIBNYFE)
@@ -31,8 +30,8 @@ endif
 
 SRC=	src/ambry.c
 
-include $(TOPDIR)/mk/random/$(RANDOM).mk
-include $(TOPDIR)/mk/ciphers/$(CIPHER).mk
+include $(CIPHER_MK_PATH)
+include $(RANDOM_MK_PATH)
 
 OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 
@@ -50,7 +49,7 @@ uninstall:
 	rm -f $(DESTDIR)$(INSTALL_DIR)/$(BIN)
 
 $(LIBNYFE):
-	$(MAKE) -C ../../nyfe
+	$(MAKE) -C $(TOPDIR)/nyfe
 
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(shell dirname $@)
