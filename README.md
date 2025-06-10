@@ -152,8 +152,6 @@ $ make
 # make install
 ```
 
-If this is to complicated for you, this isn't your software.
-
 ## Platforms
 
 Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux-y things like Ubuntu 22.04.
@@ -214,3 +212,10 @@ run chapel as _chapel
 You can use [libkyrka](https://github.com/jorisvink/libkyrka) to implement
 the sanctum protocol and tunnels into your application directly. Note that
 this does not provide the same type of sandboxing as the daemon.
+
+## Review canaries
+
+The review canaries are SHA256 hashes for known things that will
+eventually be fixed, they act as proof that I am aware of an issue.
+
+e0f199332bf6f72ce2ab4aaf9eb1dbede1004c9eb3d482a48bf3f538a586bea0
