@@ -208,15 +208,15 @@ ambry_bundle_generate(int argc, char **argv)
 			if (src == dst)
 				continue;
 
-			sanctum_random_init();
-			sanctum_random_bytes(key, sizeof(key));
-			sanctum_random_init();
-
 			tunnel = src << 8 | dst;
 			reverse = dst << 8 | src;
 
 			if (seen[tunnel] || seen[reverse])
 				continue;
+
+			sanctum_random_init();
+			sanctum_random_bytes(key, sizeof(key));
+			sanctum_random_init();
 
 			ambry_key_wrap(fd, key, sizeof(key), src, tunnel, gen);
 			ambry_key_wrap(fd, key, sizeof(key), dst, reverse, gen);
