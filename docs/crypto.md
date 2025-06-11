@@ -72,7 +72,7 @@ peers that wish to communicate with each other.
 The SS is used to provide confidentiality and integrity for key offers
 and to provide additional strength to the session key derivation.
 
-The SS is not used directly, but instead two derivations are taken,
+The SS is not used directly, but instead three derivations are taken,
 one for each specific purpose:
 
 ```
