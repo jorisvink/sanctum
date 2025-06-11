@@ -45,14 +45,14 @@ and how it is used.
 
 ### TL;DR
 
-| Key | Description | Type |
-| --- | ----------- | ---- |
-| SS | The shared secret between two peers used for key exchanges. | Red
-| SK | A session key used to provide traffic confidentiality and integrity. | Red
-| CS | The cathedral secret, used to talk to a cathedral if enabled. | Red
-| KEK | A key-encryption-key, used for wrapping an Ambry. | Red
-| TEK | Traffic encapsulation key, used to prevent traffic analysis. | Traffic
-| Ambry | A shared secret (SS) wrapped with a KEK. | Black
+| Key | Description | Type | Process |
+| --- | ----------- | ---- | ------- |
+| SS | The shared secret between two peers used for key exchanges. | Red | keying proc |
+| SK | A session key used to provide traffic confidentiality and integrity. | Red | bless, confess |
+| CS | The cathedral secret, used to talk to a cathedral if enabled. | Red | chapel |
+| KEK | A key-encryption-key, used for wrapping an Ambry. | Red | chapel |
+| TEK | Traffic encapsulation key, used to prevent traffic analysis. | Traffic | purgatory-rx, purgatory-tx |
+| Ambry | A shared secret (SS) wrapped with a KEK. | Black | cathedral, chapel |
 
 ## Separation
 
