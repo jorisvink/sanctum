@@ -154,6 +154,10 @@ $ make
 # make install
 ```
 
+It is entirely possible to swap the underlying kem, ecdh, cipher and random
+implementations used in sanctum, please see the **mk** directory how this
+is configured and done.
+
 ## Platforms
 
 Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux-y things like Ubuntu 22.04.
