@@ -103,7 +103,7 @@ struct allow {
 };
 
 /*
- * A client that will receive a liturgy update for the attached flock.
+ * A client that will receive a liturgy update inside of a flock.
  */
 struct liturgy {
 	u_int32_t		ip;
