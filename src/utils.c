@@ -645,9 +645,6 @@ sanctum_offer_nonce(u_int8_t *nonce, size_t nonce_len)
 /*
  * Set the initial information for a sanctum_offer inside of the
  * given sanctum packet.
- *
- * Note that offers are allowed to be fragmented when sent over the
- * wire as they are quite big these days due to the PQ stuff.
  */
 struct sanctum_offer *
 sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
