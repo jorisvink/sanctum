@@ -607,7 +607,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	cipher.ctx = sanctum_cipher_setup(&key);
 	nyfe_zeroize(&key, sizeof(key));
 
-	aad.tunnel = ambry->tunnel;
+	aad.tunnel = htobe16(sanctum->tun_spi);
 	aad.generation = ambry->generation;
 	nyfe_memcpy(aad.seed, ambry->seed, sizeof(ambry->seed));
 
