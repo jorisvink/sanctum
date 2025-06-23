@@ -99,6 +99,7 @@ You can select what cipher sanctum will use by specifying a CIPHER environment
 variable at compile time with one of the following:
 
 - libsodium-aes-gcm (AES256-GCM via libsodium) **[default]**
+- mbedtls-aes-gcm (AES256-GCM via mbedtls its crypto lib).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 - nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
 
