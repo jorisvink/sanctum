@@ -690,7 +690,10 @@ struct sanctum_state {
 };
 
 extern struct sanctum_state	*sanctum;
+extern const char		*sanctum_kem;
 extern const char		*sanctum_cipher;
+extern const char		*sanctum_random;
+extern const char		*sanctum_asymmetry;
 
 /* src/config.c */
 void	sanctum_config_init(void);

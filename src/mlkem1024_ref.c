@@ -25,6 +25,9 @@
  * Good thing they're good at math instead.
  */
 
+/* The indicator for -v. */
+const char	*sanctum_kem = "mlkem1024-pqcrystals";
+
 /*
  * Generate a new ML-KEM-1024 keypair. The public key part is to be sent
  * to our peer who will encapsulate a secret value with it. We then use

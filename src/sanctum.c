@@ -41,8 +41,14 @@ struct sanctum_state		*sanctum = NULL;
 static void
 version(void)
 {
-	fprintf(stderr, "sanctum %s (%s) (%s)\n",
-	    sanctum_build_rev, sanctum_build_date, sanctum_cipher);
+	fprintf(stderr, "sanctum %s (%s)\n",
+	    sanctum_build_rev, sanctum_build_date);
+
+	fprintf(stderr, "configuration:\n");
+	fprintf(stderr, "  kem      : %s\n", sanctum_kem);
+	fprintf(stderr, "  cipher   : %s\n", sanctum_cipher);
+	fprintf(stderr, "  random   : %s\n", sanctum_random);
+	fprintf(stderr, "  asymmetry: %s\n", sanctum_asymmetry);
 
 	exit(1);
 }

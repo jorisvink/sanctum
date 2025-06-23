@@ -32,7 +32,7 @@ struct cipher_aes_gcm {
 
 static const char	*cipher_strerror(int);
 
-/* The cipher indicator for -v. */
+/* The indicator for -v. */
 const char	*sanctum_cipher = "mbedtls-aes-gcm";
 
 /*

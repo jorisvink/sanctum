@@ -20,6 +20,9 @@
 
 #include "sanctum.h"
 
+/* The indicator for -v. */
+const char	*sanctum_asymmetry = "libsodium-x25519";
+
 /*
  * Generate a new x25519 private key and derive its public key from it.
  */

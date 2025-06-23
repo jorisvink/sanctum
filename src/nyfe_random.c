@@ -24,6 +24,9 @@
 
 #include "sanctum.h"
 
+/* The indicator for -v. */
+const char	*sanctum_random = "nyfe-random";
+
 /*
  * Initialise the underlying random system, can be called multiple
  * times to re-initialise it.
