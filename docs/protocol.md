@@ -3,17 +3,20 @@
 ## User data
 
 User data that is encrypted is transported using a format
-that mimics ESP encapsulation in tunnel mode. This means
-we carry the ESP encapsulated payload in a UDP packet.
+that somewhat mimics ESP encapsulation in tunnel mode. This
+means we carry an ESP-like header encapsulated payload in
+a UDP packet.
 
-The exact format is based on rfc4106 (GCM in IPSec).
+The format is based on rfc4106 (GCM in IPSec).
 
 A short version of that is here:
 
 ```
-esp_header {
-	spi	- 32-bit
-	seq	- 32-bit
+sanctum_header {
+	spi		- 32-bit
+	seq		- 32-bit
+	flock_src	- 64-bit
+	flock_dst	- 64-bit
 }
 
 esp_tail {
@@ -22,11 +25,11 @@ esp_tail {
 }
 
 packet_counter - 64-bit
-payload = AES-GCM256(packet || esp_tail, aad=esp_header)
+payload = AES-GCM256(packet || esp_tail, aad=sanctum_header)
 
-+--------------------------------------------------+
-| ip | udp | esp_header | packet_counter | payload |
-+--------------------------------------------------+
++------------------------------------------------------+
+| ip | udp | sanctum_header | packet_counter | payload |
++------------------------------------------------------+
 ```
 
 ## Management data

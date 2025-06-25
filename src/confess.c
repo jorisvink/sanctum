@@ -36,9 +36,9 @@ static void	confess_packet_process(struct sanctum_packet *);
 static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
 static int	confess_arwin_check(struct sanctum_sa *,
-		    struct sanctum_ipsec_hdr *);
+		    struct sanctum_proto_hdr *);
 static void	confess_arwin_update(struct sanctum_sa *,
-		    struct sanctum_ipsec_hdr *);
+		    struct sanctum_proto_hdr *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -197,7 +197,8 @@ confess_key_management(void)
 static void
 confess_packet_process(struct sanctum_packet *pkt)
 {
-	struct sanctum_ipsec_hdr	*hdr;
+	struct sanctum_proto_hdr	*hdr;
+	u_int64_t			flock_src, flock_dst;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_CONFESS);
@@ -212,6 +213,13 @@ confess_packet_process(struct sanctum_packet *pkt)
 	hdr = sanctum_packet_head(pkt);
 	hdr->esp.spi = be32toh(hdr->esp.spi);
 	hdr->esp.seq = be32toh(hdr->esp.seq);
+
+	flock_src = be64toh(hdr->flock.src);
+	flock_dst = be64toh(hdr->flock.dst);
+
+	if (flock_src != sanctum->cathedral_flock_dst ||
+	    flock_dst != sanctum->cathedral_flock)
+		return;
 
 	if (confess_with_slot(&state.active, pkt) != -1)
 		return;
@@ -244,14 +252,13 @@ confess_packet_process(struct sanctum_packet *pkt)
 static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
-	u_int32_t			spi;
 	u_int64_t			now;
 	struct ip			*ip;
-	struct sanctum_ipsec_hdr	*hdr;
-	struct sanctum_ipsec_tail	*tail;
+	struct sanctum_proto_tail	*tail;
+	u_int8_t			*data;
 	size_t				ctlen;
 	struct sanctum_cipher		cipher;
-	u_int8_t			aad[12], *data;
+	struct sanctum_proto_hdr	*hdr, aad;
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
 	PRECOND(sa != NULL);
@@ -272,14 +279,14 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	ctlen = pkt->length - sizeof(*hdr) - SANCTUM_TAG_LENGTH;
 
+	memcpy(&aad, hdr, sizeof(*hdr));
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
 	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
 
-	spi = htobe32(sa->spi);
-	memcpy(aad, &spi, sizeof(spi));
-	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
+	aad.esp.spi = htobe32(hdr->esp.spi);
+	aad.esp.seq = htobe32(hdr->esp.seq);
 
-	cipher.aad = aad;
+	cipher.aad = &aad;
 	cipher.aad_len = sizeof(aad);
 
 	cipher.nonce = nonce;
@@ -312,8 +319,8 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
 	/* The length was checked earlier by the caller. */
-	pkt->length -= sizeof(struct sanctum_ipsec_hdr);
-	pkt->length -= sizeof(struct sanctum_ipsec_tail);
+	pkt->length -= sizeof(struct sanctum_proto_hdr);
+	pkt->length -= sizeof(struct sanctum_proto_tail);
 	pkt->length -= SANCTUM_TAG_LENGTH;
 
 	tail = sanctum_packet_tail(pkt);
@@ -356,7 +363,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
  * Check if the given packet was too old, or already seen.
  */
 static int
-confess_arwin_check(struct sanctum_sa *sa, struct sanctum_ipsec_hdr *hdr)
+confess_arwin_check(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
 {
 	u_int64_t	bit, pn;
 
@@ -390,7 +397,7 @@ confess_arwin_check(struct sanctum_sa *sa, struct sanctum_ipsec_hdr *hdr)
  * Update the anti-replay window.
  */
 static void
-confess_arwin_update(struct sanctum_sa *sa, struct sanctum_ipsec_hdr *hdr)
+confess_arwin_update(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
 {
 	u_int64_t	bit;
 

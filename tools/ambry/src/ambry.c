@@ -21,6 +21,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -29,6 +30,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "sanctum_portability.h"
 #include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
 #include "libnyfe.h"
@@ -36,26 +38,22 @@
 #define AMBRY_KEK_DIRECTORY	"kek-data"
 #define errno_s			strerror(errno)
 
-struct entry {
-	u_int16_t	tunnel;
-	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
-	u_int8_t	key[SANCTUM_AMBRY_KEY_LEN];
-	u_int8_t	tag[SANCTUM_AMBRY_TAG_LEN];
-} __attribute__((packed));
+void			fatal(const char *, ...) __attribute__((noreturn));
+static void		usage(void) __attribute__((noreturn));
 
-void		fatal(const char *, ...) __attribute__((noreturn));
-static void	usage(void) __attribute__((noreturn));
+static void		ambry_mkdir(u_int64_t, const char *, int);
 
-static void	ambry_mkdir(const char *, int);
+static void		ambry_kek_gen(const char *);
+static void		ambry_kek_path(u_int64_t, u_int8_t, char *, size_t);
+static void		ambry_key_wrap(struct sanctum_ambry_head *, int,
+			    const u_int8_t *, size_t, u_int64_t, u_int64_t,
+			    u_int8_t, u_int16_t);
 
-static void	ambry_kek_gen(const char *);
-static void	ambry_kek_path(char *, size_t, u_int8_t);
-static void	ambry_key_wrap(int, const u_int8_t *, size_t,
-		    u_int8_t, u_int16_t, u_int32_t);
+static int		ambry_kek_renew(int, char **);
+static int		ambry_kek_generate(int, char **);
+static int		ambry_bundle_generate(int, char **);
 
-static int	ambry_kek_renew(int, char **);
-static int	ambry_kek_generate(int, char **);
-static int	ambry_bundle_generate(int, char **);
+static u_int64_t	ambry_string_to_flock(const char *);
 
 static const struct {
 	const char	*name;
@@ -72,9 +70,9 @@ usage(void)
 {
 	fprintf(stderr, "usage: ambry [cmd]\n");
 	fprintf(stderr, "commands:\n");
-	fprintf(stderr, "  bundle        - Generates a new Ambry bundle\n");
-	fprintf(stderr, "  generate      - Generates all new KEKs\n");
-	fprintf(stderr, "  renew         - Renews a given KEK\n");
+	fprintf(stderr, "  bundle        - Generates a new ambry bundle\n");
+	fprintf(stderr, "  generate      - Generates all new device KEKs\n");
+	fprintf(stderr, "  renew         - Renews a given device KEK\n");
 
 	exit(1);
 }
@@ -130,15 +128,19 @@ static int
 ambry_kek_generate(int argc, char **argv)
 {
 	int		idx;
+	u_int64_t	flock;
 	char		path[1024];
 
-	if (argc != 0)
-		fatal("Usage: generate");
+	if (argc != 1)
+		fatal("Usage: generate [flock]");
 
-	ambry_mkdir(AMBRY_KEK_DIRECTORY, 0);
+	flock = ambry_string_to_flock(argv[0]);
+	ambry_mkdir(flock, AMBRY_KEK_DIRECTORY, 0);
 
-	for (idx = 0; idx <= 0xff; idx++) {
-		ambry_kek_path(path, sizeof(path), idx);
+	printf("generating KEKs under %" PRIx64 "\n", flock);
+
+	for (idx = 1; idx <= 0xff; idx++) {
+		ambry_kek_path(flock, idx, path, sizeof(path));
 		ambry_kek_gen(path);
 	}
 
@@ -148,23 +150,26 @@ ambry_kek_generate(int argc, char **argv)
 static int
 ambry_kek_renew(int argc, char **argv)
 {
-	unsigned long	kek;
-	char		*ep;
-	char		path[1024];
+	unsigned long		kek;
+	char			*ep;
+	u_int64_t		flock;
+	char			path[1024];
 
-	if (argc != 1)
-		fatal("Usage: renew [id]");
+	if (argc != 2)
+		fatal("Usage: renew [flock] [id]");
+
+	flock = ambry_string_to_flock(argv[0]);
 
 	errno = 0;
-	kek = strtoul(argv[0], &ep, 16);
-	if (errno != 0 || argv[0] == ep || *ep != '\0')
-		fatal("not a number: %s", argv[0]);
+	kek = strtoul(argv[1], &ep, 16);
+	if (errno != 0 || argv[1] == ep || *ep != '\0')
+		fatal("not a number: %s", argv[1]);
 
 	if (kek > UCHAR_MAX)
-		fatal("'%s': out of range", argv[0]);
+		fatal("'%s': out of range", argv[1]);
 
-	ambry_mkdir(AMBRY_KEK_DIRECTORY, 1);
-	ambry_kek_path(path, sizeof(path), kek);
+	ambry_mkdir(flock, AMBRY_KEK_DIRECTORY, 1);
+	ambry_kek_path(flock, kek, path, sizeof(path));
 
 	if (unlink(path) == -1 && errno != ENOENT)
 		fatal("failed to remove '%s' (%s)", path, errno_s);
@@ -181,71 +186,87 @@ ambry_bundle_generate(int argc, char **argv)
 	u_int32_t			gen;
 	int				fd, src, dst;
 	u_int8_t			seen[USHRT_MAX];
+	u_int64_t			flock_a, flock_b;
 	u_int16_t			tunnel, reverse, count;
 	u_int8_t			key[SANCTUM_AMBRY_KEY_LEN];
 
-	if (argc != 1)
-		fatal("Usage: bundle [file]");
+	if (argc != 3)
+		fatal("Usage: bundle [flock-A] [flock-B] [file]");
 
-	if (unlink(argv[0]) == -1 && errno != ENOENT)
-		fatal("failed to unlink '%s': %s", argv[0], errno_s);
+	flock_a = ambry_string_to_flock(argv[0]);
+	flock_b = ambry_string_to_flock(argv[1]);
+
+	if (unlink(argv[2]) == -1 && errno != ENOENT)
+		fatal("failed to unlink '%s': %s", argv[2], errno_s);
 
 	nyfe_mem_zero(&hdr, sizeof(hdr));
-	fd = nyfe_file_open(argv[0], NYFE_FILE_CREATE);
+	fd = nyfe_file_open(argv[2], NYFE_FILE_CREATE);
 
 	sanctum_random_init();
 	sanctum_random_bytes(&gen, sizeof(gen));
+	sanctum_random_bytes(hdr.seed, sizeof(hdr.seed));
 
-	hdr.generation = htonl(gen);
+	hdr.generation = htobe32(gen);
 	nyfe_file_write(fd, &hdr, sizeof(hdr));
 
 	count = 0;
 	memset(seen, 0, sizeof(seen));
 	nyfe_zeroize_register(key, sizeof(key));
 
-	for (src = 0; src <= 0xff; src++) {
-		for (dst = 0; dst <= 0xff; dst++) {
-			if (src == dst)
-				continue;
+	for (src = 1; src <= 0xff; src++) {
+		for (dst = 1; dst <= 0xff; dst++) {
+			if (flock_a == flock_b) {
+				if (src == dst)
+					continue;
+			}
 
 			tunnel = src << 8 | dst;
 			reverse = dst << 8 | src;
 
-			if (seen[tunnel] || seen[reverse])
-				continue;
+			if (flock_a == flock_b) {
+				if (seen[tunnel] || seen[reverse])
+					continue;
+			}
 
 			sanctum_random_init();
 			sanctum_random_bytes(key, sizeof(key));
 			sanctum_random_init();
 
-			ambry_key_wrap(fd, key, sizeof(key), src, tunnel, gen);
-			ambry_key_wrap(fd, key, sizeof(key), dst, reverse, gen);
+			ambry_key_wrap(&hdr, fd, key, sizeof(key),
+			    flock_a, flock_b, src, tunnel);
+			ambry_key_wrap(&hdr, fd, key, sizeof(key),
+			    flock_b, flock_a, dst, reverse);
 
-			seen[tunnel] = 1;
-			seen[reverse] = 1;
+			if (flock_a == flock_b) {
+				seen[tunnel] = 1;
+				seen[reverse] = 1;
+			}
+
 			count++;
 		}
 	}
 
 	nyfe_file_close(fd);
 
-	fprintf(stderr, "generated %u tunnels, generation 0x%x\n", count, gen);
+	fprintf(stderr, "%s: generated %u tunnels, generation 0x%x\n",
+	    argv[2], count, gen);
 	nyfe_zeroize(key, sizeof(key));
 
 	return (0);
 }
 
 static void
-ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
-    u_int16_t tunnel, u_int32_t gen)
+ambry_key_wrap(struct sanctum_ambry_head *hdr, int out, const u_int8_t *key,
+    size_t len, u_int64_t flock_src, u_int64_t flock_dst, u_int8_t id,
+    u_int16_t tunnel)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;
 	struct sanctum_key		okm;
 	struct sanctum_ambry_aad	aad;
-	struct entry			entry;
+	struct sanctum_ambry_entry	entry;
 	struct sanctum_cipher		cipher;
-	u_int8_t			okm_len;
+	u_int8_t			in_len;
 	char				path[1024];
 	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
@@ -253,7 +274,10 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 	if (len != sizeof(entry.key))
 		fatal("len != entry.key");
 
-	ambry_kek_path(path, sizeof(path), id);
+	ambry_kek_path(flock_src, id, path, sizeof(path));
+
+	flock_src = htobe64(flock_src);
+	flock_dst = htobe64(flock_dst);
 	fd = nyfe_file_open(path, NYFE_FILE_READ);
 
 	nyfe_zeroize_register(kek, sizeof(kek));
@@ -262,23 +286,37 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 	nyfe_zeroize_register(&entry, sizeof(entry));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	entry.tunnel = htons(tunnel);
+	entry.flock = flock_src;
+	entry.tunnel = htobe16(tunnel);
 	nyfe_memcpy(entry.key, key, len);
-	sanctum_random_bytes(entry.seed, sizeof(entry.seed));
 
 	if (nyfe_file_read(fd, kek, sizeof(kek)) != sizeof(kek))
 		fatal("bad read on KEK file %s", path);
 
 	(void)close(fd);
 
-	okm_len = sizeof(okm.key);
-
 	nyfe_kmac256_init(&kdf, kek, sizeof(kek),
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
 	nyfe_zeroize(kek, sizeof(kek));
 
-	nyfe_kmac256_update(&kdf, &okm_len, sizeof(okm_len));
-	nyfe_kmac256_update(&kdf, entry.seed, sizeof(entry.seed));
+	in_len = sizeof(hdr->seed);
+	nyfe_kmac256_update(&kdf, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kdf, hdr->seed, sizeof(hdr->seed));
+
+	in_len = sizeof(flock_src);
+	nyfe_kmac256_update(&kdf, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kdf, &flock_src, sizeof(flock_src));
+	nyfe_kmac256_update(&kdf, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kdf, &flock_dst, sizeof(flock_dst));
+
+	in_len = sizeof(hdr->generation);
+	nyfe_kmac256_update(&kdf, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kdf, &hdr->generation, sizeof(hdr->generation));
+
+	in_len = sizeof(tunnel);
+	nyfe_kmac256_update(&kdf, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kdf, &entry.tunnel, sizeof(entry.tunnel));
+
 	nyfe_kmac256_final(&kdf, okm.key, sizeof(okm.key));
 	nyfe_zeroize(&kdf, sizeof(kdf));
 
@@ -286,8 +324,10 @@ ambry_key_wrap(int out, const u_int8_t *key, size_t len, u_int8_t id,
 	nyfe_zeroize(&okm, sizeof(okm));
 
 	aad.tunnel = entry.tunnel;
-	aad.generation = htonl(gen);
-	nyfe_memcpy(aad.seed, entry.seed, sizeof(entry.seed));
+	aad.flock_src = flock_src;
+	aad.flock_dst = flock_dst;
+	aad.generation = hdr->generation;
+	nyfe_memcpy(aad.seed, hdr->seed, sizeof(hdr->seed));
 
 	nyfe_mem_zero(nonce, sizeof(nonce));
 	nonce[SANCTUM_NONCE_LENGTH - 1] = 0x01;
@@ -319,7 +359,6 @@ ambry_kek_gen(const char *path)
 	sanctum_random_init();
 	nyfe_zeroize_register(kek, sizeof(kek));
 
-	printf("generating KEK in %s\n", path);
 	fd = nyfe_file_open(path, NYFE_FILE_CREATE);
 
 	sanctum_random_bytes(kek, sizeof(kek));
@@ -330,21 +369,50 @@ ambry_kek_gen(const char *path)
 }
 
 static void
-ambry_kek_path(char *buf, size_t buflen, u_int8_t kek)
+ambry_kek_path(u_int64_t flock, u_int8_t kek, char *buf, size_t buflen)
 {
 	int		len;
 
-	len = snprintf(buf, buflen, "%s/kek-0x%02x", AMBRY_KEK_DIRECTORY, kek);
+	len = snprintf(buf, buflen, "%" PRIx64 "/%s/kek-0x%02x",
+	    flock, AMBRY_KEK_DIRECTORY, kek);
 	if (len == -1 || (size_t)len >= buflen)
 		fatal("failed to construct path to kek");
 }
 
 static void
-ambry_mkdir(const char *path, int exists_ok)
+ambry_mkdir(u_int64_t flock, const char *dir, int exists_ok)
 {
+	int		len;
+	char		path[1024];
+
+	len = snprintf(path, sizeof(path), "%" PRIx64, flock);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to construct flock dir");
+
+	if (mkdir(path, 0700) == -1 && errno != EEXIST)
+		fatal("failed to create '%s': %s", path, errno_s);
+
+	len = snprintf(path, sizeof(path), "%" PRIx64 "/%s", flock, dir);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to construct flock/%s dir", dir);
+
 	if (mkdir(path, 0700) == -1) {
 		if (exists_ok && errno == EEXIST)
 			return;
 		fatal("failed to create '%s': %s", path, errno_s);
 	}
+}
+
+static u_int64_t
+ambry_string_to_flock(const char *str)
+{
+	char		*ep;
+	u_int64_t	flock;
+
+	errno = 0;
+	flock = strtoull(str, &ep, 16);
+	if (errno != 0 || str == ep || *ep != '\0')
+		fatal("not a number: %s", str);
+
+	return (flock & ~(0xff));
 }

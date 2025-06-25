@@ -329,7 +329,7 @@ chapel_peer_check(u_int64_t now)
 static void
 chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 {
-	struct sanctum_ipsec_hdr	*hdr;
+	struct sanctum_proto_hdr	*hdr;
 	u_int32_t			spi, seq;
 
 	PRECOND(pkt != NULL);
@@ -394,7 +394,9 @@ chapel_cathedral_send_info(u_int64_t magic)
 
 	op = sanctum_offer_init(pkt,
 	    sanctum->cathedral_id, magic, SANCTUM_OFFER_TYPE_INFO);
-	op->hdr.flock = htobe64(sanctum->cathedral_flock);
+
+	op->hdr.flock_src = htobe64(sanctum->cathedral_flock);
+	op->hdr.flock_dst = htobe64(sanctum->cathedral_flock_dst);
 
 	info = &op->data.offer.info;
 	info->instance = htobe64(local_id);
@@ -411,7 +413,7 @@ chapel_cathedral_send_info(u_int64_t magic)
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
 	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock) == -1) {
+	    sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -462,7 +464,7 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
 	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock) == -1) {
+	    sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -576,6 +578,8 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	struct sanctum_key		key;
 	struct sanctum_ambry_aad	aad;
 	struct sanctum_cipher		cipher;
+	u_int16_t			tunnel;
+	u_int64_t			flock_src, flock_dst;
 	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
@@ -598,16 +602,38 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
 	nyfe_zeroize(kek, sizeof(kek));
 
-	len = sizeof(key.key);
+	len = sizeof(ambry->seed);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ambry->seed, sizeof(ambry->seed));
+
+	flock_src = htobe64(sanctum->cathedral_flock & ~(0xff));
+	flock_dst = htobe64(sanctum->cathedral_flock_dst & ~(0xff));
+
+	len = sizeof(flock_src);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, &flock_src, sizeof(flock_src));
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, &flock_dst, sizeof(flock_dst));
+
+	len = sizeof(ambry->generation);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, &ambry->generation,
+	    sizeof(ambry->generation));
+
+	len = sizeof(tunnel);
+	tunnel = htobe16(sanctum->tun_spi);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, &tunnel, sizeof(tunnel));
+
 	nyfe_kmac256_final(&kdf, key.key, sizeof(key.key));
 	nyfe_zeroize(&kdf, sizeof(kdf));
 
 	cipher.ctx = sanctum_cipher_setup(&key);
 	nyfe_zeroize(&key, sizeof(key));
 
-	aad.tunnel = htobe16(sanctum->tun_spi);
+	aad.tunnel = tunnel;
+	aad.flock_src = flock_src;
+	aad.flock_dst = flock_dst;
 	aad.generation = ambry->generation;
 	nyfe_memcpy(aad.seed, ambry->seed, sizeof(ambry->seed));
 
@@ -848,14 +874,16 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 	op = sanctum_offer_init(pkt, offer->local.spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_EXCHANGE);
 
-	if (sanctum->cathedral_flock != 0)
-		op->hdr.flock = htobe64(sanctum->cathedral_flock);
+	if (sanctum->cathedral_flock != 0) {
+		op->hdr.flock_src = htobe64(sanctum->cathedral_flock);
+		op->hdr.flock_dst = htobe64(sanctum->cathedral_flock_dst);
+	}
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock) == -1) {
+	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -939,7 +967,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 
 	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock) == -1) {
+	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}

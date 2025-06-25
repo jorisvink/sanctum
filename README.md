@@ -85,9 +85,9 @@ See [docs/crypto.md](docs/crypto.md) for details on the key exchange.
 
 ## Encryption
 
-Traffic is encapsulated with ESP in tunnel mode, using incrementing 64-bit
-sequence numbers. It is encrypted under AES256-GCM using keys negotiated
-as described above.
+Traffic is encapsulated with the sanctum protocol header which in turn is
+carried in a UDP packet, using incrementing 64-bit sequence numbers.
+Traffic is encrypted under AES256-GCM using keys negotiated as described above.
 
 A 96-bit nonce is used, constructed as follows:
 

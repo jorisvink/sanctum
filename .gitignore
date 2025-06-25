@@ -4,3 +4,12 @@ obj
 *.a
 hymn/hymn
 pontifex/pontifex
+
+test/aaaaaa00
+test/bbbbbb00
+test/cafeba00
+test/*.key
+test/*.bundle
+test/ambry.keys
+test/secrets/*
+test/ambry.keys

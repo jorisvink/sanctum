@@ -3,7 +3,15 @@
 The **test** directory contains configuration files and helpful scripts
 to test several features of sanctum on Linux.
 
-In order to run these you have to first configure your Linux environment.
+Before starting, you must have sanctum built and you have to generate
+some keys and bundles. You can use the **test/key-generate.sh** script
+in order to do so.
+
+```
+$ ./test/key-generate.sh
+```
+
+Next step is to configure your Linux environment.
 
 All test setups work in a left-right fashion. We will create two network
 namespaces for these:

@@ -79,7 +79,7 @@ sanctum_packet_start(struct sanctum_packet *pkt)
 }
 
 /*
- * Returns a pointer to the packet header (the location of the ESP header).
+ * Returns a pointer to the packet header (the location of the sanctum header).
  */
 void *
 sanctum_packet_head(struct sanctum_packet *pkt)
@@ -90,7 +90,7 @@ sanctum_packet_head(struct sanctum_packet *pkt)
 }
 
 /*
- * Returns a pointer to the packet data (immediately after the ESP header).
+ * Returns a pointer to the packet data (immediately after the sanctum header).
  */
 void *
 sanctum_packet_data(struct sanctum_packet *pkt)
@@ -121,8 +121,8 @@ sanctum_packet_crypto_checklen(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
 
-	if (pkt->length < sizeof(struct sanctum_ipsec_hdr) +
-	    sizeof(struct sanctum_ipsec_tail) + SANCTUM_TAG_LENGTH)
+	if (pkt->length < sizeof(struct sanctum_proto_hdr) +
+	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH)
 		return (-1);
 
 	return (0);

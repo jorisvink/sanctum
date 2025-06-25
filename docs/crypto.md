@@ -8,8 +8,8 @@ Agelas if selected at compile-time.
 
 For user traffic, unique session keys (defined below) are used in each
 direction with a 64-bit packet counter used to construct the nonce
-value (in combination with a unique salt). The ESP header and tail are
-included in the AAD.
+value (in combination with a unique salt). The sanctum protocol
+header and tail are included in the AAD.
 
 For management traffic, unique encryption keys are derived from the
 shared symmetric secret (defined below) per packet. In this case
@@ -64,6 +64,37 @@ used to prevent traffic analysis. This key is available in purgatory-rx
 and purgatory-tx, but does not need to be explicitly wiped from other
 processes due to its nature.
 
+## Base key derivation
+
+Sanctum never uses the SS, CS or KEK directly but instead derives
+keys from these for specific purposes.
+
+```
+sanctum_base_key(key, purpose):
+    cathedral_flock = flock tunnel belongs too, or 0 if no cathedral in use
+    cathedral_flock_dst = flock destination tunnels belongs too, or 0 when
+                          talking to a cathedral or no cathedral is in use
+
+    if cathedral_flock <= cathedral_flock_dst:
+        flock_a = cathedral_flock
+        flock_b = cathedral_flock_dst
+    else:
+        flock_a = cathedral_flock_dst
+        flock_b = cathedral_flock
+
+    if purpose == PURPOSE_OFFER:
+        label = "SANCTUM.OFFER.KDF"
+    else if purpose == PURPOSE_RX_KEY:
+        label = "SANCTUM.KEY.TRAFFIC.RX.KDF"
+    else if purpose == PURPOSE_TX_KEY:
+        label = "SANCTUM.KEY.TRAFFIC.TX.KDF"
+
+    x = len(flock_a) || flock_a || len(flock_b) || flock_b
+    base_key = KMAC256(key, label, x), 256-bit
+
+    return base_key
+```
+
 ## The shared secret (SS)
 
 The shared secret is a 256-bit symmetrical key shared between two
@@ -72,22 +103,19 @@ peers that wish to communicate with each other.
 The SS is used to provide confidentiality and integrity for key offers
 and to provide additional strength to the session key derivation.
 
-The SS is not used directly, but instead three derivations are taken,
-one for each specific purpose:
-
-```
-    ss = shared secret, loaded from disk
-    flock = cathedral_flock or 0 if no cathedral is in use, 64-bit
-
-    offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF", domain), 256-bit
-    traffic_base_rx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.RX.KDF", flock), 256-bit
-    traffic_base_tx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.TX.KDF", flock), 256-bit
-```
+The SS is not used directly, but instead different keys are derived
+for different purposes.
 
 Shared secrets can either be distributed invididually to all locations, or
 these can be distributed via a cathedral as an ambry, see docs/cathedral.md.
 
 ## A session key (SK)
+
+```
+    ss = shared symmetrical secret, 256-bit
+    traffic_base_rx = sanctum_base_key(ss, PURPOSE_RX)
+    traffic_base_tx = sanctum_base_key(ss, PURPOSE_TX)
+```
 
 Session keys (SK) are derived from the **traffic_base_rx** or
 **traffic_base_tx** keys in combination with directional unique
@@ -117,8 +145,10 @@ key or when the keys become too old.
 
 ```
 derive_offer_encryption_key(seed):
-    input = len(seed) || seed
-    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
+    x = len(seed) || seed
+    ss = shared symmetrical secret, 256-bit
+    key = sanctum_base_key(ss, PURPOSE_OFFER)
+    wk = KMAC256(key, "SANCTUM.SACRAMENT.KDF", x), 256-bit
     return wk
 
 offer_create():
@@ -150,6 +180,7 @@ offer_send_pk(offer):
 offer_recv_pk(offer):
     packet = recv()
 
+    ss = shared symmetrical secret, 256-bit
     dk = derive_offer_encryption_key(packet.header.seed)
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
@@ -157,9 +188,9 @@ offer_recv_pk(offer):
     offer.kem.ct, kem_ss = ML-KEM-1024-ENCAP(pt.kem.pk)
 
     if pt.instance < local_id
-        traffic_key = traffic_base_rx
+        traffic_key = sanctum_base_key(ss, PURPOSE_RX_KEY)
     else
-        traffic_key = traffic_base_tx
+        traffic_key = sanctum_base_key(ss, PURPOSE_TX_KEY)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
@@ -183,6 +214,7 @@ offer_send_ct(offer):
 offer_recv_ct(offer):
     packet = recv()
 
+    ss = shared symmetrical secret, 256-bit
     dk = derive_offer_encryption_key(packet.header.seed)
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
 
@@ -190,9 +222,9 @@ offer_recv_ct(offer):
     kem_ss = ML-KEM-1024-DECAP(offer.kem, pt.kem.ct)
 
     if pt.instance < local_id
-        traffic_key = traffic_base_tx
+        traffic_key = sanctum_base_key(ss, PURPOSE_TX_KEY)
     else
-        traffic_key = traffic_base_rx
+        traffic_key = sanctum_base_key(ss, PURPOSE_RX_KEY)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
@@ -217,26 +249,39 @@ The KEK is a 256-bit symmetrical key that is unique per peer and
 is used to wrap ambries carrying a new SS.
 
 ```
-kek_derive_key_for_wrapping_ambry(seed):
+kek_derive_key_for_wrapping_ambry(tunnel, flock_a, flock_b, generation, seed):
     kek = key-encryption-key, 256-bit
-    wk = KMAC256(kek, "SANCTUM.AMBRY.KDF", len(seed) || seed), 256-bit
+
+    x = len(seed) || seed || len(flock_a) || flock_a ||
+        len(flock_b) || flock_b || len(generation) || generation ||
+        len(tunnel) || tunnel
+
+    wk = KMAC256(kek, "SANCTUM.AMBRY.KDF", x), 256-bit
+
     return wk
 ```
 
 ## Ambry
 
-An ambry is a shared secret (SS) that is wrapped using the peer KEK.
+An ambry is a shared secret (SS) that is wrapped using a unique device KEK.
 
 ```
 ambry:
-    seed = seed selected uniformly at random, 512-bit
-    dk = kek_derive_key_for_wrapping_ambry(seed)
+    flock_src = source flock ID, 64-bit
+    flock_dst = destination flock ID, 64-bit
+    generation = ambry generation, 32-bit
+    tunnel = the tunnel this ambry is valid for, 16-bit
+    seed = ambry bundle seed, selected uniformly at random, 512-bit
 
-    tunnel = the tunnel this ambry is valid for
-    tag = the authentication tag for the wrapped data
     key = the new SS, selected uniformly at random, 256-bit
 
-    ambry = AES256-GCM(dk, nonce=1, aad=tunnel || seed, key)
+    dk = kek_derive_key_for_wrapping_ambry(tunnel,
+        flock_src, flock_dst, generation, seed)
+
+    aad = tunnel || flock_a || flock_b || generation || seed
+    ct, tag = AES256-GCM(dk, nonce=1, aad=aad, key)
+
+    return tunnel, ct, tag
 ```
 
 ## Cathedral secret (CS)
@@ -248,12 +293,17 @@ received to and from the cathedral.
 Each CS on the cathedral is tied to a 32-bit identifier.
 For more information on cathedrals, see docs/cathedral.md.
 
+The CS is not used directly, but instead different keys are
+derived for different purposes.
+
 Note that a cathedral does not hold the keys to unwrap Ambries.
 
 ```
 cathedral_derive(seed):
-    ck = cathedral secret, 256-bit
-    wk = KMAC256(ck, "SANCTUM.CATHEDRAL.KDF", len(seed) || seed), 512-bit
+    x = len(seed) || seed
+    cs = cathedral secret, 256-bit
+    ck = sanctum_base_key(cs, PURPOSE_OFFER)
+    wk = KMAC256(ck, "SANCTUM.CATHEDRAL.KDF", x), 512-bit
     return wk
 
 Peer to cathedral notify message:
@@ -303,7 +353,7 @@ The TEK is used when traffic encapsulation is turned on. When it is active,
 a 128-bit mask is derived using the TEK and KMAC256() based on an outer ESP
 header and a 128-bit seed.
 
-This mask is then XOR'd onto the inner ESP header and the outer header
+This mask is then XOR'd onto the inner sanctum header and the outer header
 is stripped, leaving us with the original to be transported packet.
 
 With traffic encapsulation all sanctum traffic will be indistinguishable

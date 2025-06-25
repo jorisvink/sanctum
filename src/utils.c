@@ -23,6 +23,7 @@
 #include <arpa/inet.h>
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
 #include <time.h>
@@ -447,19 +448,28 @@ sanctum_file_open(const char *path, struct stat *st)
 }
 
 /*
- * Derive a new key from the given shared secret for the intented purpose.
+ * Derive a base key from the given secret for a specified purpose.
  *
  * Essentially doing this:
  *	shared_secret = load_from_file()
- *	K = KMAC256(shared_secret, label_for_purpose, flock), 256-bit
+ *
+ *	if flock_src <= flock_dst:
+ *		flock_a = flock_src
+ *		flock_b = flock_dst
+ *	else:
+ *		flock_a = flock_dst
+ *		flock_b = flock_src
+ *
+ *	x = len(flock_a) || flock_a || len(flock_b) || flock_b
+ *	K = KMAC256(shared_secret, label_for_purpose, x), 256-bit
  *
  * The flock is the configured cathedral flock-id if a cathedral is in use
  * (or we are the cathedral), otherwise it is 0. This is done to separate
  * base key derivation between different flock domains.
  */
 int
-sanctum_key_derive(const char *path, u_int64_t flock, u_int32_t purpose,
-    void *out, size_t len)
+sanctum_base_key(const char *path, u_int64_t flock_src, u_int64_t flock_dst,
+    u_int32_t purpose, void *out, size_t len)
 {
 	int				fd;
 	struct nyfe_kmac256		kdf;
@@ -500,13 +510,26 @@ sanctum_key_derive(const char *path, u_int64_t flock, u_int32_t purpose,
 
 	(void)close(fd);
 
-	flen = sizeof(flock);
-	flock = htobe64(flock);
-
+	flen = sizeof(flock_src);
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret), label, strlen(label));
-	nyfe_kmac256_update(&kdf, &flen, sizeof(flen));
-	nyfe_kmac256_update(&kdf, &flock, sizeof(flock));
+
+	if (flock_src <= flock_dst) {
+		flock_src = htobe64(flock_src);
+		flock_dst = htobe64(flock_dst);
+		nyfe_kmac256_update(&kdf, &flen, sizeof(flen));
+		nyfe_kmac256_update(&kdf, &flock_src, sizeof(flock_src));
+		nyfe_kmac256_update(&kdf, &flen, sizeof(flen));
+		nyfe_kmac256_update(&kdf, &flock_dst, sizeof(flock_dst));
+	} else {
+		flock_src = htobe64(flock_src);
+		flock_dst = htobe64(flock_dst);
+		nyfe_kmac256_update(&kdf, &flen, sizeof(flen));
+		nyfe_kmac256_update(&kdf, &flock_dst, sizeof(flock_dst));
+		nyfe_kmac256_update(&kdf, &flen, sizeof(flen));
+		nyfe_kmac256_update(&kdf, &flock_src, sizeof(flock_src));
+	}
+
 	nyfe_kmac256_final(&kdf, out, len);
 
 	nyfe_zeroize(&kdf, sizeof(kdf));
@@ -522,7 +545,8 @@ sanctum_key_derive(const char *path, u_int64_t flock, u_int32_t purpose,
  */
 int
 sanctum_offer_kdf(const char *path, const char *label,
-    struct sanctum_key *key, void *seed, size_t seed_len, u_int64_t flock)
+    struct sanctum_key *key, void *seed, size_t seed_len,
+    u_int64_t flock_a, u_int64_t flock_b)
 {
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
@@ -537,7 +561,7 @@ sanctum_offer_kdf(const char *path, const char *label,
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_key_derive(path, flock,
+	sanctum_base_key(path, flock_a, flock_b,
 	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret));
 
 	len = seed_len;
@@ -592,8 +616,8 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_key_derive(sanctum->secret, sanctum->cathedral_flock,
-	    kex->purpose, secret, sizeof(secret));
+	sanctum_base_key(sanctum->secret, sanctum->cathedral_flock,
+	    sanctum->cathedral_flock_dst, kex->purpose, secret, sizeof(secret));
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));
@@ -668,7 +692,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	op->hdr.magic = htobe64(magic);
 
 	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
-	sanctum_random_bytes(&op->hdr.flock, sizeof(op->hdr.flock));
+	sanctum_random_bytes(&op->hdr.flock_src, sizeof(op->hdr.flock_src));
+	sanctum_random_bytes(&op->hdr.flock_dst, sizeof(op->hdr.flock_dst));
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 	op->data.timestamp = htobe64((u_int64_t)ts.tv_sec);
@@ -731,8 +756,8 @@ sanctum_offer_tfc(struct sanctum_packet *pkt)
 	    (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)) {
 		offset = pkt->length;
 		pkt->length = sanctum->tun_mtu +
-		    sizeof(struct sanctum_ipsec_hdr) +
-		    sizeof(struct sanctum_ipsec_tail) +
+		    sizeof(struct sanctum_proto_hdr) +
+		    sizeof(struct sanctum_proto_tail) +
 		    SANCTUM_TAG_LENGTH;
 		data = sanctum_packet_head(pkt);
 		sanctum_random_bytes(&data[offset], pkt->length - offset);

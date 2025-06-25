@@ -86,6 +86,7 @@ struct config {
 	u_int32_t		cathedral_id;
 	u_int64_t		cathedral_flock;
 	u_int16_t		cathedral_nat_port;
+	u_int64_t		cathedral_flock_dst;
 	u_int16_t		group;
 
 	int			tap;
@@ -190,6 +191,7 @@ static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
+static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
 
 static void	hymn_config_parse_liturgy_group(struct config *, char *);
 static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
@@ -260,6 +262,7 @@ static const struct {
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
 	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
 	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
+	{ "cathedral_flock_dst",hymn_config_parse_cathedral_flock_dst },
 	{ "liturgy_group",	hymn_config_parse_liturgy_group },
 	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix },
 	{ NULL,			NULL },
@@ -566,7 +569,22 @@ hymn_add(int argc, char *argv[])
 	if (strcmp(flock, "hymn")) {
 		if (config.peer_cathedral == 0)
 			fatal("a flock is only relevant for a cathedral");
-		config.cathedral_flock = hymn_number(flock, 16, 0, UINT64_MAX);
+
+		u_int64_t flock_src, flock_dst;
+
+		flock_dst = 0;
+		flock_src = 0;
+
+		if (sscanf(flock, "%" PRIx64 ":%" PRIx64,
+		    &flock_src, &flock_dst) != 2) {
+			if (sscanf(flock, "%" PRIx64, &flock_src) != 1)
+				fatal("invalid flock '%s'", flock);
+
+			flock_dst = flock_src;
+		}
+
+		config.cathedral_flock = flock_src;
+		config.cathedral_flock_dst = flock_dst;
 	}
 
 	if (which & HYMN_KEK) {
@@ -1696,7 +1714,14 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	printf("\n");
 
 	if (config.peer_cathedral) {
-		printf("    flock\t%" PRIx64 "\n", config.cathedral_flock);
+		printf("    flock-src\t%" PRIx64 "\n", config.cathedral_flock);
+
+		if (config.cathedral_flock_dst != 0 &&
+		    config.cathedral_flock_dst != config.cathedral_flock) {
+			printf("    flock-dst\t%" PRIx64 "\n",
+			    config.cathedral_flock_dst);
+		}
+
 		printf("    identity\t%" PRIx32 "\n", config.cathedral_id);
 	}
 
@@ -1870,6 +1895,13 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		    cfg->cathedral_id);
 		hymn_config_write(fd, "cathedral_flock %" PRIx64 "\n",
 		    cfg->cathedral_flock);
+
+		if (cfg->cathedral_flock_dst != cfg->cathedral_flock) {
+			hymn_config_write(fd,
+			    "cathedral_flock_dst %" PRIx64 "\n",
+			    cfg->cathedral_flock_dst);
+		}
+
 		if (cfg->identity_path != NULL) {
 			hymn_config_write(fd,
 			    "cathedral_secret %s\n", cfg->identity_path);
@@ -2082,6 +2114,12 @@ static void
 hymn_config_parse_cathedral_flock(struct config *cfg, char *flock)
 {
 	cfg->cathedral_flock = hymn_number(flock, 16, 0, UINT64_MAX);
+}
+
+static void
+hymn_config_parse_cathedral_flock_dst(struct config *cfg, char *flock)
+{
+	cfg->cathedral_flock_dst = hymn_number(flock, 16, 0, UINT64_MAX);
 }
 
 static void
