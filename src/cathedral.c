@@ -674,6 +674,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	u_int16_t			group;
 	const char			*mode;
 	struct liturgy			*entry;
+	u_int64_t			flock_dst;
 
 	PRECOND(pkt != NULL);
 	PRECOND(flock != NULL);
@@ -683,10 +684,14 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	op = sanctum_packet_head(pkt);
 	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
 
-	if (op->hdr.flock_dst != 0) {
+	flock_dst = be64toh(op->hdr.flock_dst);
+	flock_dst &= ~(CATHEDRAL_FLOCK_DOMAIN_MASK);
+
+	if ((catacomb == 0 && flock_dst != 0) ||
+	    (catacomb && flock_dst != flock->id)) {
 		sanctum_log(LOG_NOTICE,
 		    "refusing xflock liturgy (%" PRIx64 " <=> %" PRIx64 ")",
-		    op->hdr.flock_dst, flock->id);
+		    flock_dst, flock->id);
 		return;
 	}
 
