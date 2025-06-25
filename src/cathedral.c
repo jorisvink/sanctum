@@ -685,7 +685,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	if (op->hdr.flock_dst != 0) {
 		sanctum_log(LOG_NOTICE,
-		    "refusing xflock liturgy (%" PRIx64 " <=> %" PRIx64,
+		    "refusing xflock liturgy (%" PRIx64 " <=> %" PRIx64 ")",
 		    op->hdr.flock_dst, flock->id);
 		return;
 	}
