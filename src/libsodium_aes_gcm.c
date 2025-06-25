@@ -23,13 +23,13 @@
 #include "sanctum.h"
 
 /*
- * State structure, we only need to hold the key here.
+ * State structure, we only need to hold the libsodium context here.
  */
 struct cipher_aes_gcm {
 	crypto_aead_aes256gcm_state	ctx;
 };
 
-/* The cipher indicator for -v. */
+/* The indicator for -v. */
 const char	*sanctum_cipher = "libsodium-aes-gcm";
 
 /*

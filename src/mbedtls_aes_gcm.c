@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,35 +14,26 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * AES-GCM via the Intel "ISA-L_crypto" library.
- */
-
 #include <sys/types.h>
 
-#include <isa-l_crypto.h>
 #include <stdio.h>
+
+#include <mbedtls/error.h>
+#include <mbedtls/gcm.h>
 
 #include "sanctum.h"
 
 /*
- * The local cipher state.
+ * State structure, we only hold the mbedtls gcm context here.
  */
 struct cipher_aes_gcm {
-	struct gcm_key_data		key;
-	struct gcm_context_data		gcm;
+	mbedtls_gcm_context		gcm;
 };
 
-/*
- * The functions we use needs non const pointers for ivs so we do a dirty.
- */
-union deconst {
-	void		*p;
-	const void	*cp;
-};
+static const char	*cipher_strerror(int);
 
 /* The indicator for -v. */
-const char	*sanctum_cipher = "intel-aes-gcm";
+const char	*sanctum_cipher = "mbedtls-aes-gcm";
 
 /*
  * Perform any one-time cipher initialization.
@@ -50,6 +41,10 @@ const char	*sanctum_cipher = "intel-aes-gcm";
 void
 sanctum_cipher_init(void)
 {
+	int	ret;
+
+	if ((ret = mbedtls_gcm_self_test(0)) != 0)
+		fatal("mbedtls_gcm_self_test: %s", cipher_strerror(ret));
 }
 
 /*
@@ -58,6 +53,7 @@ sanctum_cipher_init(void)
 void *
 sanctum_cipher_setup(struct sanctum_key *key)
 {
+	int			ret;
 	struct cipher_aes_gcm	*cipher;
 
 	PRECOND(key != NULL);
@@ -66,7 +62,12 @@ sanctum_cipher_setup(struct sanctum_key *key)
 		fatal("failed to allocate cipher context");
 
 	nyfe_zeroize_register(cipher, sizeof(*cipher));
-	aes_gcm_pre_256(key->key, &cipher->key);
+
+	mbedtls_gcm_init(&cipher->gcm);
+
+	if ((ret = mbedtls_gcm_setkey(&cipher->gcm,
+	    MBEDTLS_CIPHER_ID_AES, key->key, 256)) != 0)
+		fatal("mbedtls_gcm_setkey: %s", cipher_strerror(ret));
 
 	return (cipher);
 }
@@ -78,7 +79,9 @@ sanctum_cipher_setup(struct sanctum_key *key)
 void
 sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 {
+	int			ret;
 	struct cipher_aes_gcm	*ctx;
+	size_t			data_len;
 
 	PRECOND(cipher != NULL);
 
@@ -91,9 +94,25 @@ sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 
 	ctx = cipher->ctx;
 
-	aes_gcm_enc_256(&ctx->key, &ctx->gcm, cipher->ct, cipher->pt,
-	    cipher->data_len, cipher->nonce, cipher->aad, cipher->aad_len,
-	    cipher->tag, SANCTUM_TAG_LENGTH);
+	if ((ret = mbedtls_gcm_starts(&ctx->gcm, MBEDTLS_GCM_ENCRYPT,
+	    cipher->nonce, cipher->nonce_len)) != 0)
+		fatal("mbedtls_gcm_starts: %s", cipher_strerror(ret));
+
+	if ((ret = mbedtls_gcm_update_ad(&ctx->gcm,
+	    cipher->aad, cipher->aad_len)) != 0)
+		fatal("mbedtls_gcm_update_ad: %s", cipher_strerror(ret));
+
+	if ((ret = mbedtls_gcm_update(&ctx->gcm, cipher->pt,
+	    cipher->data_len, cipher->pt, cipher->data_len, &data_len)) != 0)
+		fatal("mbedtls_gcm_update: %s", cipher_strerror(ret));
+
+	VERIFY(data_len == cipher->data_len);
+
+	if ((ret = mbedtls_gcm_finish(&ctx->gcm, NULL, 0,
+	    &data_len, cipher->tag, SANCTUM_TAG_LENGTH)) != 0)
+		fatal("mbedtls_gcm_finish: %s", cipher_strerror(ret));
+
+	VERIFY(data_len == 0);
 }
 
 /*
@@ -103,7 +122,9 @@ sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 int
 sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 {
+	int			ret;
 	struct cipher_aes_gcm	*ctx;
+	size_t			data_len;
 	u_int8_t		tag[SANCTUM_TAG_LENGTH];
 
 	PRECOND(cipher != NULL);
@@ -117,9 +138,25 @@ sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 
 	ctx = cipher->ctx;
 
-	aes_gcm_dec_256(&ctx->key, &ctx->gcm, cipher->pt, cipher->ct,
-	    cipher->data_len, cipher->nonce, cipher->aad, cipher->aad_len,
-	    tag, sizeof(tag));
+	if ((ret = mbedtls_gcm_starts(&ctx->gcm, MBEDTLS_GCM_DECRYPT,
+	    cipher->nonce, cipher->nonce_len)) != 0)
+		fatal("mbedtls_gcm_starts: %s", cipher_strerror(ret));
+
+	if ((ret = mbedtls_gcm_update_ad(&ctx->gcm,
+	    cipher->aad, cipher->aad_len)) != 0)
+		fatal("mbedtls_gcm_update_ad: %s", cipher_strerror(ret));
+
+	if ((ret = mbedtls_gcm_update(&ctx->gcm, cipher->pt,
+	    cipher->data_len, cipher->pt, cipher->data_len, &data_len)) != 0)
+		fatal("mbedtls_gcm_update: %s", cipher_strerror(ret));
+
+	VERIFY(data_len == cipher->data_len);
+
+	if ((ret = mbedtls_gcm_finish(&ctx->gcm, NULL, 0,
+	    &data_len, tag, sizeof(tag))) != 0)
+		fatal("mbedtls_gcm_finish: %s", cipher_strerror(ret));
+
+	VERIFY(data_len == 0);
 
 	if (nyfe_mem_cmp(cipher->tag, tag, sizeof(tag)))
 		return (-1);
@@ -128,7 +165,7 @@ sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 }
 
 /*
- * Cleanup the cipher states.
+ * Cleanup and wipe the cipher state.
  */
 void
 sanctum_cipher_cleanup(void *arg)
@@ -139,6 +176,20 @@ sanctum_cipher_cleanup(void *arg)
 
 	cipher = arg;
 
-	nyfe_zeroize(cipher, sizeof(*cipher));
+	mbedtls_gcm_free(&cipher->gcm);
 	free(cipher);
+}
+
+/*
+ * Helper function to convert the given error into a human readable
+ * string and return a pointer to it to the caller.
+ */
+static const char *
+cipher_strerror(int err)
+{
+	static char	buf[128];
+
+	mbedtls_strerror(err, buf, sizeof(buf));
+
+	return (buf);
 }

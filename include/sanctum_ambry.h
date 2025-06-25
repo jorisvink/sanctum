@@ -33,29 +33,36 @@
 #define SANCTUM_AMBRY_TAG_LEN		SANCTUM_TAG_LENGTH
 
 /*
- * The ambry AAD data.
+ * The ambry AAD data per entry.
  */
 struct sanctum_ambry_aad {
 	u_int16_t	tunnel;
+	u_int64_t	flock_src;
+	u_int64_t	flock_dst;
 	u_int32_t	generation;
 	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
 } __attribute__((packed));
 
 /*
- * The ambry header, just 4 bytes that denotes the generation.
+ * The ambry header.
+ *
+ * The header includes the current generation (4 bytes) and the
+ * 64-byte seed that is used in combination with individual KEKs
+ * to generate the encryption key under which the shared secrets are wrapped.
  */
 struct sanctum_ambry_head {
 	u_int32_t	generation;
-	u_int8_t	reserved[12];
+	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
 } __attribute__((packed));
 
 /* 
- * An ambry entry, consisting of the tunnel ID, the seed used for wrapping,
- * the wrapped key and the authentication tag.
+ * An ambry entry, consisting of the tunnel ID, the flock it belongs too,
+ * the wrapped key and the authentication tag calculated over the key
+ * ciphertext and sanctum_ambry_aad.
  */
 struct sanctum_ambry_entry {
+	u_int64_t	flock;
 	u_int16_t	tunnel;
-	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
 	u_int8_t	key[SANCTUM_AMBRY_KEY_LEN];
 	u_int8_t	tag[SANCTUM_AMBRY_TAG_LEN];
 } __attribute__((packed));

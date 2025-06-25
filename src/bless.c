@@ -192,12 +192,11 @@ bless_packet_heartbeat(void)
 static void
 bless_packet_process(struct sanctum_packet *pkt)
 {
-	u_int32_t			spi;
-	struct sanctum_ipsec_hdr	*hdr;
-	struct sanctum_ipsec_tail	*tail;
+	struct sanctum_proto_tail	*tail;
 	struct sanctum_cipher		cipher;
+	struct sanctum_proto_hdr	*hdr, aad;
 	size_t				overhead, offset;
-	u_int8_t			nonce[12], aad[12], *data;
+	u_int8_t			nonce[12], *data;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
@@ -260,18 +259,18 @@ bless_packet_process(struct sanctum_packet *pkt)
 	hdr->esp.seq = htobe32(hdr->pn & 0xffffffff);
 	hdr->pn = htobe64(hdr->pn);
 
+	hdr->flock.src = htobe64(sanctum->cathedral_flock);
+	hdr->flock.dst = htobe64(sanctum->cathedral_flock_dst);
+
 	tail->pad = 0;
 	tail->next = pkt->next;
 	pkt->length += sizeof(*tail);
 
+	memcpy(&aad, hdr, sizeof(*hdr));
 	memcpy(nonce, &state.salt, sizeof(state.salt));
 	memcpy(&nonce[sizeof(state.salt)], &hdr->pn, sizeof(hdr->pn));
 
-	spi = htobe32(state.spi);
-	memcpy(aad, &spi, sizeof(spi));
-	memcpy(&aad[sizeof(spi)], &hdr->pn, sizeof(hdr->pn));
-
-	cipher.aad = aad;
+	cipher.aad = &aad;
 	cipher.aad_len = sizeof(aad);
 
 	cipher.nonce = nonce;

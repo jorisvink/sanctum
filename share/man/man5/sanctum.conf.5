@@ -94,8 +94,15 @@ packets to thise port as well so that the cathedral can determine if
 what NAT type the instance is behind.
 .TP
 .BR cathedral_flock " " hex_value
-Set the flock value to which the instance belongs to, when communicating
-with the cathedral.
+Set the flock value to which the instance belongs to,
+when communicating via a cathedral.
+.TP
+.BR cathedral_flock_dst " " hex_value
+Set the flock value to which the instance is going to talk to,
+when communicating via a cathedral. If not configured, this gets
+the value of the
+.BR cathedral_flock
+setting.
 .TP
 .BR cathedral_secret " " path
 Path to the secret file used by the cathedral for federation.

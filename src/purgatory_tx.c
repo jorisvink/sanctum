@@ -212,9 +212,9 @@ purgatory_tx_encap_reset(void)
 }
 
 /*
- * If required, encapsulate the encrypted packet its ESP header with an outer
- * layer that cannot be differentiated from any other IPSec implementation
- * following RFC 4106.
+ * If required, encapsulate the encrypted packet its sanctum protocol header
+ * with an outer ESP layer that cannot be differentiated from any other
+ * IPSec implementation following RFC 4106.
  *
  * Note that no integrity is provided or checked at this layer, it is purely
  * for traffic analysis protection.

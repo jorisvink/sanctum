@@ -43,19 +43,7 @@ extern const char	*sanctum_build_date;
 #include <string.h>
 #include <syslog.h>
 
-#if defined(__APPLE__)
-#undef daemon
-extern int daemon(int, int);
-
-#include <libkern/OSByteOrder.h>
-#define htobe16(x)		OSSwapHostToBigInt16(x)
-#define htobe32(x)		OSSwapHostToBigInt32(x)
-#define htobe64(x)		OSSwapHostToBigInt64(x)
-#define be16toh(x)		OSSwapBigToHostInt16(x)
-#define be32toh(x)		OSSwapBigToHostInt32(x)
-#define be64toh(x)		OSSwapBigToHostInt64(x)
-#endif
-
+#include "sanctum_portability.h"
 #include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
 #include "sanctum_ctl.h"
@@ -224,7 +212,8 @@ extern int daemon(int, int);
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
-	u_int64_t		flock;
+	u_int64_t		flock_src;
+	u_int64_t		flock_dst;
 	u_int32_t		spi;
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
@@ -423,19 +412,26 @@ struct sanctum_pool {
 };
 
 /*
- * An encrypted packet its head, includes the ESP header *and* the
- * 64-bit packet number used as part of the nonce later.
+ * An encrypted packet its head, includes the ESP header, the
+ * 64-bit packet number used as part of the nonce later and
+ * potential flock src/dst numbers.
  */
-struct sanctum_ipsec_hdr {
+struct sanctum_proto_hdr {
 	struct {
 		u_int32_t		spi;
 		u_int32_t		seq;
 	} esp;
-	u_int64_t		pn;
+
+	u_int64_t			pn;
+
+	struct {
+		u_int64_t		src;
+		u_int64_t		dst;
+	} flock;
 } __attribute__((packed));
 
 /* ESP trailer, added to the plaintext before encrypted. */
-struct sanctum_ipsec_tail {
+struct sanctum_proto_tail {
 	u_int8_t		pad;
 	u_int8_t		next;
 } __attribute__((packed));
@@ -444,10 +440,18 @@ struct sanctum_ipsec_tail {
  * The encapsulation header consisting of a normal ESP header
  * in combination with a 16 byte seed. The entire header is
  * used for mask generation when encapsulating an outgoing packet.
- * The mask is used to hide the inner ESP header and 64-bit pn.
+ * The mask is then used to hide the inner sanctum header entirely.
  */
 struct sanctum_encap_hdr {
-	struct sanctum_ipsec_hdr	ipsec;
+	struct {
+		struct {
+			u_int32_t	spi;
+			u_int32_t	seq;
+		} esp;
+
+		u_int64_t		pn;
+	} ipsec;
+
 	u_int8_t			seed[16];
 } __attribute__((packed));
 
@@ -468,7 +472,7 @@ struct sanctum_encap_hdr {
 
 /* The data starts after the header. */
 #define SANCTUM_PACKET_DATA_OFFSET	\
-    (SANCTUM_PACKET_HEAD_OFFSET + sizeof(struct sanctum_ipsec_hdr))
+    (SANCTUM_PACKET_HEAD_OFFSET + sizeof(struct sanctum_proto_hdr))
 
 /*
  * Maximum packet sizes we can receive from the interfaces.
@@ -636,6 +640,9 @@ struct sanctum_state {
 	/* The flock we are part of for a cathedral (tunnel mode only). */
 	u_int64_t		cathedral_flock;
 
+	/* The flock we are talking to for a cathedral (tunnel mode only). */
+	u_int64_t		cathedral_flock_dst;
+
 	/* The path to the cathedral secret (!cathedral mode). */
 	char			*cathedral_secret;
 
@@ -690,7 +697,10 @@ struct sanctum_state {
 };
 
 extern struct sanctum_state	*sanctum;
+extern const char		*sanctum_kem;
 extern const char		*sanctum_cipher;
+extern const char		*sanctum_random;
+extern const char		*sanctum_asymmetry;
 
 /* src/config.c */
 void	sanctum_config_init(void);
@@ -767,13 +777,12 @@ void	sanctum_peer_update(u_int32_t, u_int16_t);
 int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 char	*sanctum_config_read(FILE *, char *, size_t);
-int	sanctum_key_derive(const char *, u_int64_t, u_int32_t, void *, size_t);
 int	sanctum_traffic_kdf(struct sanctum_kex *, u_int8_t *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *, struct sanctum_sa *);
 int	sanctum_offer_kdf(const char *, const char *,
-	    struct sanctum_key *, void *, size_t, u_int64_t);
+	    struct sanctum_key *, void *, size_t, u_int64_t, u_int64_t);
 void	sanctum_offer_nonce(u_int8_t *, size_t);
 void	sanctum_offer_tfc(struct sanctum_packet *);
 void	sanctum_offer_remembrance(struct sanctum_offer *, u_int64_t);
@@ -783,6 +792,8 @@ int	sanctum_offer_decrypt(struct sanctum_key *,
 	    struct sanctum_offer *, int);
 void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
 	    u_int32_t, const void *, size_t);
+int	sanctum_base_key(const char *, u_int64_t, u_int64_t,
+	    u_int32_t, void *, size_t);
 
 const char		*sanctum_inet_string(struct sockaddr_in *);
 struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,

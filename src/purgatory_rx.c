@@ -249,7 +249,7 @@ purgatory_rx_recv_packets(int fd)
 static int
 purgatory_rx_packet_check(struct sanctum_packet *pkt)
 {
-	struct sanctum_ipsec_hdr	*hdr;
+	struct sanctum_proto_hdr	*hdr;
 	u_int32_t			seq, spi;
 	u_int64_t			pn, last;
 

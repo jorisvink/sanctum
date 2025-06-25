@@ -64,6 +64,7 @@ static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_cathedral_p2p_sync(char *);
+static void	config_parse_cathedral_flock_dst(char *);
 static void	config_parse_liturgy_discoverable(char *);
 static void	config_parse_cathedral_remembrance(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
@@ -73,6 +74,7 @@ static void	config_parse_ip_mask(char *, struct sockaddr_in *,
 		    struct sockaddr_in *);
 
 static void	config_mtu_check(void);
+static void	config_cathedral_check(void);
 static void	config_unix_set(struct sanctum_sun *,
 		    const char *, const char *);
 
@@ -108,6 +110,7 @@ static const struct {
 	{ "cathedral_secret",		config_parse_cathedral_secret },
 	{ "cathedral_nat_port",		config_parse_cathedral_nat_port },
 	{ "cathedral_p2p_sync",		config_parse_cathedral_p2p_sync },
+	{ "cathedral_flock_dst",	config_parse_cathedral_flock_dst },
 	{ "cathedral_remembrance",	config_parse_cathedral_remembrance },
 	{ NULL,			NULL },
 };
@@ -205,8 +208,7 @@ sanctum_config_load(const char *file)
 			fatal("cathedral: no secretdir configured");
 		break;
 	case SANCTUM_MODE_LITURGY:
-		if (sanctum->kek == NULL)
-			fatal("liturgy mode requires a kek path");
+		config_cathedral_check();
 		if (sanctum->liturgy_prefix.sin_addr.s_addr == 0)
 			fatal("no liturgy_prefix has been set");
 		break;
@@ -214,20 +216,8 @@ sanctum_config_load(const char *file)
 		if (sanctum->kek != NULL &&
 		    !(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE))
 			fatal("kek configured but no cathedral set");
-
-		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
-			if (sanctum->cathedral_secret == NULL)
-				fatal("cathedral given but no secret set");
-			if (sanctum->cathedral_id == 0)
-				fatal("cathedral given but no id set");
-
-			if (sanctum->peer_ip == 0) {
-				sanctum_atomic_write(&sanctum->peer_port,
-				    sanctum->cathedral.sin_port);
-				sanctum_atomic_write(&sanctum->peer_ip,
-				    sanctum->cathedral.sin_addr.s_addr);
-			}
-		}
+		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)
+			config_cathedral_check();
 		config_mtu_check();
 		break;
 	case SANCTUM_MODE_SHRINE:
@@ -723,6 +713,18 @@ config_parse_cathedral_flock(char *opt)
 }
 
 /*
+ * Parse the cathedral_flock configuration option.
+ */
+static void
+config_parse_cathedral_flock_dst(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sscanf(opt, "%" PRIx64, &sanctum->cathedral_flock_dst) != 1)
+		fatal("cathedral_flock_dst <64-bit hex value>");
+}
+
+/*
  * Parse the cathedral_secret configuration option.
  */
 static void
@@ -979,8 +981,8 @@ config_mtu_check(void)
 	    sanctum->mode == SANCTUM_MODE_PILGRIM);
 
 	overhead = sizeof(struct ip) + sizeof(struct udphdr) +
-	    sizeof(struct sanctum_ipsec_hdr) +
-	    sizeof(struct sanctum_ipsec_tail) + SANCTUM_TAG_LENGTH;
+	    sizeof(struct sanctum_proto_hdr) +
+	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH;
 
 	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)
 		overhead += sizeof(struct sanctum_encap_hdr);
@@ -990,5 +992,35 @@ config_mtu_check(void)
 	if (sanctum->tun_mtu > SANCTUM_PACKET_DATA_LEN - overhead) {
 		fatal("mtu misconfigured, %d cannot be set (%zu max)",
 		    sanctum->tun_mtu, SANCTUM_PACKET_DATA_LEN - overhead);
+	}
+}
+
+/*
+ * Check that the configuration is as expected when wanting to
+ * use a cathedral as there are some requirements on what should
+ * be configured.
+ */
+static void
+config_cathedral_check(void)
+{
+	if (sanctum->cathedral_secret == NULL)
+		fatal("cathedral given but no secret set");
+
+	if (sanctum->cathedral_id == 0)
+		fatal("cathedral given but no id set");
+
+	if (sanctum->cathedral_flock == 0)
+		fatal("cathedral given but no flock set");
+
+	if (sanctum->cathedral_flock_dst == 0)
+		sanctum->cathedral_flock_dst = sanctum->cathedral_flock;
+
+	if (sanctum->mode == SANCTUM_MODE_TUNNEL) {
+		if (sanctum->peer_ip == 0) {
+			sanctum_atomic_write(&sanctum->peer_port,
+			    sanctum->cathedral.sin_port);
+			sanctum_atomic_write(&sanctum->peer_ip,
+			    sanctum->cathedral.sin_addr.s_addr);
+		}
 	}
 }

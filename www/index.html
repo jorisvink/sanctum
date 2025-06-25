@@ -65,7 +65,7 @@ a, a:visited {
     </div>
 
     <div class="release">
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.25.tgz">sanctum 0.9.25</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.26.tgz">sanctum 0.9.26</a>
     </div>
 
     <div class="sep"></div>
@@ -153,13 +153,38 @@ a, a:visited {
 
 <pre>
 ss = shared symmetrical key, 256-bit, loaded from disk
-offer_base = KMAC256(ss, "SANCTUM.KEY.OFFER.KDF"), 256-bit
-traffic_base_rx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.RX.KDF"), 256-bit
-traffic_base_tx = KMAC256(ss, "SANCTUM.KEY.TRAFFIC.TX.KDF"), 256-bit
+traffic_base_rx = sanctum_base_key(ss, PURPOSE_RX)
+traffic_base_tx = sanctum_base_key(ss, PURPOSE_TX)
+
+sanctum_base_key(key, purpose):
+    cathedral_flock = flock tunnel belongs too, or 0 if no cathedral in use
+    cathedral_flock_dst = flock destination tunnels belongs too, or 0 when
+                          talking to a cathedral or no cathedral is in use
+
+    if cathedral_flock <= cathedral_flock_dst:
+        flock_a = cathedral_flock
+        flock_b = cathedral_flock_dst
+    else:
+        flock_a = cathedral_flock_dst
+        flock_b = cathedral_flock
+
+    if purpose == PURPOSE_OFFER:
+        label = "SANCTUM.OFFER.KDF"
+    else if purpose == PURPOSE_RX_KEY:
+        label = "SANCTUM.KEY.TRAFFIC.RX.KDF"
+    else if purpose == PURPOSE_TX_KEY:
+        label = "SANCTUM.KEY.TRAFFIC.TX.KDF"
+
+    x = len(flock_a) || flock_a || len(flock_b) || flock_b
+    base_key = KMAC256(key, label, x), 256-bit
+
+    return base_key
 
 derive_offer_encryption_key(seed):
-    input = len(seed) || seed
-    wk = KMAC256(offer_base, "SANCTUM.SACRAMENT.KDF", input), 256-bit
+    x = len(seed) || seed
+    ss = shared symmetrical secret, 256-bit
+    key = sanctum_base_key(ss, PURPOSE_OFFER)
+    wk = KMAC256(key, "SANCTUM.SACRAMENT.KDF", x), 256-bit
     return wk
 
 offer_create():
@@ -198,9 +223,9 @@ offer_recv_pk(offer):
     offer.kem.ct, kem_ss = ML-KEM-1024-ENCAP(pt.kem.pk)
 
     if pt.instance < local_id
-        traffic_key = traffic_base_rx
+        traffic_key = sanctum_base_key(ss, PURPOSE_RX_KEY)
     else
-        traffic_key = traffic_base_tx
+        traffic_key = sanctum_base_key(ss, PURPOSE_TX_KEY)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
@@ -231,9 +256,9 @@ offer_recv_ct(offer):
     kem_ss = ML-KEM-1024-DECAP(offer.kem, pt.kem.ct)
 
     if pt.instance < local_id
-        traffic_key = traffic_base_tx
+        traffic_key = sanctum_base_key(ss, PURPOSE_TX_KEY)
     else
-        traffic_key = traffic_base_rx
+        traffic_key = sanctum_base_key(ss, PURPOSE_RX_KEY)
 
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
         len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
@@ -303,11 +328,15 @@ key exchange:
     <h2>Source?</h2>
 
     <p>
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.25.tgz">sanctum 0.9.25</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.26.tgz">sanctum 0.9.26</a>
     </p>
 
     <p>
         A mirror of the repository is available on <a href="https://github.com/jorisvink/sanctum" target="_blank">github</a>.
+    </p>
+
+    <p>
+        A library that implements the sanctum protocol (libkyrka) can be found <a href="https://github.com/jorisvink/libkyrka" target="_blank">here</a>.
     </p>
 
     <h2>How?</h2>

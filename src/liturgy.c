@@ -133,7 +133,9 @@ liturgy_offer_send(void)
 
 	op = sanctum_offer_init(pkt, sanctum->cathedral_id,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
-	op->hdr.flock = htobe64(sanctum->cathedral_flock);
+
+	op->hdr.flock_dst = 0;
+	op->hdr.flock_src = htobe64(sanctum->cathedral_flock);
 
 	lit = &op->data.offer.liturgy;
 
@@ -149,7 +151,7 @@ liturgy_offer_send(void)
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
 	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock) == -1) {
+	    sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -199,7 +201,7 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
 	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock) == -1) {
+	    sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}

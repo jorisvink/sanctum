@@ -12,13 +12,13 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
-RANDOM?=nyfe
+PRNG?=nyfe
 KEM?=mlkem1024-ref
 CIPHER?=libsodium-aes-gcm
 ASYMMETRY?=libsodium-x25519
 
 KEM_MK_PATH?=$(TOPDIR)/mk/kem/$(KEM).mk
-RANDOM_MK_PATH?=$(TOPDIR)/mk/random/$(RANDOM).mk
+RANDOM_MK_PATH?=$(TOPDIR)/mk/random/$(PRNG).mk
 CIPHER_MK_PATH?=$(TOPDIR)/mk/ciphers/$(CIPHER).mk
 ASYMMETRY_MK_PATH?=$(TOPDIR)/mk/asymmetry/$(ASYMMETRY).mk
 
@@ -32,7 +32,7 @@ export INSTALL_DIR
 export DARWIN_SB_PATH
 
 export KEM
-export RANDOM
+export PRNG
 export CIPHER
 export ASYMMETRY
 

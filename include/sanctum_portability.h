@@ -14,37 +14,20 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * Cryptographically secure random bytes via the nyfe library.
- */
+#ifndef __H_SANCTUM_PORTABILITY_H
+#define __H_SANCTUM_PORTABILITY_H
 
-#include <sys/types.h>
+#if defined(__APPLE__)
+#undef daemon
+extern int daemon(int, int);
 
-#include <stdio.h>
+#include <libkern/OSByteOrder.h>
+#define htobe16(x)		OSSwapHostToBigInt16(x)
+#define htobe32(x)		OSSwapHostToBigInt32(x)
+#define htobe64(x)		OSSwapHostToBigInt64(x)
+#define be16toh(x)		OSSwapBigToHostInt16(x)
+#define be32toh(x)		OSSwapBigToHostInt32(x)
+#define be64toh(x)		OSSwapBigToHostInt64(x)
+#endif
 
-#include "sanctum.h"
-
-/* The indicator for -v. */
-const char	*sanctum_random = "nyfe-random";
-
-/*
- * Initialise the underlying random system, can be called multiple
- * times to re-initialise it.
- */
-void
-sanctum_random_init(void)
-{
-	nyfe_random_init();
-}
-
-/*
- * Generate a number of cryptographically secure random bytes.
- */
-void
-sanctum_random_bytes(void *buf, size_t len)
-{
-	PRECOND(buf != NULL);
-	PRECOND(len > 0);
-
-	nyfe_random_bytes(buf, len);
-}
+#endif
