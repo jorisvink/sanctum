@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2024-2025 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,19 +18,22 @@
 #define __H_SANCTUM_AMBRY_H
 
 /* The label for KMAC256. */
-#define SANCTUM_AMBRY_KDF		"SANCTUM.AMBRY.KDF"
+#define SANCTUM_AMBRY_KDF			"SANCTUM.AMBRY.KDF"
+
+/* The KDF label for the unwrapping key derivation from the KEK. */
+#define SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL	"SANCTUM.KEY.KEK.UNWRAP.KDF"
 
 /* Length of a seed using for deriving Ambry wrapping keys. */
-#define SANCTUM_AMBRY_SEED_LEN		64
+#define SANCTUM_AMBRY_SEED_LEN			64
 
 /* Length of a KEK used for an Ambry. */
-#define SANCTUM_AMBRY_KEK_LEN		SANCTUM_KEY_LENGTH
+#define SANCTUM_AMBRY_KEK_LEN			SANCTUM_KEY_LENGTH
 
 /* Length of the key carried in an Ambry. */
-#define SANCTUM_AMBRY_KEY_LEN		SANCTUM_KEY_LENGTH
+#define SANCTUM_AMBRY_KEY_LEN			SANCTUM_KEY_LENGTH
 
 /* Length of an authentication tag for an Ambry. */
-#define SANCTUM_AMBRY_TAG_LEN		SANCTUM_TAG_LENGTH
+#define SANCTUM_AMBRY_TAG_LEN			SANCTUM_TAG_LENGTH
 
 /*
  * The ambry AAD data per entry.

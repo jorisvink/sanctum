@@ -451,7 +451,7 @@ sanctum_file_open(const char *path, struct stat *st)
  * Derive a base key from the given secret for a specified purpose.
  *
  * Essentially doing this:
- *	shared_secret = load_from_file()
+ *	secret = load_from_file()
  *
  *	if flock_src <= flock_dst:
  *		flock_a = flock_src
@@ -461,7 +461,7 @@ sanctum_file_open(const char *path, struct stat *st)
  *		flock_b = flock_src
  *
  *	x = len(flock_a) || flock_a || len(flock_b) || flock_b
- *	K = KMAC256(shared_secret, label_for_purpose, x), 256-bit
+ *	K = KMAC256(secret, label_for_purpose, x), 256-bit
  *
  * The flock is the configured cathedral flock-id if a cathedral is in use
  * (or we are the cathedral), otherwise it is 0. This is done to separate
@@ -490,6 +490,9 @@ sanctum_base_key(const char *path, u_int64_t flock_src, u_int64_t flock_dst,
 		break;
 	case SANCTUM_KDF_PURPOSE_TRAFFIC_TX:
 		label = SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL;
+		break;
+	case SANCTUM_KDF_PURPOSE_KEK_UNWRAP:
+		label = SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL;
 		break;
 	default:
 		fatal("unknown purpose %u", purpose);
@@ -561,8 +564,12 @@ sanctum_offer_kdf(const char *path, const char *label,
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_base_key(path, flock_a, flock_b,
-	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret));
+	if (sanctum_base_key(path, flock_a, flock_b,
+	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret)) == -1) {
+		nyfe_zeroize(&kdf, sizeof(kdf));
+		nyfe_zeroize(secret, sizeof(secret));
+		return (-1);
+	}
 
 	len = seed_len;
 
@@ -616,8 +623,14 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
-	sanctum_base_key(sanctum->secret, sanctum->cathedral_flock,
-	    sanctum->cathedral_flock_dst, kex->purpose, secret, sizeof(secret));
+	if (sanctum_base_key(sanctum->secret,
+	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst,
+	    kex->purpose, secret, sizeof(secret)) == -1) {
+		nyfe_zeroize(ecdh, sizeof(ecdh));
+		nyfe_zeroize(&kdf, sizeof(kdf));
+		nyfe_zeroize(secret, sizeof(secret));
+		return (-1);
+	}
 
 	nyfe_kmac256_init(&kdf, secret, sizeof(secret),
 	    SANCTUM_TRAFFIC_KDF_LABEL, strlen(SANCTUM_TRAFFIC_KDF_LABEL));

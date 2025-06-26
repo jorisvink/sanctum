@@ -35,23 +35,32 @@
 #include "sanctum_ambry.h"
 #include "libnyfe.h"
 
-#define AMBRY_KEK_DIRECTORY	"kek-data"
 #define errno_s			strerror(errno)
 
-void			fatal(const char *, ...) __attribute__((noreturn));
-static void		usage(void) __attribute__((noreturn));
+void		fatal(const char *, ...) __attribute__((noreturn));
 
-static void		ambry_mkdir(u_int64_t, const char *, int);
+static void	usage(void) __attribute__((noreturn));
+static void	usage_renew(void) __attribute__((noreturn));
+static void	usage_export(void) __attribute__((noreturn));
+static void	usage_bundle(void) __attribute__((noreturn));
+static void	usage_generate(void) __attribute__((noreturn));
 
-static void		ambry_kek_gen(const char *);
-static void		ambry_kek_path(u_int64_t, u_int8_t, char *, size_t);
-static void		ambry_key_wrap(struct sanctum_ambry_head *, int,
-			    const u_int8_t *, size_t, u_int64_t, u_int64_t,
-			    u_int8_t, u_int16_t);
+static void	ambry_mkdir(u_int64_t, const char *, int);
+static void	ambry_key_wrap(struct sanctum_ambry_head *, int,
+		    const u_int8_t *, size_t, u_int64_t, u_int64_t,
+		    u_int8_t, u_int16_t);
 
-static int		ambry_kek_renew(int, char **);
-static int		ambry_kek_generate(int, char **);
-static int		ambry_bundle_generate(int, char **);
+static void	ambry_base_kek_path(u_int64_t, u_int8_t, char *, size_t);
+static void	ambry_derived_kek_path(u_int64_t, u_int64_t,
+		    u_int8_t, char *, size_t);
+
+static void	ambry_kek_gen(const char *);
+static void	ambry_kek_derive(u_int64_t, u_int64_t, u_int8_t);
+
+static int	ambry_kek_renew(int, char **);
+static int	ambry_kek_export(int, char **);
+static int	ambry_kek_generate(int, char **);
+static int	ambry_bundle_generate(int, char **);
 
 static u_int64_t	ambry_string_to_flock(const char *);
 
@@ -60,6 +69,7 @@ static const struct {
 	int		(*cb)(int, char **);
 } cmds[] = {
 	{ "generate",		ambry_kek_generate },
+	{ "export",		ambry_kek_export },
 	{ "bundle",		ambry_bundle_generate },
 	{ "renew",		ambry_kek_renew },
 	{ NULL,			NULL },
@@ -71,6 +81,7 @@ usage(void)
 	fprintf(stderr, "usage: ambry [cmd]\n");
 	fprintf(stderr, "commands:\n");
 	fprintf(stderr, "  bundle        - Generates a new ambry bundle\n");
+	fprintf(stderr, "  export        - Export KEKs for xflock\n");
 	fprintf(stderr, "  generate      - Generates all new device KEKs\n");
 	fprintf(stderr, "  renew         - Renews a given device KEK\n");
 
@@ -124,6 +135,29 @@ fatal(const char *fmt, ...)
 	exit(1);
 }
 
+static void
+usage_generate(void)
+{
+	printf("Usage: generate [flock]\n");
+	printf("\n");
+	printf("The `generate` command will generate new device KEK data\n");
+	printf("for the given flock.\n");
+	printf("\n");
+	printf("The directory structure is as follows:\n");
+	printf("  flock/\n");
+	printf("    kek-data/\n");
+	printf("         The device KEKs, these are distributed to clients.\n");
+	printf("    internal/\n");
+	printf("         These are used when generating ambry bundles for\n");
+	printf("         your own flock. Do not distribute these.\n");
+	printf("    external/<flock>/\n");
+	printf("         These are created by the `export` command and can\n");
+	printf("         be shared with another flock owner to create an\n");
+	printf("         xflock ambry to allow cross flock setups.\n");
+
+	exit(1);
+}
+
 static int
 ambry_kek_generate(int argc, char **argv)
 {
@@ -132,19 +166,100 @@ ambry_kek_generate(int argc, char **argv)
 	char		path[1024];
 
 	if (argc != 1)
-		fatal("Usage: generate [flock]");
+		usage_generate();
 
 	flock = ambry_string_to_flock(argv[0]);
-	ambry_mkdir(flock, AMBRY_KEK_DIRECTORY, 0);
 
-	printf("generating KEKs under %" PRIx64 "\n", flock);
+	ambry_mkdir(flock, "kek-data", 0);
+	ambry_mkdir(flock, "internal", 0);
+	ambry_mkdir(flock, "external", 0);
+
+	printf("generating device KEKs under %" PRIx64 " ... ", flock);
+	fflush(stdout);
 
 	for (idx = 1; idx <= 0xff; idx++) {
-		ambry_kek_path(flock, idx, path, sizeof(path));
+		ambry_base_kek_path(flock, idx, path, sizeof(path));
 		ambry_kek_gen(path);
 	}
 
+	printf("done\n");
+
+	printf("deriving internal flock KEKs ... ");
+	fflush(stdout);
+
+	for (idx = 1; idx <= 0xff; idx++)
+		ambry_kek_derive(flock, flock, idx);
+
+	printf("done\n");
+
 	return (0);
+}
+
+static void
+usage_export(void)
+{
+	printf("Usage: export [flock-src] [flock-dst]\n");
+	printf("\n");
+	printf("The `export` command will derive KEKs from your existing\n");
+	printf("device KEKs which can be exported to another flock owner\n");
+	printf("so they can create an xflock ambry.\n");
+	printf("\n");
+	printf("This allows xflock ambry bundles to be generated without\n");
+	printf("compromising your internal flock security.\n");
+
+	exit(1);
+}
+
+static int
+ambry_kek_export(int argc, char **argv)
+{
+	int		idx, len;
+	char		path[1024];
+	u_int64_t	flock_src, flock_dst;
+
+	if (argc != 2)
+		usage_export();
+
+	flock_src = ambry_string_to_flock(argv[0]);
+	flock_dst = ambry_string_to_flock(argv[1]);
+
+	len = snprintf(path, sizeof(path), "/external/%" PRIx64, flock_dst);
+	if (len == -1 || (size_t)len >= sizeof(path))
+		fatal("failed to snprintf external path");
+
+	ambry_mkdir(flock_src, "kek-data", 1);
+	ambry_mkdir(flock_src, "internal", 1);
+
+	if (flock_src != flock_dst) {
+		ambry_mkdir(flock_src, "external", 1);
+		ambry_mkdir(flock_src, path, 1);
+	}
+
+	printf("exporting KEKs for use in %" PRIx64 ":%" PRIx64 " ... ",
+	    flock_src, flock_dst);
+	fflush(stdout);
+
+	for (idx = 1; idx <= 0xff; idx++)
+		ambry_kek_derive(flock_src, flock_dst, idx);
+
+	printf("done\n");
+
+	return (0);
+}
+
+static void
+usage_renew(void)
+{
+	printf("Usage: renew [flock] [id]");
+	printf("\n");
+	printf("The `renew` command will generate a new KEK for the given\n");
+	printf("device ID. This is useful in case you lose a device or a\n");
+	printf("key was compromised.\n");
+	printf("\n");
+	printf("Generating new ambry bundles after renewing a KEK is highly\n");
+	printf("recommended so that the old key is taken out of rotation.\n");
+
+	exit(1);
 }
 
 static int
@@ -156,7 +271,7 @@ ambry_kek_renew(int argc, char **argv)
 	char			path[1024];
 
 	if (argc != 2)
-		fatal("Usage: renew [flock] [id]");
+		usage_renew();
 
 	flock = ambry_string_to_flock(argv[0]);
 
@@ -168,15 +283,39 @@ ambry_kek_renew(int argc, char **argv)
 	if (kek > UCHAR_MAX)
 		fatal("'%s': out of range", argv[1]);
 
-	ambry_mkdir(flock, AMBRY_KEK_DIRECTORY, 1);
-	ambry_kek_path(flock, kek, path, sizeof(path));
+	ambry_mkdir(flock, "kek-data", 1);
+	ambry_mkdir(flock, "internal", 1);
+	ambry_mkdir(flock, "external", 1);
 
+	ambry_base_kek_path(flock, kek, path, sizeof(path));
+	if (unlink(path) == -1 && errno != ENOENT)
+		fatal("failed to remove '%s' (%s)", path, errno_s);
+
+	ambry_derived_kek_path(flock, flock, kek, path, sizeof(path));
 	if (unlink(path) == -1 && errno != ENOENT)
 		fatal("failed to remove '%s' (%s)", path, errno_s);
 
 	ambry_kek_gen(path);
+	ambry_kek_derive(flock, flock, kek);
 
 	return (0);
+}
+
+static void
+usage_bundle(void)
+{
+	printf("Usage: bundle [flock-src] [flock-dst] [outfile]");
+	printf("\n");
+	printf("The `bundle` command generates a new ambry bundle that can\n");
+	printf("be distributed to your cathedrals.\n");
+	printf("\n");
+	printf("The given flock-src must have been previously generated by\n");
+	printf("the `generate` command and the flock-dst must have been\n");
+	printf("generated by an `export` command.\n");
+	printf("\n");
+	printf("The outfile is removed before it is written.\n");
+
+	exit(1);
 }
 
 static int
@@ -191,7 +330,7 @@ ambry_bundle_generate(int argc, char **argv)
 	u_int8_t			key[SANCTUM_AMBRY_KEY_LEN];
 
 	if (argc != 3)
-		fatal("Usage: bundle [flock-A] [flock-B] [file]");
+		usage_bundle();
 
 	flock_a = ambry_string_to_flock(argv[0]);
 	flock_b = ambry_string_to_flock(argv[1]);
@@ -256,6 +395,61 @@ ambry_bundle_generate(int argc, char **argv)
 }
 
 static void
+ambry_kek_derive(u_int64_t src, u_int64_t dst, u_int8_t id)
+{
+	int			fd;
+	u_int8_t		len;
+	struct nyfe_kmac256	kdf;
+	char			path[1024];
+	u_int8_t		kek[SANCTUM_AMBRY_KEK_LEN];
+
+	ambry_base_kek_path(src, id, path, sizeof(path));
+	fd = nyfe_file_open(path, NYFE_FILE_READ);
+
+	nyfe_zeroize_register(kek, sizeof(kek));
+	nyfe_zeroize_register(&kdf, sizeof(kdf));
+
+	if (nyfe_file_read(fd, kek, sizeof(kek)) != sizeof(kek))
+		fatal("bad read on %s", path);
+	(void)close(fd);
+
+	nyfe_kmac256_init(&kdf, kek, sizeof(kek),
+	    SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL,
+	    sizeof(SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL) - 1);
+
+	len = sizeof(src);
+
+	if (src <= dst) {
+		src = htobe64(src);
+		dst = htobe64(dst);
+		nyfe_kmac256_update(&kdf, &len, sizeof(len));
+		nyfe_kmac256_update(&kdf, &src, sizeof(src));
+		nyfe_kmac256_update(&kdf, &len, sizeof(len));
+		nyfe_kmac256_update(&kdf, &dst, sizeof(dst));
+	} else {
+		src = htobe64(src);
+		dst = htobe64(dst);
+		nyfe_kmac256_update(&kdf, &len, sizeof(len));
+		nyfe_kmac256_update(&kdf, &dst, sizeof(dst));
+		nyfe_kmac256_update(&kdf, &len, sizeof(len));
+		nyfe_kmac256_update(&kdf, &src, sizeof(src));
+	}
+
+	nyfe_kmac256_final(&kdf, kek, sizeof(kek));
+
+	src = be64toh(src);
+	dst = be64toh(dst);
+	ambry_derived_kek_path(src, dst, id, path, sizeof(path));
+
+	fd = nyfe_file_open(path, NYFE_FILE_CREATE);
+	nyfe_file_write(fd, kek, sizeof(kek));
+	nyfe_file_close(fd);
+
+	nyfe_zeroize(kek, sizeof(kek));
+	nyfe_zeroize(&kdf, sizeof(kdf));
+}
+
+static void
 ambry_key_wrap(struct sanctum_ambry_head *hdr, int out, const u_int8_t *key,
     size_t len, u_int64_t flock_src, u_int64_t flock_dst, u_int8_t id,
     u_int16_t tunnel)
@@ -274,7 +468,7 @@ ambry_key_wrap(struct sanctum_ambry_head *hdr, int out, const u_int8_t *key,
 	if (len != sizeof(entry.key))
 		fatal("len != entry.key");
 
-	ambry_kek_path(flock_src, id, path, sizeof(path));
+	ambry_derived_kek_path(flock_src, flock_dst, id, path, sizeof(path));
 
 	flock_src = htobe64(flock_src);
 	flock_dst = htobe64(flock_dst);
@@ -369,12 +563,31 @@ ambry_kek_gen(const char *path)
 }
 
 static void
-ambry_kek_path(u_int64_t flock, u_int8_t kek, char *buf, size_t buflen)
+ambry_base_kek_path(u_int64_t flock, u_int8_t kek, char *buf, size_t buflen)
 {
 	int		len;
 
-	len = snprintf(buf, buflen, "%" PRIx64 "/%s/kek-0x%02x",
-	    flock, AMBRY_KEK_DIRECTORY, kek);
+	len = snprintf(buf, buflen,
+	    "%" PRIx64 "/kek-data/kek-0x%02x", flock, kek);
+	if (len == -1 || (size_t)len >= buflen)
+		fatal("failed to construct path to kek");
+}
+
+static void
+ambry_derived_kek_path(u_int64_t src, u_int64_t dst, u_int8_t kek,
+    char *buf, size_t buflen)
+{
+	int		len;
+
+	if (src == dst) {
+		len = snprintf(buf, buflen,
+		    "%" PRIx64 "/internal/kek-0x%02x", src, kek);
+	} else {
+		len = snprintf(buf, buflen,
+		    "%" PRIx64 "/external/%" PRIx64 "/kek-0x%02x",
+		    src, dst, kek);
+	}
+
 	if (len == -1 || (size_t)len >= buflen)
 		fatal("failed to construct path to kek");
 }

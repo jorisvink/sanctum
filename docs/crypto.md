@@ -88,6 +88,8 @@ sanctum_base_key(key, purpose):
         label = "SANCTUM.KEY.TRAFFIC.RX.KDF"
     else if purpose == PURPOSE_TX_KEY:
         label = "SANCTUM.KEY.TRAFFIC.TX.KDF"
+    else if purpose == PURPOSE_KEK_UNWRAP:
+        label = "SANCTUM.KEY.KEK.UNWRAP.KDF"
 
     x = len(flock_a) || flock_a || len(flock_b) || flock_b
     base_key = KMAC256(key, label, x), 256-bit
@@ -251,12 +253,13 @@ is used to wrap ambries carrying a new SS.
 ```
 kek_derive_key_for_wrapping_ambry(tunnel, flock_a, flock_b, generation, seed):
     kek = key-encryption-key, 256-bit
+    key = sanctum_base_key(kek, PURPOSE_KEK_UNWRAP)
 
     x = len(seed) || seed || len(flock_a) || flock_a ||
         len(flock_b) || flock_b || len(generation) || generation ||
         len(tunnel) || tunnel
 
-    wk = KMAC256(kek, "SANCTUM.AMBRY.KDF", x), 256-bit
+    wk = KMAC256(key, "SANCTUM.AMBRY.KDF", x), 256-bit
 
     return wk
 ```
