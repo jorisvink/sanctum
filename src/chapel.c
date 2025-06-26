@@ -587,8 +587,10 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 	nyfe_zeroize_register(kek, sizeof(kek));
 
-	if (sanctum_base_key(sanctum->kek,
-	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst,
+	flock_src = sanctum->cathedral_flock & ~(0xff);
+	flock_dst = sanctum->cathedral_flock_dst & ~(0xff);
+
+	if (sanctum_base_key(sanctum->kek, flock_src, flock_dst,
 	    SANCTUM_KDF_PURPOSE_KEK_UNWRAP, kek, sizeof(kek)) == -1) {
 		nyfe_zeroize(kek, sizeof(kek));
 		return;
@@ -606,8 +608,8 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ambry->seed, sizeof(ambry->seed));
 
-	flock_src = htobe64(sanctum->cathedral_flock & ~(0xff));
-	flock_dst = htobe64(sanctum->cathedral_flock_dst & ~(0xff));
+	flock_src = htobe64(flock_src);
+	flock_dst = htobe64(flock_dst);
 
 	len = sizeof(flock_src);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
