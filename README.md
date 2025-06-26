@@ -10,13 +10,14 @@ all of its important assets are separated from the processes
 that talk to the internet or handle non-cryptography related
 things.
 
-Additionally when making use of sanctum's cathedrals one can
-get **peer-to-peer** tunnels that are able to traverse NAT,
-allowing your devices to talk to each other directly no matter
-where they are without having to open pesky firewall ports
-or fiddle with forward rules.
+Sanctum tunnels are always peer-to-peer and end-to-end encrypted.
 
-See [The Reliquary](https://reliquary.se) for an example on this.
+If one or both peers are behind NAT you can use sanctum's cathedrals
+as a discovery and relay service (relay only if p2p does not work
+due to NAT constraints).
+
+See [The Reliquary](https://reliquary.se), a community driven
+sanctum cathedral setup.
 
 ## Privilege separation
 
@@ -38,19 +39,19 @@ There are several processes that make up a sanctum instance:
 | bishop | The process responsible for configuring autodiscovered tunnels.
 | guardian | The process monitoring all other processes.
 
-Each process should be run as its own user.
+Each process runs as its own user.
 
-Each process is sandboxed and only has access to the system calls
-required to perform its task. There are two exceptions: guardian
+Each process is fully sandboxed and only has access to the system
+calls required to perform its task. There are two exceptions: guardian
 (the main process), and bishop (liturgy manager), neither of these
 are sandboxed due what they are responsible for.
 
 The guardian process is only monitoring its child processes and has no
 other external interfaces. The bishop process must be privileged due to
 the fact it is fork+exec'ing the hymn configuration tool for setting up
-new tunnels (only if using liturgy mode).
+new tunnels when using liturgy mode.
 
-## Packets
+## Packet flow
 
 The processes share packets between each other in a very well defined way.
 
@@ -83,10 +84,11 @@ ML-KEM-1024.
 
 See [docs/crypto.md](docs/crypto.md) for details on the key exchange.
 
-## Encryption
+## Traffic encryption
 
 Traffic is encapsulated with the sanctum protocol header which in turn is
 carried in a UDP packet, using incrementing 64-bit sequence numbers.
+
 Traffic is encrypted under AES256-GCM using keys negotiated as described above.
 
 A 96-bit nonce is used, constructed as follows:
@@ -219,10 +221,3 @@ run chapel as _chapel
 You can use [libkyrka](https://github.com/jorisvink/libkyrka) to implement
 the sanctum protocol and tunnels into your application directly. Note that
 this does not provide the same type of sandboxing as the daemon.
-
-## Review canaries
-
-The review canaries are SHA256 hashes for known things that will
-eventually be fixed, they act as proof that I am aware of an issue.
-
-e0f199332bf6f72ce2ab4aaf9eb1dbede1004c9eb3d482a48bf3f538a586bea0
