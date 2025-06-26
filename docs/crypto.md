@@ -71,16 +71,17 @@ keys from these for specific purposes.
 
 ```
 sanctum_base_key(key, purpose):
+    # All domain bits are stripped from the flocks
     cathedral_flock = flock tunnel belongs too, or 0 if no cathedral in use
     cathedral_flock_dst = flock destination tunnels belongs too, or 0 when
                           talking to a cathedral or no cathedral is in use
 
     if cathedral_flock <= cathedral_flock_dst:
-        flock_a = cathedral_flock
-        flock_b = cathedral_flock_dst
+        flock_a = htobe64(cathedral_flock)
+        flock_b = htobe64(cathedral_flock_dst)
     else:
-        flock_a = cathedral_flock_dst
-        flock_b = cathedral_flock
+        flock_a = htobe64(cathedral_flock_dst)
+        flock_b = htobe64(cathedral_flock)
 
     if purpose == PURPOSE_OFFER:
         label = "SANCTUM.OFFER.KDF"
