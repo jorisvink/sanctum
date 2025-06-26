@@ -37,11 +37,14 @@ rm -f test/ambry.keys
 cd test
 
 ../tools/ambry/ambry generate aaaaaa00
+../tools/ambry/ambry export aaaaaa00 bbbbbb00
+
 ../tools/ambry/ambry generate bbbbbb00
+../tools/ambry/ambry export bbbbbb00 aaaaaa00
 
 ../tools/ambry/ambry bundle aaaaaa00 aaaaaa00 a.bundle
 ../tools/ambry/ambry bundle bbbbbb00 bbbbbb00 b.bundle
-../tools/ambry/ambry bundle aaaaaa00 bbbbbb00 ab.bundle > ab.txt
+../tools/ambry/ambry bundle aaaaaa00 bbbbbb00 ab.bundle
 
 ../tools/ambry/ambry generate cafeba00
 ../tools/ambry/ambry bundle cafeba00 cafeba00 ambry.keys

@@ -572,7 +572,6 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 static void
 chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 {
-	int				fd;
 	u_int8_t			len;
 	struct nyfe_kmac256		kdf;
 	struct sanctum_key		key;
@@ -586,17 +585,20 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	PRECOND(ambry != NULL);
 	PRECOND(sanctum->kek != NULL);
 
-	if ((fd = sanctum_file_open(sanctum->kek, NULL)) == -1)
-		return;
-
 	nyfe_zeroize_register(kek, sizeof(kek));
+
+	flock_src = sanctum->cathedral_flock & ~(0xff);
+	flock_dst = sanctum->cathedral_flock_dst & ~(0xff);
+
+	if (sanctum_base_key(sanctum->kek, flock_src, flock_dst,
+	    SANCTUM_KDF_PURPOSE_KEK_UNWRAP, kek, sizeof(kek)) == -1) {
+		nyfe_zeroize(kek, sizeof(kek));
+		return;
+	}
+
 	nyfe_zeroize_register(&key, sizeof(key));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
-
-	if (nyfe_file_read(fd, kek, sizeof(kek)) != sizeof(kek))
-		fatal("failed to read kek");
-	(void)close(fd);
 
 	nyfe_kmac256_init(&kdf, kek, sizeof(kek),
 	    SANCTUM_AMBRY_KDF, strlen(SANCTUM_AMBRY_KDF));
@@ -606,8 +608,8 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, ambry->seed, sizeof(ambry->seed));
 
-	flock_src = htobe64(sanctum->cathedral_flock & ~(0xff));
-	flock_dst = htobe64(sanctum->cathedral_flock_dst & ~(0xff));
+	flock_src = htobe64(flock_src);
+	flock_dst = htobe64(flock_dst);
 
 	len = sizeof(flock_src);
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));

@@ -71,16 +71,17 @@ keys from these for specific purposes.
 
 ```
 sanctum_base_key(key, purpose):
+    # All domain bits are stripped from the flocks
     cathedral_flock = flock tunnel belongs too, or 0 if no cathedral in use
     cathedral_flock_dst = flock destination tunnels belongs too, or 0 when
                           talking to a cathedral or no cathedral is in use
 
     if cathedral_flock <= cathedral_flock_dst:
-        flock_a = cathedral_flock
-        flock_b = cathedral_flock_dst
+        flock_a = htobe64(cathedral_flock)
+        flock_b = htobe64(cathedral_flock_dst)
     else:
-        flock_a = cathedral_flock_dst
-        flock_b = cathedral_flock
+        flock_a = htobe64(cathedral_flock_dst)
+        flock_b = htobe64(cathedral_flock)
 
     if purpose == PURPOSE_OFFER:
         label = "SANCTUM.OFFER.KDF"
@@ -88,6 +89,8 @@ sanctum_base_key(key, purpose):
         label = "SANCTUM.KEY.TRAFFIC.RX.KDF"
     else if purpose == PURPOSE_TX_KEY:
         label = "SANCTUM.KEY.TRAFFIC.TX.KDF"
+    else if purpose == PURPOSE_KEK_UNWRAP:
+        label = "SANCTUM.KEY.KEK.UNWRAP.KDF"
 
     x = len(flock_a) || flock_a || len(flock_b) || flock_b
     base_key = KMAC256(key, label, x), 256-bit
@@ -251,12 +254,13 @@ is used to wrap ambries carrying a new SS.
 ```
 kek_derive_key_for_wrapping_ambry(tunnel, flock_a, flock_b, generation, seed):
     kek = key-encryption-key, 256-bit
+    key = sanctum_base_key(kek, PURPOSE_KEK_UNWRAP)
 
     x = len(seed) || seed || len(flock_a) || flock_a ||
         len(flock_b) || flock_b || len(generation) || generation ||
         len(tunnel) || tunnel
 
-    wk = KMAC256(kek, "SANCTUM.AMBRY.KDF", x), 256-bit
+    wk = KMAC256(key, "SANCTUM.AMBRY.KDF", x), 256-bit
 
     return wk
 ```
