@@ -12,12 +12,14 @@ things.
 
 Sanctum tunnels are always peer-to-peer and end-to-end encrypted.
 
-If one or both peers are behind NAT you can use sanctum's cathedrals
-as a discovery and relay service (relay only if p2p does not work
-due to NAT constraints).
+If one or both peers are behind NAT you can use sanctum's cathedral
+mode as a discovery and relay service (relay only if p2p does not
+work due to NAT constraints).
 
 See [The Reliquary](https://reliquary.se), a community driven
 sanctum cathedral setup.
+
+It is entirely possible to set up your own cathedrals.
 
 ## Privilege separation
 
