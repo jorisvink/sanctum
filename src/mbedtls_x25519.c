@@ -112,7 +112,7 @@ sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 	    &priv_key, asymmetry_random_bytes, NULL)) != 0)
 		goto cleanup;
 
-	if (mbedtls_mpi_write_binary(&ss, out, len) != 0)
+	if (mbedtls_mpi_write_binary_le(&ss, out, len) != 0)
 		goto cleanup;
 
 	ret = 0;
