@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/shm.h>
 
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <signal.h>
@@ -31,10 +32,11 @@ static void	signal_memfault(int);
 static void	usage(void) __attribute__((noreturn));
 static void	version(void) __attribute__((noreturn));
 
-static void	sanctum_pidfile_check(void);
+static void	sanctum_pidfile_grab(void);
 static void	sanctum_pidfile_write(void);
 static void	sanctum_pidfile_unlink(void);
 
+static int			pid_fd = -1;
 volatile sig_atomic_t		sig_recv = -1;
 struct sanctum_state		*sanctum = NULL;
 
@@ -108,7 +110,7 @@ main(int argc, char *argv[])
 
 	sanctum_config_init();
 	sanctum_config_load(config);
-	sanctum_pidfile_check();
+	sanctum_pidfile_grab();
 
 	sanctum_signal_trap(SIGINT);
 	sanctum_signal_trap(SIGHUP);
@@ -251,7 +253,8 @@ fatal(const char *fmt, ...)
 
 	if (sanctum_process() == NULL) {
 		sanctum_proc_shutdown();
-		sanctum_pidfile_unlink();
+		if (pid_fd != -1)
+			sanctum_pidfile_unlink();
 	}
 
 	exit(1);
@@ -279,32 +282,32 @@ signal_memfault(int sig)
 }
 
 /*
- * Check if our pidfile already exists, indicating we didn't cleanly
- * shutdown maybe last time, or that something else is using our path.
+ * Grab the pidfile ownership by creating it, if it exists another
+ * instance is running and we should not continue. We later after
+ * starting all processes update the PID with our guardian proc its PID.
  */
 static void
-sanctum_pidfile_check(void)
+sanctum_pidfile_grab(void)
 {
 	PRECOND(sanctum != NULL);
+	PRECOND(pid_fd == -1);
 
 	if (sanctum->pidfile == NULL)
 		return;
 
-	/* Don't call fatal() here, we don't want to try and remove it. */
-	if (access(sanctum->pidfile, R_OK) != -1 && errno != ENOENT) {
-		fprintf(stderr, "pidfile '%s' exists\n", sanctum->pidfile);
-		exit(1);
+	pid_fd = open(sanctum->pidfile, O_CREAT | O_EXCL | O_WRONLY, 0500);
+	if (pid_fd == -1) {
+		fatal("failed to grab pidfile '%s': %s",
+		    sanctum->pidfile, errno_s);
 	}
 }
 
 /*
- * Create the pidfile at the location given in our configuration file.
- * Write the guardian process its PID to it.
+ * Write our PID to the open pidfile.
  */
 static void
 sanctum_pidfile_write(void)
 {
-	int		fd;
 	FILE		*fp;
 
 	PRECOND(sanctum != NULL);
@@ -312,9 +315,9 @@ sanctum_pidfile_write(void)
 	if (sanctum->pidfile == NULL)
 		return;
 
-	fd = nyfe_file_open(sanctum->pidfile, NYFE_FILE_CREATE);
+	VERIFY(pid_fd != -1);
 
-	if ((fp = fdopen(fd, "w")) == NULL)
+	if ((fp = fdopen(pid_fd, "w")) == NULL)
 		fatal("fdopen: %s", strerror(errno));
 
 	(void)fprintf(fp, "%d", getpid());
