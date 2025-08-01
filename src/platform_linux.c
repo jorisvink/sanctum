@@ -299,6 +299,8 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 
 	linux_sandbox_netns(proc);
+	sanctum_proc_privsep(proc);
+
 	linux_sandbox_seccomp(proc);
 }
 

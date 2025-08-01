@@ -58,7 +58,6 @@ sanctum_heaven_tx(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 	sanctum_proc_started(proc);
 

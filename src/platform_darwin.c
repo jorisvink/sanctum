@@ -282,6 +282,8 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 
 	PRECOND(proc != NULL);
 
+	sanctum_proc_privsep(proc);
+
 	switch (proc->type) {
 	case SANCTUM_PROC_BLESS:
 	case SANCTUM_PROC_CHAPEL:
