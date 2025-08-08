@@ -68,7 +68,8 @@ Note that **hdr** is added as AAD.
 ```
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
-	u_int64_t		flock;
+	u_int64_t		flock_src;
+	u_int64_t		flock_dst;
 	u_int32_t		spi;
 	u_int8_t		seed[SANCTUM_KEY_OFFER_SALT_LEN];
 } __attribute__((packed));
@@ -83,9 +84,9 @@ Cathedral offers magic value        = 0x4b4154454452414c (KATEDRAL)
 Cathedral nat detection magic value = 0x4349424f5249554d (CIBORIUM)
 ```
 
-The header also contains a **flock** identity in case the packet
-traverses a cathedral, this way the cathedral knows in which
-flock it needs to look for forwarding the offer.
+The header also contains **flock_src** and **flock_dst** flock identities
+in case the packet traverses a cathedral, this way the cathedral knows the
+source and destination flocks required to forward the offer.
 
 The header **spi** member contains the local instance its current spi.
 
