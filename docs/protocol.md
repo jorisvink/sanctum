@@ -7,7 +7,7 @@ that somewhat mimics ESP encapsulation in tunnel mode. This
 means we carry an ESP-like header encapsulated payload in
 a UDP packet.
 
-The format is based on rfc4106 (GCM in IPSec).
+The format loosely is based on rfc4106 (GCM in IPSec).
 
 A short version of that is here:
 
