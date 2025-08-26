@@ -16,12 +16,12 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/queue.h>
 
 #include <fcntl.h>
 #include <unistd.h>
 
 #include "nyfe.h"
+#include "queue.h"
 
 struct file {
 	int			fd;
@@ -70,7 +70,7 @@ nyfe_file_remove_lingering(void)
  * a symbolic link or anything else.
  *
  * For NYFE_FILE_CREATE, the file is added to a list of files that may
- * be removed in case of a fatal() error.
+ * be removed in case of a nyfe_fatal() error.
  */
 int
 nyfe_file_open(const char *path, int which)
@@ -84,23 +84,23 @@ nyfe_file_open(const char *path, int which)
 
 	if (which == NYFE_FILE_READ) {
 		if ((fd = open(path, O_RDONLY | O_NOFOLLOW)) == -1)
-			fatal("failed to open '%s': %s", path, errno_s);
+			nyfe_fatal("failed to open '%s': %s", path, errno_s);
 
 		if (fstat(fd, &st) == -1)
-			fatal("fstat failed: %s", errno_s);
+			nyfe_fatal("fstat failed: %s", errno_s);
 
 		if (!S_ISREG(st.st_mode))
-			fatal("%s: not a file", path);
+			nyfe_fatal("%s: not a file", path);
 	} else {
 		if ((fd = open(path,
 		    O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0500)) == -1)
-			fatal("failed to open '%s': %s", path, errno_s);
+			nyfe_fatal("failed to open '%s': %s", path, errno_s);
 
 		if ((file = calloc(1, sizeof(*file))) == NULL)
-			fatal("failed to allocate file structure");
+			nyfe_fatal("failed to allocate file structure");
 
 		if ((file->path = strdup(path)) == NULL)
-			fatal("failed to copy file path");
+			nyfe_fatal("failed to copy file path");
 
 		file->fd = fd;
 
@@ -127,7 +127,7 @@ nyfe_file_close(int fd)
 	}
 
 	if (file == NULL)
-		fatal("failed to find file matching fd '%d'", fd);
+		nyfe_fatal("failed to find file matching fd '%d'", fd);
 
 	LIST_REMOVE(file, list);
 
@@ -136,7 +136,7 @@ nyfe_file_close(int fd)
 			printf("WARNING: failed to remove '%s', do not use\n",
 			    file->path);
 		}
-		fatal("close failed on '%s': %s", file->path, errno_s);
+		nyfe_fatal("close failed on '%s': %s", file->path, errno_s);
 	}
 
 	free(file->path);
@@ -152,7 +152,7 @@ nyfe_file_size(int fd)
 	PRECOND(fd >= 0);
 
 	if (fstat(fd, &st) == -1)
-		fatal("fstat failed: %s", errno_s);
+		nyfe_fatal("fstat failed: %s", errno_s);
 
 	return ((u_int64_t)st.st_size);
 }
@@ -174,11 +174,11 @@ nyfe_file_write(int fd, const void *buf, size_t len)
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("write: %s", errno_s);
+			nyfe_fatal("write: %s", errno_s);
 		}
 
 		if ((size_t)ret != len)
-			fatal("write: %zd/%zu", ret, len);
+			nyfe_fatal("write: %zd/%zu", ret, len);
 
 		break;
 	}
@@ -201,7 +201,7 @@ nyfe_file_read(int fd, void *buf, size_t len)
 		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("read: %s", errno_s);
+			nyfe_fatal("read: %s", errno_s);
 		}
 		break;
 	}

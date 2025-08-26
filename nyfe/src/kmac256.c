@@ -161,8 +161,10 @@ kmac256_encode_bits(size_t bits)
 		bits = bits >> 8;
 	}
 
-	if (count > 2)
-		fatal("%s: too many bytes required (%zu)", __func__, count);
+	if (count > 2) {
+		nyfe_fatal("%s: too many bytes required (%zu)",
+		    __func__, count);
+	}
 
 	if (count == 0)
 		count = 1;
@@ -198,8 +200,10 @@ kmac256_encode_string(const void *in, size_t inlen, u_int8_t *out,
 	 */
 	total = 1 + count + inlen;
 
-	if (total > outlen)
-		fatal("%s: too little bytes in out (%zu)", __func__, outlen);
+	if (total > outlen) {
+		nyfe_fatal("%s: too little bytes in out (%zu)",
+		    __func__, outlen);
+	}
 
 	out[0] = count;
 	for (idx = count; idx > 0; idx--) {
