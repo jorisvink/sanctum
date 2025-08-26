@@ -99,6 +99,8 @@ main(int argc, char *argv[])
 	if (config == NULL)
 		usage();
 
+	nyfe_fatal_callback(fatalv);
+
 	sanctum = sanctum_alloc_shared(sizeof(*sanctum), NULL);
 	sanctum->mode = SANCTUM_MODE_TUNNEL;
 
@@ -245,11 +247,21 @@ fatal(const char *fmt, ...)
 
 	PRECOND(fmt != NULL);
 
-	nyfe_zeroize_all();
-
 	va_start(args, fmt);
+
+	fatalv(fmt, args);
+}
+
+/*
+ * Bad juju happened, the va_list variant.
+ */
+void
+fatalv(const char *fmt, va_list args)
+{
+	PRECOND(fmt != NULL);
+
+	nyfe_zeroize_all();
 	sanctum_logv(LOG_ERR, fmt, args);
-	va_end(args);
 
 	if (sanctum_process() == NULL) {
 		sanctum_proc_shutdown();
