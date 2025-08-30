@@ -146,8 +146,8 @@ main(int argc, char *argv[])
 	nyfe_zeroize_all();
 
 	printf("configuration written:\n");
-	printf("   flock       %s\n", argv[1]);
-	printf("   tunnel      %s\n", argv[2]);
+	printf("   flock       %s\n", argv[2]);
+	printf("   tunnel      %s\n", argv[1]);
 	printf("   identity    %s\n", argv[3]);
 	printf("   kek-path    %s\n", argv[4]);
 	printf("   cs-path     %s\n", argv[5]);
