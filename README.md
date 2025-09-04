@@ -2,7 +2,7 @@
 
 ## About
 
-Sanctum is a small, reviewable, capable, pq-safe and fully privilege
+Sanctum is a small, reviewable, capable, pq-secure and fully privilege
 separated VPN daemon for OpenBSD, Linux and MacOS.
 
 Due to its privilege separated design sanctum guarantees
