@@ -76,10 +76,10 @@ interface without passing the encryption process.
 
 ## Key Exchange
 
-Sanctum is post-quantum safe due to its unique approach to
+Sanctum is post-quantum secure due to its unique approach to
 deriving session keys based on a shared symmetrical secret in
 combination with a hybridized asymmetrical exchange. It combines
-both classic ECDH (x25519) and the PQ-safe NIST standardized
+both classic ECDH (x25519) and the PQ-secure NIST standardized
 ML-KEM-1024.
 
 See [docs/crypto.md](docs/crypto.md) for details on the key exchange.
