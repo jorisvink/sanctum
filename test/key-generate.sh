@@ -47,4 +47,4 @@ cd test
 ../tools/ambry/ambry bundle aaaaaa00 bbbbbb00 60 ab.bundle
 
 ../tools/ambry/ambry generate cafeba00
-../tools/ambry/ambry bundle cafeba00 cafeba00 90 ambry.keys
+../tools/ambry/ambry bundle cafeba00 cafeba00 10000 ambry.keys
