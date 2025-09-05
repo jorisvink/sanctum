@@ -1,8 +1,8 @@
 # Cathedrals
 
 A cathedral is a sanctum process on a server somewhere that can
-relay packets to peers and is able to distribute wrapped ambries
-to peers when required.
+help peers discover each other and is able to distribute wrapped
+ambries to peers when required.
 
 It makes it possible for peers to talk to each other, end-to-end
 encrypted, when behind NAT or when you don't want to know where
@@ -36,6 +36,10 @@ can use the same shared secrets and tunnel setups for different purposes.
 The key derivation takes this into account and generates different
 base keys for each different domain in the same flock.
 
+Devices in the same flock-id but different flock-domain will not be
+able to communicate with each other due to the cryptographic domain
+separation.
+
 See below for an example.
 
 ## Authentication
@@ -43,7 +47,7 @@ See below for an example.
 When a client notifies a cathedral about its presence, this packet is
 encrypted and authenticated via the cathedral secret (CS, see docs/key.md).
 
-This secret is mapped with the identity configured (see allow above).
+This secret is mapped with the identity configured.
 
 ## Ambry
 
@@ -51,7 +55,7 @@ A cathedral can be used to distribute new shared secrets (SS, see docs/keys.md)
 to clients. A wrapped SS is called an Ambry and the cathedral is never able
 to unwrap these keys.
 
-Each flock can have their own Ambry bundle.
+Each flock has their own Ambry bundle.
 
 ## Federation
 
@@ -94,4 +98,17 @@ flock cafeba00 {
 
     ambry /home/cathedral/shared/ambries/ambry-cafebabe
 }
+
+flock badf000 {
+    allow 010203 spi 01
+
+    ambry /home/cathedral/shared/ambries/ambry-badf00d
+}
+
+# A xflock definition allows devices in different flocks
+# to establish tunnels to each other given that a correct
+# xflock ambry was generated.
+
+xflock cafeba00 badf000 /home/cathedral/shared/ambries/xflock-cafeba00-badf000
+
 ```
