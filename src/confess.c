@@ -78,7 +78,6 @@ sanctum_confess(struct sanctum_proc *proc)
 	nyfe_zeroize_register(&state, sizeof(state));
 	nyfe_zeroize_register(io->rx, sizeof(*io->rx));
 
-	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 	sanctum_proc_started(proc);
 

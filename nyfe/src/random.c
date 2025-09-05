@@ -119,19 +119,27 @@ random_rekey(void)
 #if !defined(NYFE_LIBRARY_ONLY)
 	/* Load in the entropy file, if its not present, complain. */
 	if ((fd = open(nyfe_entropy_path(), O_RDWR)) == -1) {
-		if (errno != ENOENT)
-			fatal("open(%s): %s", nyfe_entropy_path(), errno_s);
+		if (errno != ENOENT) {
+			nyfe_fatal("open(%s): %s",
+			    nyfe_entropy_path(), errno_s);
+		}
 		nyfe_output("warning: no entropy file present, "
 		    "only system entropy will be used\n");
 	} else {
 		if (nyfe_file_read(fd, add, sizeof(add)) != sizeof(add))
-			fatal("failed to read entropy file");
+			nyfe_fatal("failed to read entropy file");
 	}
 #endif
 
+#if defined(NYFE_PLATFORM_WINDOWS)
+	/* XXX */
+	if (RtlGenRandom(seed, sizeof(seed)) == 0)
+		nyfe_fatal("RtlGenRandom: failed");
+#else
 	/* Obtain some system entropy. */
 	if (getentropy(seed, sizeof(seed)) == -1)
-		fatal("getentropy: %s", errno_s);
+		nyfe_fatal("getentropy: %s", errno_s);
+#endif
 
 	/*
 	 * Derive key and nonce material using KMAC256 with the seed
@@ -167,7 +175,7 @@ random_rekey(void)
 	 */
 	if (fd != -1) {
 		if (lseek(fd, 0, SEEK_SET) == -1)
-			fatal("lseek: %s", errno_s);
+			nyfe_fatal("lseek: %s", errno_s);
 
 		nyfe_file_write(fd, ks, RANDOM_ADD_SIZE);
 

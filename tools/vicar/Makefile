@@ -1,7 +1,7 @@
 # vicar Makefile
 
 ifeq ("$(TOPDIR)", "")
-	error("No TOPDIR set")
+$(error "No TOPDIR set")
 endif
 
 include $(TOPDIR)/mk/defaults.mk

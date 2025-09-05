@@ -57,11 +57,11 @@
 
 /* The length of an ambry bundle. */
 #if defined(SANCTUM_USE_AGELAS)
-#define CATHEDRAL_AMBRY_BUNDLE_LEN	4793048
-#define CATHEDRAL_AMBRY_INTERFLOCK_LEN	9623768
+#define CATHEDRAL_AMBRY_BUNDLE_LEN	4793050
+#define CATHEDRAL_AMBRY_INTERFLOCK_LEN	9623770
 #else
-#define CATHEDRAL_AMBRY_BUNDLE_LEN	3756728
-#define CATHEDRAL_AMBRY_INTERFLOCK_LEN	7542968
+#define CATHEDRAL_AMBRY_BUNDLE_LEN	3756730
+#define CATHEDRAL_AMBRY_INTERFLOCK_LEN	7542970
 #endif
 
 /*
@@ -141,6 +141,7 @@ struct ambries {
 	int			retain;
 	u_int64_t		flock_a;
 	u_int64_t		flock_b;
+	u_int16_t		expires;
 	u_int32_t		generation;
 	u_int8_t		seed[SANCTUM_AMBRY_SEED_LEN];
 	LIST_HEAD(, ambry)	entries;
@@ -310,7 +311,6 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	LIST_INIT(&xflocks);
 	LIST_INIT(&federations);
 
-	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 	cathedral_settings_reload();
 	sanctum_proc_started(proc);
@@ -1447,6 +1447,7 @@ cathedral_ambry_send(struct flockent *flock, struct flockent *dst,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_AMBRY);
 
 	offer = &op->data.offer.ambry;
+	offer->expires = htobe16(ambries->expires);
 	offer->tunnel = htobe16(ambry->entry.tunnel);
 	offer->generation = htobe32(ambries->generation);
 
@@ -1684,6 +1685,7 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 		goto out;
 	}
 
+	hdr.expires = be16toh(hdr.expires);
 	hdr.generation = be32toh(hdr.generation);
 	if (hdr.generation == ambries->generation)
 		goto out;
@@ -1691,6 +1693,7 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 	cathedral_ambry_purge(ambries);
 
 	ambries->mtime = st.st_mtime;
+	ambries->expires = hdr.expires;
 	ambries->generation = hdr.generation;
 
 	sanctum_log(LOG_INFO, "(re)caching ambry for %" PRIx64 " <=> %" PRIx64,

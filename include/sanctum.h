@@ -254,6 +254,7 @@ struct sanctum_key_offer {
 
 struct sanctum_ambry_offer {
 	u_int16_t		tunnel;
+	u_int16_t		expires;
 	u_int32_t		generation;
 	u_int8_t		seed[SANCTUM_AMBRY_SEED_LEN];
 	u_int8_t		key[SANCTUM_AMBRY_KEY_LEN];
@@ -713,6 +714,7 @@ int	sanctum_config_routable(in_addr_t);
 void	sanctum_signal_trap(int);
 int	sanctum_last_signal(void);
 void	sanctum_signal_ignore(int);
+void	fatalv(const char *, va_list) __attribute__((noreturn));
 void	fatal(const char *, ...) __attribute__((format (printf, 1, 2)))
 	    __attribute__((noreturn));
 

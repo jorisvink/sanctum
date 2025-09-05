@@ -2,19 +2,17 @@
 
 ## About
 
-This is a small, reviewable, capable, pq-safe and fully privilege
+Sanctum is a small, reviewable, capable, pq-secure and fully privilege
 separated VPN daemon for OpenBSD, Linux and MacOS.
 
-Due to its privilege separated design, sanctum guarantees that
-all of its important assets are separated from the processes
-that talk to the internet or handle non-cryptography related
-things.
+Due to its privilege separated design sanctum guarantees
+that all of its important assets are separated from processes
+that talk to the internet or handle non-cryptography related things.
 
-Sanctum tunnels are always peer-to-peer and end-to-end encrypted.
-
-If one or both peers are behind NAT you can use sanctum's cathedral
-mode as a discovery and relay service (relay only if p2p does not
-work due to NAT constraints).
+Sanctum can establish traditional site-to-site L2 or L3 tunnels,
+one-way tunnels and even tunnels between peers when both peers
+are behind NAT using hole-punching and Sanctum's cathedrals
+for peer discovery.
 
 See [The Reliquary](https://reliquary.se), a community driven
 sanctum cathedral setup.
@@ -78,10 +76,10 @@ interface without passing the encryption process.
 
 ## Key Exchange
 
-Sanctum is post-quantum safe due to its unique approach to
+Sanctum is post-quantum secure due to its unique approach to
 deriving session keys based on a shared symmetrical secret in
 combination with a hybridized asymmetrical exchange. It combines
-both classic ECDH (x25519) and the PQ-safe NIST standardized
+both classic ECDH (x25519) and the PQ-secure NIST standardized
 ML-KEM-1024.
 
 See [docs/crypto.md](docs/crypto.md) for details on the key exchange.

@@ -243,6 +243,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 {
 	PRECOND(proc != NULL);
 
+	sanctum_proc_privsep(proc);
 	openbsd_sandbox_pledge(proc);
 }
 

@@ -15,11 +15,11 @@
  */
 
 #include <sys/types.h>
-#include <sys/queue.h>
 
 #include <stdlib.h>
 
 #include "nyfe.h"
+#include "queue.h"
 
 /*
  * Points to memory that contains sensitive data and must be cleared
@@ -42,7 +42,7 @@ nyfe_zeroize_init(void)
 
 /*
  * Register sensitive data and its length so that it can be cleared
- * in case of a fatal().
+ * in case of a nyfe_fatal().
  */
 void
 nyfe_zeroize_register(void *ptr, size_t len)
@@ -53,7 +53,7 @@ nyfe_zeroize_register(void *ptr, size_t len)
 	PRECOND(len > 0);
 
 	if ((z = calloc(1, sizeof(*z))) == NULL)
-		fatal("failed to allocate zeroize list member");
+		nyfe_fatal("failed to allocate zeroize list member");
 
 	z->ptr = ptr;
 	z->length = len;
@@ -111,7 +111,7 @@ nyfe_zeroize(void *ptr, size_t len)
 	}
 
 	nyfe_mem_zero(ptr, len);
-	fatal("failed to find a zeroize entry for %p (%zu)",  ptr, len);
+	nyfe_fatal("failed to find a zeroize entry for %p (%zu)",  ptr, len);
 }
 
 /*

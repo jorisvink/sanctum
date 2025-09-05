@@ -17,7 +17,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(NYFE_PLATFORM_WINDOWS)
 #include <endian.h>
 #endif
 
@@ -89,9 +89,9 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
 
 	/* Allocate large intermediate buffers. */
 	if ((tmp = calloc(1, PASSPHRASE_KDF_MEM_SIZE)) == NULL)
-		fatal("failed to allocate temporary kdf buffer");
+		nyfe_fatal("failed to allocate temporary kdf buffer");
 	if ((ap = calloc(1, PASSPHRASE_KDF_AP_SIZE)) == NULL)
-		fatal("failed to allocate temporary kdf access patterns");
+		nyfe_fatal("failed to allocate temporary kdf access patterns");
 
 	/* Register buffers / structs that contain sensitive information. */
 	nyfe_zeroize_register(buf, sizeof(buf));
@@ -143,7 +143,7 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
 	for (iter = 0; iter < PASSPHRASE_KDF_ITERATIONS; iter++) {
 #if !defined(NYFE_LIBRARY_ONLY)
 		if ((sig = nyfe_signal_pending()) != -1)
-			fatal("clean abort due to received signal %d", sig);
+			nyfe_fatal("abort due to received signal %d", sig);
 #endif
 
 		offset = ap[iter] * PASSPHRASE_KDF_STEP_LEN;

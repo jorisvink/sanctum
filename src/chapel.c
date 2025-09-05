@@ -126,6 +126,9 @@ static u_int64_t		peer_id = 0;
 /* The ambry generation, initially 0. */
 static u_int32_t		ambry_generation = 0;
 
+/* The last realtime clock. */
+static time_t			last_rtime = 0;
+
 /*
  * Chapel - The keying process.
  *
@@ -142,7 +145,6 @@ sanctum_chapel(struct sanctum_proc *proc)
 	u_int64_t		now;
 	u_int32_t		spi;
 	struct sanctum_packet	*pkt;
-	time_t			last_rtime;
 	int			sig, running, delay_check;
 
 	PRECOND(proc != NULL);
@@ -156,12 +158,9 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
-
-	sanctum_proc_privsep(proc);
 	sanctum_platform_sandbox(proc);
 
 	running = 1;
-	last_rtime = 0;
 	delay_check = 0;
 
 	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
@@ -578,6 +577,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	struct sanctum_ambry_aad	aad;
 	struct sanctum_cipher		cipher;
 	u_int16_t			tunnel;
+	time_t				expires;
 	u_int64_t			flock_src, flock_dst;
 	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
@@ -636,6 +636,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	aad.tunnel = tunnel;
 	aad.flock_src = flock_src;
 	aad.flock_dst = flock_dst;
+	aad.expires = ambry->expires;
 	aad.generation = ambry->generation;
 	nyfe_memcpy(aad.seed, ambry->seed, sizeof(ambry->seed));
 
@@ -659,6 +660,16 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 	sanctum_cipher_cleanup(cipher.ctx);
 	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	ambry->expires = be16toh(ambry->expires);
+	expires = SANCTUM_AMBRY_AGE_EPOCH +
+	    (ambry->expires * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
+
+	if (expires < last_rtime) {
+		sanctum_log(LOG_NOTICE, "ambry generation 0x%08x is expired",
+		    be32toh(ambry->generation));
+		return;
+	}
 
 	chapel_ambry_write(ambry, now);
 }

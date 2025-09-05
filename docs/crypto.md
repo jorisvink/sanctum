@@ -276,13 +276,14 @@ ambry:
     generation = ambry generation, 32-bit
     tunnel = the tunnel this ambry is valid for, 16-bit
     seed = ambry bundle seed, selected uniformly at random, 512-bit
+    expires = the expiration counted in days since SANCTUM_EPOCH, 16-bit
 
     key = the new SS, selected uniformly at random, 256-bit
 
     dk = kek_derive_key_for_wrapping_ambry(tunnel,
         flock_src, flock_dst, generation, seed)
 
-    aad = tunnel || flock_a || flock_b || generation || seed
+    aad = tunnel || expires || flock_a || flock_b || generation || seed
     ct, tag = AES256-GCM(dk, nonce=1, aad=aad, key)
 
     return tunnel, ct, tag
