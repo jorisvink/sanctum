@@ -662,7 +662,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	ambry->expires = be16toh(ambry->expires);
-	expires = SANCTUM_AMBRY_AGE_EPOCH +
+	expires = (time_t)SANCTUM_AMBRY_AGE_EPOCH +
 	    (ambry->expires * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
 
 	if (expires < last_rtime) {
