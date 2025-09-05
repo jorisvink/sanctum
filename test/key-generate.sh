@@ -42,9 +42,9 @@ cd test
 ../tools/ambry/ambry generate bbbbbb00
 ../tools/ambry/ambry export bbbbbb00 aaaaaa00
 
-../tools/ambry/ambry bundle aaaaaa00 aaaaaa00 a.bundle
-../tools/ambry/ambry bundle bbbbbb00 bbbbbb00 b.bundle
-../tools/ambry/ambry bundle aaaaaa00 bbbbbb00 ab.bundle
+../tools/ambry/ambry bundle aaaaaa00 aaaaaa00 30 a.bundle
+../tools/ambry/ambry bundle bbbbbb00 bbbbbb00 40 b.bundle
+../tools/ambry/ambry bundle aaaaaa00 bbbbbb00 60 ab.bundle
 
 ../tools/ambry/ambry generate cafeba00
-../tools/ambry/ambry bundle cafeba00 cafeba00 ambry.keys
+../tools/ambry/ambry bundle cafeba00 cafeba00 90 ambry.keys

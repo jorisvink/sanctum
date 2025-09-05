@@ -254,6 +254,7 @@ struct sanctum_key_offer {
 
 struct sanctum_ambry_offer {
 	u_int16_t		tunnel;
+	u_int16_t		expires;
 	u_int32_t		generation;
 	u_int8_t		seed[SANCTUM_AMBRY_SEED_LEN];
 	u_int8_t		key[SANCTUM_AMBRY_KEY_LEN];

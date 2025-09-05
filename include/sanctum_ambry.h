@@ -35,11 +35,18 @@
 /* Length of an authentication tag for an Ambry. */
 #define SANCTUM_AMBRY_TAG_LEN			SANCTUM_TAG_LENGTH
 
+/* The epoch for when expiration time account began. */
+#define SANCTUM_AMBRY_AGE_EPOCH			1697855580
+
+/* Much like TAI and the dark side we deal in absolutes. */
+#define SANCTUM_AMBRY_AGE_SECONDS_PER_DAY	86400
+
 /*
  * The ambry AAD data per entry.
  */
 struct sanctum_ambry_aad {
 	u_int16_t	tunnel;
+	u_int16_t	expires;
 	u_int64_t	flock_src;
 	u_int64_t	flock_dst;
 	u_int32_t	generation;
@@ -52,8 +59,13 @@ struct sanctum_ambry_aad {
  * The header includes the current generation (4 bytes) and the
  * 64-byte seed that is used in combination with individual KEKs
  * to generate the encryption key under which the shared secrets are wrapped.
+ *
+ * The expiration time is counted in days (with 86400 seconds per day)
+ * and from SANCTUM_AMBRY_AGE_EPOCH. Clients will not accept keys that
+ * are expired.
  */
 struct sanctum_ambry_head {
+	u_int16_t	expires;
 	u_int32_t	generation;
 	u_int8_t	seed[SANCTUM_AMBRY_SEED_LEN];
 } __attribute__((packed));
