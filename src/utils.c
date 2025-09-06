@@ -1028,3 +1028,24 @@ sanctum_cathedrals_remembrance(void)
 cleanup:
 	(void)close(fd);
 }
+
+/*
+ * Check if based on the given days and the current system clock
+ * an ambry would have expired.
+ */
+int
+sanctum_ambry_expired(u_int16_t days)
+{
+	struct timespec		ts;
+	time_t			expires;
+
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+
+	expires = (time_t)SANCTUM_AMBRY_AGE_EPOCH +
+	    (days * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
+
+	if (expires < ts.tv_sec)
+		return (-1);
+
+	return (0);
+}

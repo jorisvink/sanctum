@@ -763,6 +763,7 @@ int	sanctum_ring_queue(struct sanctum_ring *, void *);
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 
 /* src/utils.c */
+int	sanctum_ambry_expired(u_int16_t);
 void	sanctum_cathedrals_remembrance(void);
 void	sanctum_cathedral_timeout(u_int64_t);
 int	sanctum_file_open(const char *, struct stat *);

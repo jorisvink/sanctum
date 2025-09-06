@@ -1687,10 +1687,16 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 
 	hdr.expires = be16toh(hdr.expires);
 	hdr.generation = be32toh(hdr.generation);
+
 	if (hdr.generation == ambries->generation)
 		goto out;
 
 	cathedral_ambry_purge(ambries);
+
+	if (sanctum_ambry_expired(hdr.expires) == -1) {
+		sanctum_log(LOG_NOTICE, "ambry file '%s' has expired", file);
+		goto out;
+	}
 
 	ambries->mtime = st.st_mtime;
 	ambries->expires = hdr.expires;
