@@ -160,6 +160,7 @@ void
 sanctum_config_load(const char *file)
 {
 	FILE		*fp;
+	size_t		len;
 	int		idx;
 	char		buf[BUFSIZ], *option, *value;
 
@@ -177,6 +178,18 @@ sanctum_config_load(const char *file)
 			fatal("malformed option '%s'", option);
 
 		*(value)++ = '\0';
+
+		while (isspace((unsigned char)*value))
+			value++;
+
+		if ((len = strlen(value)) == 0)
+			fatal("no value given for '%s'", option);
+
+		for (idx = len - 1; idx >= 0; idx--) {
+			if (!isspace((unsigned char)value[idx]))
+				break;
+			value[idx] = '\0';
+		}
 
 		for (idx = 0; keywords[idx].option != NULL; idx++) {
 			if (!strcmp(keywords[idx].option, option)) {
