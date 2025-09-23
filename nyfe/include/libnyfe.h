@@ -17,6 +17,9 @@
 #ifndef __H_LIBNYFE_H
 #define __H_LIBNYFE_H
 
+/* XXX */
+#include <stdarg.h>
+
 #if defined(NYFE_PLATFORM_WINDOWS)
 #include "portable_win.h"
 #endif
