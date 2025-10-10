@@ -197,8 +197,8 @@ purgatory_rx_recv_packets(int fd)
 			break;
 		case SANCTUM_PROC_CHAPEL:
 		case SANCTUM_PROC_SHRINE:
-		case SANCTUM_PROC_CATHEDRAL:
 		case SANCTUM_PROC_LITURGY:
+		case SANCTUM_PROC_CATHEDRAL:
 			ret = sanctum_ring_queue(io->chapel, pkt);
 			break;
 		default:
