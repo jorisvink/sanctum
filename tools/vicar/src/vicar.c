@@ -46,6 +46,10 @@
 
 #define KDF_LABEL			"VICAR.PASSPHRASE.PBKDF"
 
+/*
+ * An encrypted vicar file, containing all the relevant
+ * bits and pieces to bootstrap a device.
+ */
 struct config {
 	u_int8_t	salt[VICAR_SALT_LEN];
 
@@ -56,6 +60,7 @@ struct config {
 		u_int16_t	port;
 		u_int16_t	tunnel;
 		u_int8_t	kek[32];
+		u_int8_t	cosk[64];
 		u_int8_t	secret[32];
 	} data;
 
@@ -80,7 +85,7 @@ usage(void)
 	printf("types of applications using sanctum.\n");
 	printf("\n");
 	printf("arguments:\n");
-	printf("  [tunnel] [flock] [cid] [kek-path] [cs-path] "
+	printf("  [tunnel] [flock] [cid] [kek-path] [cs-path] [cosk-path] "
 	    "[ip] [port] [out]\n");
 	printf("\n");
 	printf("  tunnel     - The device ID (matches your KEK)\n");
@@ -88,13 +93,15 @@ usage(void)
 	printf("  cid        - The device its cathedral ID\n");
 	printf("  kek-path   - The path to the KEK secret\n");
 	printf("  cs-path    - The path to the cathedral secret\n");
+	printf("  cosk-path  - The path to the cathedral offer sign key\n");
 	printf("  ip         - The ip address of the initial cathedral\n");
 	printf("  port       - The port of the initial cathedral\n");
 	printf("  out        - The file where to save the configuration\n");
 	printf("\n");
 	printf("Example:\n");
 	printf("  $ vicar 0x0200 2e976eddb2203a0c 1af4279e cfg/kek-0x02 \\\n");
-	printf("          cfg/id-1af4279e 127.0.0.1 4500 phone-2.cfg\n");
+	printf("        cfg/id-1af4279e cfg/cosk-1af4279e 127.0.0.1 ");
+	printf("4500 phone-2.cfg\n");
 
 	exit(1);
 }
@@ -120,7 +127,7 @@ main(int argc, char *argv[])
 {
 	struct config		cfg;
 
-	if (argc != 9)
+	if (argc != 10)
 		usage();
 
 	sanctum_random_init();
@@ -134,13 +141,14 @@ main(int argc, char *argv[])
 
 	vicar_read_secret(argv[4], cfg.data.kek, sizeof(cfg.data.kek));
 	vicar_read_secret(argv[5], cfg.data.secret, sizeof(cfg.data.secret));
+	vicar_read_secret(argv[6], cfg.data.cosk, sizeof(cfg.data.cosk));
 
-	cfg.data.ip = inet_addr(argv[6]);
-	cfg.data.port = vicar_strtonum(argv[7], 10);
+	cfg.data.ip = inet_addr(argv[7]);
+	cfg.data.port = vicar_strtonum(argv[8], 10);
 	cfg.data.port = htons(cfg.data.port);
 
 	vicar_wrap_config(&cfg);
-	vicar_config_write(argv[8], &cfg);
+	vicar_config_write(argv[9], &cfg);
 
 	nyfe_zeroize(&cfg, sizeof(cfg));
 	nyfe_zeroize_all();
@@ -151,7 +159,8 @@ main(int argc, char *argv[])
 	printf("   identity    %s\n", argv[3]);
 	printf("   kek-path    %s\n", argv[4]);
 	printf("   cs-path     %s\n", argv[5]);
-	printf("   cathedral   %s:%s\n", argv[6], argv[7]);
+	printf("   cosk-path   %s\n", argv[6]);
+	printf("   cathedral   %s:%s\n", argv[7], argv[8]);
 
 	return (0);
 }
