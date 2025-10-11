@@ -696,7 +696,8 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	    type == SANCTUM_OFFER_TYPE_INFO ||
 	    type == SANCTUM_OFFER_TYPE_LITURGY ||
 	    type == SANCTUM_OFFER_TYPE_REMEMBRANCE ||
-	    type == SANCTUM_OFFER_TYPE_EXCHANGE);
+	    type == SANCTUM_OFFER_TYPE_EXCHANGE ||
+	    type == SANCTUM_OFFER_TYPE_P2P_INFO);
 
 	op = sanctum_packet_head(pkt);
 
@@ -704,6 +705,7 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	op->hdr.spi = htobe32(spi);
 	op->hdr.magic = htobe64(magic);
 
+	sanctum_random_bytes(op->sig, sizeof(op->sig));
 	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 	sanctum_random_bytes(&op->hdr.flock_src, sizeof(op->hdr.flock_src));
 	sanctum_random_bytes(&op->hdr.flock_dst, sizeof(op->hdr.flock_dst));
@@ -741,10 +743,86 @@ sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)
 	cipher.pt = &op->data;
 	cipher.ct = &op->data;
 	cipher.tag = &op->tag[0];
-	cipher.data_len = sizeof(op->data);
+	cipher.data_len = sizeof(op->data) + sizeof(op->sig);
 
 	sanctum_cipher_encrypt(&cipher);
 	sanctum_cipher_cleanup(cipher.ctx);
+}
+
+/*
+ * Sign the offer using our private key, this should only be called
+ * for offers being sent to a cathedral and not for offers going
+ * to other peers.
+ */
+int
+sanctum_offer_sign(struct sanctum_offer *op)
+{
+	int		fd;
+	u_int8_t	sk[SANCTUM_ED25519_SIGN_SECRET_LENGTH];
+
+	PRECOND(op != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
+	    op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
+
+	VERIFY(sanctum->mode != SANCTUM_MODE_CATHEDRAL);
+
+	if ((fd = sanctum_file_open(sanctum->cathedral_cosk, NULL)) == -1)
+		return (-1);
+
+	nyfe_zeroize_register(sk, sizeof(sk));
+
+	if (nyfe_file_read(fd, sk, sizeof(sk)) != sizeof(sk)) {
+		nyfe_zeroize(sk, sizeof(sk));
+		sanctum_log(LOG_NOTICE, "failed to read cathedral sign key");
+		(void)close(fd);
+		return (-1);
+	}
+
+	(void)close(fd);
+
+	if (sanctum_signature_create(sk, sizeof(sk),
+	    &op->data, sizeof(op->data), op->sig, sizeof(op->sig)) == -1) {
+		nyfe_zeroize(sk, sizeof(sk));
+		sanctum_log(LOG_NOTICE, "failed to sign cathedral offer");
+		return (-1);
+	}
+
+	nyfe_zeroize(sk, sizeof(sk));
+
+	return (0);
+}
+
+/*
+ * Verify an offer its signature against the given public key.
+ */
+int
+sanctum_offer_verify(const char *path, struct sanctum_offer *op)
+{
+	int		fd;
+	u_int8_t	pk[SANCTUM_ED25519_SIGN_PUBLIC_LENGTH];
+
+	PRECOND(path != NULL);
+	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
+	    op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
+
+	VERIFY(sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+
+	if ((fd = sanctum_file_open(path, NULL)) == -1)
+		return (-1);
+
+	if (nyfe_file_read(fd, pk, sizeof(pk)) != sizeof(pk)) {
+		sanctum_log(LOG_NOTICE, "failed to read public key %s", path);
+		(void)close(fd);
+		return (-1);
+	}
+
+	(void)close(fd);
+
+	if (sanctum_signature_verify(pk, sizeof(pk),
+	    &op->data, sizeof(op->data), op->sig, sizeof(op->sig)) == -1)
+		return (-1);
+
+	return (0);
 }
 
 /*
@@ -787,6 +865,7 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 {
 	struct timespec		ts;
 	struct sanctum_cipher	cipher;
+	u_int64_t		timestamp;
 	u_int8_t		nonce[SANCTUM_NONCE_LENGTH];
 
 	PRECOND(key != NULL);
@@ -805,7 +884,7 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 	cipher.ct = &op->data;
 	cipher.pt = &op->data;
 	cipher.tag = &op->tag[0];
-	cipher.data_len = sizeof(op->data);
+	cipher.data_len = sizeof(op->data) + sizeof(op->sig);
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
 		sanctum_log(LOG_INFO, "offer rejected, integrity failure");
@@ -816,10 +895,10 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 	sanctum_cipher_cleanup(cipher.ctx);
 
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
-	op->data.timestamp = be64toh(op->data.timestamp);
+	timestamp = be64toh(op->data.timestamp);
 
-	if (op->data.timestamp < ((u_int64_t)ts.tv_sec - valid) ||
-	    op->data.timestamp > ((u_int64_t)ts.tv_sec + valid)) {
+	if (timestamp < ((u_int64_t)ts.tv_sec - valid) ||
+	    timestamp > ((u_int64_t)ts.tv_sec + valid)) {
 		sanctum_log(LOG_INFO,
 		    "offer %02x rejected, time different too large",
 		    op->data.type);

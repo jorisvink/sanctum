@@ -16,11 +16,13 @@ PRNG?=nyfe
 KEM?=mlkem1024-ref
 CIPHER?=libsodium-aes-gcm
 ASYMMETRY?=libsodium-x25519
+SIGNATURE?=libsodium-ed25519
 
 KEM_MK_PATH?=$(TOPDIR)/mk/kem/$(KEM).mk
 RANDOM_MK_PATH?=$(TOPDIR)/mk/random/$(PRNG).mk
 CIPHER_MK_PATH?=$(TOPDIR)/mk/ciphers/$(CIPHER).mk
 ASYMMETRY_MK_PATH?=$(TOPDIR)/mk/asymmetry/$(ASYMMETRY).mk
+SIGNATURE_MK_PATH?=$(TOPDIR)/mk/signature/$(SIGNATURE).mk
 
 export CC
 export PREFIX
@@ -35,8 +37,10 @@ export KEM
 export PRNG
 export CIPHER
 export ASYMMETRY
+export SIGNATURE
 
 export KEM_MK_PATH
 export RANDOM_MK_PATH
 export CIPHER_MK_PATH
 export ASYMMETRY_MK_PATH
+export SIGNATURE_MK_PATH

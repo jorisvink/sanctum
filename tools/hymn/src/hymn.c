@@ -56,12 +56,14 @@
 #define HYMN_IDENTITY		(1 << 6)
 #define HYMN_PREFIX		(1 << 7)
 #define HYMN_GROUP		(1 << 8)
+#define HYMN_COSK		(1 << 9)
 
 #define HYMN_REQUIRED		\
     (HYMN_TUNNEL | HYMN_PEER | HYMN_SECRET)
 
 #define HYMN_REQUIRED_LITURGY	\
-    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX | HYMN_GROUP)
+    (HYMN_CATHEDRAL | HYMN_IDENTITY | HYMN_KEK | HYMN_PREFIX | \
+     HYMN_GROUP | HYMN_COSK)
 
 struct addr {
 	in_addr_t		ip;
@@ -101,6 +103,7 @@ struct config {
 	char			*encap;
 	char			*secret;
 	char			*prefix;
+	char			*cosk_path;
 	char			*identity_path;
 
 	struct addrlist		routes;
@@ -188,6 +191,7 @@ static void	hymn_config_parse_encapsulation(struct config *, char *);
 
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
+static void	hymn_config_parse_cathedral_cosk(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
@@ -260,6 +264,7 @@ static const struct {
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
+	{ "cathedral_cosk",	hymn_config_parse_cathedral_cosk },
 	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
 	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
 	{ "cathedral_flock_dst",hymn_config_parse_cathedral_flock_dst },
@@ -436,6 +441,14 @@ hymn_liturgy(int argc, char *argv[])
 			} else {
 				fatal("discoverable is a (yes|no) option");
 			}
+		} else if (!strcmp(argv[i], "cosk")) {
+			if (config.peer_cathedral == 0)
+				fatal("cosk only relevant for cathedral");
+			if (config.cosk_path != NULL)
+				fatal("duplicate cosk");
+			if ((config.cosk_path = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
+			which |= HYMN_COSK;
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -546,6 +559,14 @@ hymn_add(int argc, char *argv[])
 			which |= HYMN_IDENTITY;
 			config.cathedral_id = hymn_number(argv[i + 1], 16,
 			    0, UINT_MAX);
+		} else if (!strcmp(argv[i], "cosk")) {
+			if (config.peer_cathedral == 0)
+				fatal("cosk only relevant for cathedral");
+			if (config.cosk_path != NULL)
+				fatal("duplicate cosk");
+			if ((config.cosk_path = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
+			which |= HYMN_COSK;
 		} else if (!strcmp(argv[i], "encap")) {
 			if (config.encap != NULL)
 				fatal("duplicate encap");
@@ -618,6 +639,9 @@ hymn_add(int argc, char *argv[])
 	if (which & HYMN_CATHEDRAL) {
 		if (!(which & HYMN_IDENTITY))
 			fatal("no cathedral identity given");
+
+		if (!(which & HYMN_COSK))
+			fatal("no cathedral cosk given");
 
 		if (!(which & HYMN_KEK) && !(which & HYMN_SECRET))
 			printf("cathedral configured but no kek / secret\n");
@@ -1911,6 +1935,11 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 			    cfg->cathedral_id);
 		}
 
+		if (cfg->cosk_path != NULL) {
+			hymn_config_write(fd, "cathedral_cosk %s\n",
+			    cfg->cosk_path);
+		}
+
 		if (cfg->remembrance) {
 			hymn_config_write(fd, "cathedral_remembrance ");
 			hymn_config_write(fd,
@@ -2129,6 +2158,16 @@ hymn_config_parse_cathedral_secret(struct config *cfg, char *secret)
 		fatal("duplicate cathedral_secret");
 
 	if ((cfg->identity_path = strdup(secret)) == NULL)
+		fatal("strdup");
+}
+
+static void
+hymn_config_parse_cathedral_cosk(struct config *cfg, char *secret)
+{
+	if (cfg->cosk_path != NULL)
+		fatal("duplicate cathedral_cosk");
+
+	if ((cfg->cosk_path = strdup(secret)) == NULL)
 		fatal("strdup");
 }
 

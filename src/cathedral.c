@@ -70,7 +70,7 @@
  */
 struct tunnel {
 	/* tunnel information. */
-	u_int32_t		id;
+	u_int16_t		id;
 	u_int32_t		ip;
 	u_int16_t		port;
 	u_int64_t		age;
@@ -88,6 +88,7 @@ struct tunnel {
 	/* p2p sync */
 	u_int32_t		p2p_ip;
 	u_int16_t		p2p_port;
+	int			p2p_pending;
 
 	/* leaky bucket for bw handling. */
 	u_int32_t		limit;
@@ -216,6 +217,7 @@ static void	cathedral_flock_domains_clear(struct flockent *);
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
+static void	cathedral_pubkey_path(char *, size_t, u_int64_t, u_int32_t);
 
 static void	cathedral_offer_federate(struct flockent *,
 		    struct flockent *, struct sanctum_packet *);
@@ -228,6 +230,8 @@ static int	cathedral_offer_validate(struct flockent *,
 static void	cathedral_offer_info(struct sanctum_packet *,
 		    struct flockent *, u_int64_t, int, int);
 static void	cathedral_offer_liturgy(struct sanctum_packet *,
+		    struct flockent *, u_int64_t, int);
+static void	cathedral_offer_p2pinfo(struct sanctum_packet *,
 		    struct flockent *, u_int64_t, int);
 
 static void	cathedral_settings_reload(void);
@@ -245,6 +249,8 @@ static void	cathedral_info_send(struct flockent *, struct flockent *,
 		    u_int32_t);
 static void	cathedral_liturgy_send(struct flockent *,
 		    struct liturgy *, struct sockaddr_in *, u_int32_t);
+static void	cathedral_p2pinfo_send(struct flockent *,
+		    struct flockent *, struct tunnel *, u_int32_t);
 static void	cathedral_remembrance_send(struct flockent *,
 		    struct sockaddr_in *, u_int32_t);
 
@@ -421,8 +427,8 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 }
 
 /*
- * Attempt to verify and decrypt an incoming offer message from a client.
- * We accept both INFO and LITURGY messages.
+ * Attempt to verify and decrypt an incoming offer message from a client
+ * or from another cathedral federating with us.
  */
 static void
 cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
@@ -454,6 +460,10 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
 		break;
 	case SANCTUM_OFFER_TYPE_LITURGY:
 		cathedral_offer_liturgy(pkt, flock, now, catacomb);
+		break;
+	case SANCTUM_OFFER_TYPE_P2P_INFO:
+		if (catacomb)
+			cathedral_offer_p2pinfo(pkt, flock, now, catacomb);
 		break;
 	default:
 		break;
@@ -508,6 +518,9 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 /*
  * Verify and decrypt an offer we received from a potential client
  * or from another cathedral we federate with.
+ *
+ * After we succeed with decrypting the offer we always validate
+ * the signature over it using the expected peer its public key.
  */
 static int
 cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
@@ -544,6 +557,18 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 	}
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
+	cathedral_pubkey_path(path, sizeof(path), flock->id, id);
+
+	/* CATACOMB messages of type p2p have no signatures. */
+	if (catacomb == 1 && op->data.type == SANCTUM_OFFER_TYPE_P2P_INFO)
+		return (0);
+
+	if (sanctum_offer_verify(path, op) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "signature verification failed for %" PRIx64 ":%08x (%d)",
+		    flock->id, id, catacomb);
+		return (-1);
+	}
 
 	return (0);
 }
@@ -551,6 +576,9 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 /*
  * We received a tunnel info offer. Based on this we can create a new tunnel
  * entry or update an existing one.
+ *
+ * If everything checks out we federate the information to our other
+ * cathedrals if we have any, unless this was already a CATACOMB message.
  */
 static void
 cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
@@ -635,27 +663,16 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 
 	if (catacomb) {
 		tun->federated = 1;
-		tun->peerinfo = info->flags;
-		tun->p2p_ip = info->peer_ip;
-		tun->p2p_port = info->peer_port;
+		tun->p2p_pending = 1;
 	} else {
 		tun->federated = 0;
-
-		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) {
-			info->peer_ip = tun->ip;
-			info->peer_port = tun->port;
-			info->flags = tun->peerinfo;
-		} else {
-			info->flags = 0;
-			info->peer_ip = 0;
-			info->peer_port = 0;
-		}
 
 		info->tunnel = htobe16(info->tunnel);
 		info->instance = htobe64(info->instance);
 		info->ambry_generation = htobe32(info->ambry_generation);
 
 		cathedral_offer_federate(flock, dst, pkt);
+		cathedral_p2pinfo_send(flock, dst, tun, id);
 	}
 }
 
@@ -757,6 +774,84 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 }
 
 /*
+ * We have received a p2p information offer about a sanctum instance.
+ *
+ * These offers may only be sent by cathedrals as part of the p2p_sync
+ * setting. They carry information about a peer its external ip:port
+ * that can be sent to other peers talking to it.
+ *
+ * We do not accept there if p2p_pending is not 1, this isn't a perfect
+ * solution in any shape or form to prevent malicious cathedrals from
+ * sending bad P2P_INFO which is then distributed to clients, but it's a start.
+ *
+ * Until I come up with a better mechanism, this is the lay of the land.
+ */
+static void
+cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
+    u_int64_t now, int catacomb)
+{
+	u_int32_t			id;
+	u_int8_t			tid;
+	struct sanctum_offer		*op;
+	struct flockent			*dst;
+	struct tunnel			*tun;
+	struct sanctum_p2p_info_offer	*info;
+	u_int64_t			flock_dst;
+
+	PRECOND(pkt != NULL);
+	PRECOND(flock != NULL);
+	PRECOND(pkt->length >= sizeof(*op));
+	PRECOND(catacomb == 1);
+
+	op = sanctum_packet_head(pkt);
+	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_P2P_INFO);
+
+	if (!(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC))
+		return;
+
+	id = be32toh(op->hdr.spi);
+	flock_dst = be64toh(op->hdr.flock_dst);
+
+	info = &op->data.offer.p2pinfo;
+	info->flags = be32toh(info->flags);
+	info->tunnel = be16toh(info->tunnel);
+
+	if (cathedral_forward_allowed(flock->id | flock->domain->id,
+	    flock_dst, NULL, &dst) == -1)
+		return;
+
+	tid = info->tunnel >> 8;
+	if (cathedral_tunnel_update_allowed(flock, tid, id, NULL) == -1) {
+		sanctum_log(LOG_NOTICE, "%s is not tied to %08x",
+		    cathedral_tunnel_name(flock, dst, info->tunnel), id);
+		return;
+	}
+
+	if ((tun = cathedral_tunnel_lookup(flock, dst, info->tunnel)) == NULL) {
+		sanctum_log(LOG_NOTICE, "p2pinfo for unknown tunnel %s",
+		    cathedral_tunnel_name(flock, dst, info->tunnel));
+		return;
+	}
+
+	if (tun->p2p_pending == 0) {
+		sanctum_log(LOG_NOTICE, "out of order p2pinfo for %s",
+		    cathedral_tunnel_name(flock, dst, info->tunnel));
+		return;
+	}
+
+	if (tun->federated == 0) {
+		sanctum_log(LOG_NOTICE, "p2pinfo for non-federated tunnel %s",
+		    cathedral_tunnel_name(flock, dst, info->tunnel));
+		return;
+	}
+
+	tun->p2p_pending = 0;
+	tun->p2p_ip = info->ip;
+	tun->p2p_port = info->port;
+	tun->peerinfo = info->flags;
+}
+
+/*
  * Send out the offer inside of the given packet to all other cathedrals.
  */
 static void
@@ -777,18 +872,21 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 		fatal("%s: pkt length invalid (%zu)", __func__, update->length);
 
 	/*
-	 * We update the information in place with a new magic field,
-	 * a new seed and a new timestamp.
+	 * We update the information in place without touching the data
+	 * field as that is covered by the client signature.
 	 *
 	 * This is then re-encrypted with our synchronization key and
 	 * sent to all cathedrals that are configured.
+	 *
+	 * We make sure to generate a new seed so malicious clients cannot
+	 * control the outcome of our key derivation for federation.
 	 */
 	op = sanctum_packet_head(update);
-	op = sanctum_offer_init(update, be32toh(op->hdr.spi),
-	    CATHEDRAL_CATACOMB_MAGIC, op->data.type);
-
+	op->hdr.magic = htobe64(CATHEDRAL_CATACOMB_MAGIC);
 	op->hdr.flock_dst = htobe64(dst->id | dst->domain->id);
 	op->hdr.flock_src = htobe64(flock->id | flock->domain->id);
+	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
+
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
@@ -1398,6 +1496,45 @@ cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
 }
 
 /*
+ * Send a p2pinfo offer to all our federated cathedrals for the given tunnel.
+ */
+static void
+cathedral_p2pinfo_send(struct flockent *flock, struct flockent *dst,
+    struct tunnel *tun, u_int32_t id)
+{
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	struct sanctum_p2p_info_offer	*info;
+
+	PRECOND(flock != NULL);
+	PRECOND(dst != NULL);
+	PRECOND(tun != NULL);
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	op = sanctum_offer_init(pkt, id,
+	    CATHEDRAL_CATACOMB_MAGIC, SANCTUM_OFFER_TYPE_P2P_INFO);
+
+	info = &op->data.offer.p2pinfo;
+	info->tunnel = htobe16(tun->id);
+
+	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) {
+		info->ip = tun->ip;
+		info->port = tun->port;
+		info->flags = htobe32(tun->peerinfo);
+	} else {
+		info->ip = 0;
+		info->port = 0;
+		info->flags = 0;
+	}
+
+	pkt->length = sizeof(*op);
+
+	cathedral_offer_federate(flock, dst, pkt);
+}
+
+/*
  * Check if we should send an ambry to the peer by checking if its
  * ambry generation mismatches from the one we have loaded.
  *
@@ -1759,6 +1896,23 @@ cathedral_secret_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
 	    sanctum->secretdir, flock, id);
 	if (len == -1 || (size_t)len >= buflen)
 		fatal("failed to construct path to secret");
+}
+
+/*
+ * Create the path to the public key for a peer using its flock and id.
+ */
+static void
+cathedral_pubkey_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
+{
+	int		len;
+
+	PRECOND(buf != NULL);
+	PRECOND(buflen > 0);
+
+	len = snprintf(buf, buflen, "%s/flock-%" PRIx64 "/%08x.pub",
+	    sanctum->secretdir, flock, id);
+	if (len == -1 || (size_t)len >= buflen)
+		fatal("failed to construct path to pubkey");
 }
 
 /*

@@ -32,6 +32,7 @@ SRC=	src/ambry.c
 
 include $(CIPHER_MK_PATH)
 include $(RANDOM_MK_PATH)
+include $(SIGNATURE_MK_PATH)
 
 OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 

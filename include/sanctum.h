@@ -202,6 +202,7 @@ extern const char	*sanctum_build_date;
  *	4) A liturgy offering (from us to cathedral, or cathedral to us)
  *	5) A remembrance offering (from cathedral to us)
  *	6) A key exchange offering (between peers)
+ *	7) A p2p info offer (between cathedrals only).
  */
 
 #define SANCTUM_OFFER_TYPE_KEY		1
@@ -210,6 +211,7 @@ extern const char	*sanctum_build_date;
 #define SANCTUM_OFFER_TYPE_LITURGY	4
 #define SANCTUM_OFFER_TYPE_REMEMBRANCE	5
 #define SANCTUM_OFFER_TYPE_EXCHANGE	6
+#define SANCTUM_OFFER_TYPE_P2P_INFO	7
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -266,6 +268,13 @@ struct sanctum_remembrance_offer {
 	u_int16_t		ports[SANCTUM_CATHEDRALS_MAX];
 } __attribute__((packed));
 
+struct sanctum_p2p_info_offer {
+	u_int32_t		ip;
+	u_int16_t		port;
+	u_int16_t		tunnel;
+	u_int32_t		flags;
+} __attribute__((packed));
+
 /* Set in an info offer if peer wants remembrance. */
 #define SANCTUM_INFO_FLAG_REMEMBRANCE		(1 << 0)
 
@@ -308,6 +317,7 @@ struct sanctum_offer_data {
 		struct sanctum_info_offer		info;
 		struct sanctum_ambry_offer		ambry;
 		struct sanctum_liturgy_offer		liturgy;
+		struct sanctum_p2p_info_offer		p2pinfo;
 		struct sanctum_exchange_offer		exchange;
 		struct sanctum_remembrance_offer	remembrance;
 	} offer;
@@ -316,6 +326,7 @@ struct sanctum_offer_data {
 struct sanctum_offer {
 	struct sanctum_offer_hdr	hdr;
 	struct sanctum_offer_data	data;
+	u_int8_t			sig[SANCTUM_ED25519_SIGN_LENGTH];
 	u_int8_t			tag[SANCTUM_TAG_LENGTH];
 } __attribute__((packed));
 
@@ -645,8 +656,11 @@ struct sanctum_state {
 	/* The flock we are talking to for a cathedral (tunnel mode only). */
 	u_int64_t		cathedral_flock_dst;
 
-	/* The path to the cathedral secret (!cathedral mode). */
+	/* The path to the cathedral secret (tunnel mode only). */
 	char			*cathedral_secret;
+
+	/* The path to the cathedral offering signing key (tunnel mode only). */
+	char			*cathedral_cosk;
 
 	/* The cathedral remembrance path (tunnel mode only). */
 	char			*cathedral_remembrance;
@@ -703,6 +717,7 @@ extern const char		*sanctum_kem;
 extern const char		*sanctum_cipher;
 extern const char		*sanctum_random;
 extern const char		*sanctum_asymmetry;
+extern const char		*sanctum_signature;
 
 /* src/config.c */
 void	sanctum_config_init(void);
@@ -789,6 +804,8 @@ int	sanctum_offer_kdf(const char *, const char *,
 	    struct sanctum_key *, void *, size_t, u_int64_t, u_int64_t);
 void	sanctum_offer_nonce(u_int8_t *, size_t);
 void	sanctum_offer_tfc(struct sanctum_packet *);
+int	sanctum_offer_sign(struct sanctum_offer *);
+int	sanctum_offer_verify(const char *, struct sanctum_offer *);
 void	sanctum_offer_remembrance(struct sanctum_offer *, u_int64_t);
 void	sanctum_offer_encrypt(struct sanctum_key *, struct sanctum_offer *);
 void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);

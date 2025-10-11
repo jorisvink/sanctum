@@ -34,6 +34,7 @@
 #include "sanctum_portability.h"
 #include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
+
 #include "libnyfe.h"
 
 #define errno_s			strerror(errno)
@@ -45,6 +46,7 @@ static void	usage_renew(void) __attribute__((noreturn));
 static void	usage_export(void) __attribute__((noreturn));
 static void	usage_bundle(void) __attribute__((noreturn));
 static void	usage_generate(void) __attribute__((noreturn));
+static void	usage_cosk_pair(void) __attribute__((noreturn));
 
 static void	ambry_mkdir(u_int64_t, const char *, int);
 static void	ambry_key_wrap(struct sanctum_ambry_head *, int,
@@ -58,6 +60,7 @@ static void	ambry_derived_kek_path(u_int64_t, u_int64_t,
 static void	ambry_kek_gen(const char *);
 static void	ambry_kek_derive(u_int64_t, u_int64_t, u_int8_t);
 
+static int	ambry_cosk_pair(int, char **);
 static int	ambry_kek_renew(int, char **);
 static int	ambry_kek_export(int, char **);
 static int	ambry_kek_generate(int, char **);
@@ -70,10 +73,11 @@ static const struct {
 	const char	*name;
 	int		(*cb)(int, char **);
 } cmds[] = {
-	{ "generate",		ambry_kek_generate },
-	{ "export",		ambry_kek_export },
 	{ "bundle",		ambry_bundle_generate },
+	{ "export",		ambry_kek_export },
+	{ "generate",		ambry_kek_generate },
 	{ "renew",		ambry_kek_renew },
+	{ "cosk-pair",		ambry_cosk_pair },
 	{ NULL,			NULL },
 };
 
@@ -86,6 +90,7 @@ usage(void)
 	fprintf(stderr, "  export        - Export KEKs for xflock\n");
 	fprintf(stderr, "  generate      - Generates all new device KEKs\n");
 	fprintf(stderr, "  renew         - Renews a given device KEK\n");
+	fprintf(stderr, "  cosk-pair     - Generates a COSK key pair\n");
 
 	exit(1);
 }
@@ -403,6 +408,53 @@ ambry_bundle_generate(int argc, char **argv)
 	fprintf(stderr, "%s: generated %u tunnels, generation 0x%x\n",
 	    argv[3], count, gen);
 	nyfe_zeroize(key, sizeof(key));
+
+	return (0);
+}
+
+static void
+usage_cosk_pair(void)
+{
+	printf("Usage: cosk-pair [priv] [pub]");
+	printf("\n");
+	printf("The `cosk-pair` command generates a new signing key pair\n");
+	printf("used to sign sanctum offers that are sent to cathedrals.\n");
+	printf("\n");
+	printf("This is currently an ed25519 key pair.\n");
+	printf("\n");
+	printf("The command will generate the key pair and writes\n");
+	printf("the private key to the given [priv] argument and the\n");
+	printf("matching public key to the given [pub] argument.\n");
+	printf("\n");
+	printf("Both arguments must be file paths and must not exist yet.\n");
+
+	exit(1);
+}
+
+static int
+ambry_cosk_pair(int argc, char **argv)
+{
+	int		fd;
+	u_int8_t	sk[SANCTUM_ED25519_SIGN_SECRET_LENGTH];
+	u_int8_t	pk[SANCTUM_ED25519_SIGN_PUBLIC_LENGTH];
+
+	if (argc != 2)
+		usage_cosk_pair();
+
+	nyfe_zeroize_register(sk, sizeof(sk));
+
+	if (sanctum_signature_keygen(sk, sizeof(sk), pk, sizeof(pk)) == -1)
+		fatal("failed to generate key pair");
+
+	fd = nyfe_file_open(argv[0], NYFE_FILE_CREATE);
+	nyfe_file_write(fd, sk, sizeof(sk));
+	nyfe_file_close(fd);
+
+	nyfe_zeroize(sk, sizeof(sk));
+
+	fd = nyfe_file_open(argv[1], NYFE_FILE_CREATE);
+	nyfe_file_write(fd, pk, sizeof(pk));
+	nyfe_file_close(fd);
 
 	return (0);
 }

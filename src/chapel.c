@@ -406,6 +406,12 @@ chapel_cathedral_send_info(u_int64_t magic)
 	if (sanctum->cathedral_remembrance != NULL)
 		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
 
+	if (sanctum_offer_sign(op) == -1) {
+		sanctum_log(LOG_NOTICE, "discarding offer, failed to sign");
+		sanctum_packet_release(pkt);
+		return;
+	}
+
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
