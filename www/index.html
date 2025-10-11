@@ -65,7 +65,7 @@ a, a:visited {
     </div>
 
     <div class="release">
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.28.tgz">sanctum 0.9.28</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.29.tgz">sanctum 0.9.29</a>
     </div>
 
     <div class="sep"></div>
@@ -205,10 +205,14 @@ offer_send_pk(offer):
     seed = PRNG(512-bit)
     dk = derive_offer_encryption_key(seed)
 
-    header = 0x53414352414D4E54 || offer.spi || seed
-    pt = id || salt || now || internal_seed ||
-         offer.ecdh.pub || offer.kem.pk || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
+    header = 0x53414352414D4E54 || flock_src || flock_dst || offer.spi || seed
+
+    data = SANCTUM_OFFER_TYPE_EXCHANGE || offer.now ||
+           offer.id || offer.spi || offer.salt ||
+           SANCTUM_OFFER_STATE_KEM_PK_FRAGMENT ||
+           offer.ecdh.pub || offer.kem.pk
+
+    encdata = AES256-GCM(dk, nonce=1, aad=header, data)
 
     packet.header = header
     packet.data = encdata
@@ -238,9 +242,13 @@ offer_send_ct(offer):
     seed = PRNG(512-bit)
     dk = derive_offer_encryption_key(seed)
 
-    header = 0x53414352414D4E54 || spi || seed
-    pt = id || salt || now || internal_seed ||
-         offer.ecdh.pub || offer.kem.ct || internal_tag
+    header = 0x53414352414D4E54 || flock_src || flock_dst || offer.spi || seed
+
+    data = SANCTUM_OFFER_TYPE_EXCHANGE || offer.now ||
+           offer.id || offer.spi || offer.salt ||
+           SANCTUM_OFFER_STATE_KEM_CT_FRAGMENT ||
+           offer.ecdh.pub || offer.kem.ct
+
     encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
 
     packet.header = header
@@ -330,12 +338,16 @@ key exchange:
 
     <h2>Talks</h2>
     <p>
-        I talked about sanctum at <a href="/sanctum/sect-2024-redacted.pdf" target="_blank">SEC-T 2024</a>.
+        <ul>
+            <li><a href="https://conclave.se/sect-2025.pdf" target="_blank">SEC-T 2025</a></li>
+            <li><a href="/sanctum/sect-2024-redacted.pdf" target="_blank">SEC-T 2024</a></li>
+        </ul>
+    </p>
 
     <h2>Source?</h2>
 
     <p>
-        Latest release: <a href="/sanctum/releases/sanctum-0.9.28.tgz">sanctum 0.9.28</a>
+        Latest release: <a href="/sanctum/releases/sanctum-0.9.29.tgz">sanctum 0.9.29</a>
     </p>
 
     <p>

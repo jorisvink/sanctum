@@ -35,7 +35,7 @@
 /* Length of an authentication tag for an Ambry. */
 #define SANCTUM_AMBRY_TAG_LEN			SANCTUM_TAG_LENGTH
 
-/* The epoch for when expiration time account began. */
+/* The epoch for when expiration time accounting begins. */
 #define SANCTUM_AMBRY_AGE_EPOCH			1697855580
 
 /* Much like TAI and the dark side we deal in absolutes. */

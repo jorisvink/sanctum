@@ -24,6 +24,16 @@
 const char	*sanctum_asymmetry = "libsodium-x25519";
 
 /*
+ * Perform any one-time asymmetry initialization.
+ */
+void
+sanctum_asymmetry_init(void)
+{
+	if (sodium_init() == -1)
+		fatal("failed to initialize libsodium");
+}
+
+/*
  * Generate a new x25519 private key and derive its public key from it.
  */
 int

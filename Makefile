@@ -82,6 +82,7 @@ include $(KEM_MK_PATH)
 include $(CIPHER_MK_PATH)
 include $(RANDOM_MK_PATH)
 include $(ASYMMETRY_MK_PATH)
+include $(SIGNATURE_MK_PATH)
 
 OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o

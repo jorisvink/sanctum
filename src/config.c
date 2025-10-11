@@ -60,6 +60,7 @@ static void	config_parse_encapsulation(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
+static void	config_parse_cathedral_cosk(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
@@ -106,6 +107,7 @@ static const struct {
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
 	{ "cathedral_id",		config_parse_cathedral_id },
+	{ "cathedral_cosk",		config_parse_cathedral_cosk },
 	{ "cathedral_flock",		config_parse_cathedral_flock },
 	{ "cathedral_secret",		config_parse_cathedral_secret },
 	{ "cathedral_nat_port",		config_parse_cathedral_nat_port },
@@ -160,6 +162,7 @@ void
 sanctum_config_load(const char *file)
 {
 	FILE		*fp;
+	size_t		len;
 	int		idx;
 	char		buf[BUFSIZ], *option, *value;
 
@@ -177,6 +180,18 @@ sanctum_config_load(const char *file)
 			fatal("malformed option '%s'", option);
 
 		*(value)++ = '\0';
+
+		while (isspace((unsigned char)*value))
+			value++;
+
+		if ((len = strlen(value)) == 0)
+			fatal("no value given for '%s'", option);
+
+		for (idx = len - 1; idx >= 0; idx--) {
+			if (!isspace((unsigned char)value[idx]))
+				break;
+			value[idx] = '\0';
+		}
 
 		for (idx = 0; keywords[idx].option != NULL; idx++) {
 			if (!strcmp(keywords[idx].option, option)) {
@@ -725,6 +740,29 @@ config_parse_cathedral_flock_dst(char *opt)
 }
 
 /*
+ * Parse the cathedral_cosk configuration option.
+ */
+static void
+config_parse_cathedral_cosk(char *key)
+{
+	PRECOND(key != NULL);
+
+	if (sanctum->tun_spi == 0)
+		fatal("spi prefix has been configured");
+
+	if (sanctum->cathedral_cosk != NULL)
+		fatal("cathedral_cosk specified multiple times");
+
+	if (access(key, R_OK) == -1) {
+		fatal("cathedral sign key at path '%s' not readable (%s)",
+		    key, errno_s);
+	}
+
+	if ((sanctum->cathedral_cosk = strdup(key)) == NULL)
+		fatal("strdup failed");
+}
+
+/*
  * Parse the cathedral_secret configuration option.
  */
 static void
@@ -734,6 +772,9 @@ config_parse_cathedral_secret(char *secret)
 
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
+
+	if (sanctum->cathedral_secret != NULL)
+		fatal("cathedral_secret specified multiple times");
 
 	if (access(secret, R_OK) == -1) {
 		fatal("cathedral secret at path '%s' not readable (%s)",
@@ -1005,6 +1046,9 @@ config_cathedral_check(void)
 {
 	if (sanctum->cathedral_secret == NULL)
 		fatal("cathedral given but no secret set");
+
+	if (sanctum->cathedral_cosk == NULL)
+		fatal("cathedral given but not cosk set");
 
 	if (sanctum->cathedral_id == 0)
 		fatal("cathedral given but no id set");

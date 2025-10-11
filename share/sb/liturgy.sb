@@ -13,5 +13,8 @@
 	(syscall-number SYS_fstat64)
 	(syscall-number SYS_openat))
 
+(if (param "CATHEDRAL_COSK")
+	(allow file-read* file-test-existence (path (param "CATHEDRAL_COSK"))))
+
 (if (param "CATHEDRAL_SECRET")
 	(allow file-read* file-test-existence (path (param "CATHEDRAL_SECRET"))))

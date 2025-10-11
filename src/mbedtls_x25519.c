@@ -29,6 +29,14 @@ static int	asymmetry_random_bytes(void *, unsigned char *, size_t);
 const char	*sanctum_asymmetry = "mbedtls-x25519";
 
 /*
+ * Perform any one-time asymmetry initialization.
+ */
+void
+sanctum_asymmetry_init(void)
+{
+}
+
+/*
  * Generate a new x25519 private key and derive its public key from it.
  */
 int

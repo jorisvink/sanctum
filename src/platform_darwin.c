@@ -312,7 +312,8 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	/*
 	 * Construct all parameters that the profiles can use.
 	 * Note that it doesn't mean they will, for example only
-	 * chapel will ues KEY_PATH, KEK_PATH or CATHEDRAL_SECRET.
+	 * chapel will use KEY_PATH, KEK_PATH, CATHEDRAL_COSK or
+	 * CATHEDRAL_SECRET.
 	 */
 	idx = 0;
 
@@ -321,6 +322,11 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		params[idx++] = sanctum->secret;
 		params[idx++] = "KEY_PATH_NEW";
 		params[idx++] = path;
+	}
+
+	if (sanctum->cathedral_cosk != NULL) {
+		params[idx++] = "CATHEDRAL_COSK";
+		params[idx++] = sanctum->cathedral_cosk;
 	}
 
 	if (sanctum->cathedral_secret != NULL) {

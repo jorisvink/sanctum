@@ -51,6 +51,7 @@ version(void)
 	fprintf(stderr, "  cipher   : %s\n", sanctum_cipher);
 	fprintf(stderr, "  random   : %s\n", sanctum_random);
 	fprintf(stderr, "  asymmetry: %s\n", sanctum_asymmetry);
+	fprintf(stderr, "  signature: %s\n", sanctum_signature);
 
 	exit(1);
 }
@@ -124,7 +125,10 @@ main(int argc, char *argv[])
 	sanctum_platform_init();
 	sanctum_proc_init(argv);
 	sanctum_packet_init();
+
 	sanctum_cipher_init();
+	sanctum_asymmetry_init();
+	sanctum_signature_init();
 
 	if (foreground == 0) {
 		openlog("sanctum", LOG_NDELAY | LOG_PID, LOG_DAEMON);

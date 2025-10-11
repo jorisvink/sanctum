@@ -33,5 +33,8 @@
 (if (param "KEK_PATH")
 	(allow file-read* file-test-existence (path (param "KEK_PATH"))))
 
+(if (param "CATHEDRAL_COSK")
+	(allow file-read* file-test-existence (path (param "CATHEDRAL_COSK"))))
+
 (if (param "CATHEDRAL_SECRET")
 	(allow file-read* file-test-existence (path (param "CATHEDRAL_SECRET"))))

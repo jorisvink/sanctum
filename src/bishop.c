@@ -41,7 +41,7 @@
 /* The format string for adding a new tunnel using the hymn tool. */
 #define HYMN_FMT_ADD						\
     "hymn add %" PRIx64 "-%02x-%02x tunnel %s/32 "		\
-    "cathedral %s:%u kek %s identity %x:%s natport %u"
+    "cathedral %s:%u kek %s identity %x:%s cosk %s natport %u"
 
 /* The format string for up/down of a tunnel via the hymn tool. */
 #define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x"
@@ -217,7 +217,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 		    inet_ntoa(sanctum->cathedral.sin_addr),
 		    be16toh(sanctum->cathedral.sin_port), sanctum->kek,
 		    sanctum->cathedral_id, sanctum->cathedral_secret,
-		    sanctum->cathedral_nat_port);
+		    sanctum->cathedral_cosk, sanctum->cathedral_nat_port);
 	} else if (!strcmp(cmd, "up") || !strcmp(cmd, "down")) {
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_UP_DOWN,
 		    cmd, sanctum->cathedral_flock, src, dst);

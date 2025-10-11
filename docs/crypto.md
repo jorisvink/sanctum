@@ -49,9 +49,10 @@ and how it is used.
 | --- | ----------- | ---- | ------- |
 | SS | The shared secret between two peers used for key exchanges. | Red | keying proc |
 | SK | A session key used to provide traffic confidentiality and integrity. | Red | bless, confess |
-| CS | The cathedral secret, used to talk to a cathedral if enabled. | Red | chapel |
+| CS | The cathedral secret, used to talk to a cathedral if enabled. | Traffic | chapel |
 | KEK | A key-encryption-key, used for wrapping an Ambry. | Red | chapel |
 | TEK | Traffic encapsulation key, used to prevent traffic analysis. | Traffic | purgatory-rx, purgatory-tx |
+| COSK | The cathedral offer signing key used by the client to sign offers being sent to the cathedral. | Red | chapel |
 | Ambry | A shared secret (SS) wrapped with a KEK. | Black | cathedral, chapel |
 
 ## Separation
@@ -162,19 +163,20 @@ offer_create():
     offer.salt = PRNG(32-bit), salt for nonce construction
     offer.spi  = PRNG(32-bit), the spi for this association
 
-    offer.internal_seed = unused and set to random data
-    offer.internal_tag  = unused and set to random data
-
     return offer
 
 offer_send_pk(offer):
     seed = PRNG(512-bit)
     dk = derive_offer_encryption_key(seed)
 
-    header = 0x53414352414D4E54 || offer.spi || seed
-    pt = id || salt || now || internal_seed ||
-         offer.ecdh.pub || offer.kem.pk || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
+    header = 0x53414352414D4E54 || flock_src || flock_dst || offer.spi || seed
+
+    data = SANCTUM_OFFER_TYPE_EXCHANGE || offer.now ||
+           offer.id || offer.spi || offer.salt ||
+           SANCTUM_OFFER_STATE_KEM_PK_FRAGMENT ||
+           offer.ecdh.pub || offer.kem.pk
+
+    encdata = AES256-GCM(dk, nonce=1, aad=header, data)
 
     packet.header = header
     packet.data = encdata
@@ -205,9 +207,13 @@ offer_send_ct(offer):
     seed = PRNG(512-bit)
     dk = derive_offer_encryption_key(seed)
 
-    header = 0x53414352414D4E54 || spi || seed
-    pt = id || salt || now || internal_seed ||
-         offer.ecdh.pub || offer.kem.ct || internal_tag
+    header = 0x53414352414D4E54 || flock_src || flock_dst || offer.spi || seed
+
+    data = SANCTUM_OFFER_TYPE_EXCHANGE || offer.now ||
+           offer.id || offer.spi || offer.salt ||
+           SANCTUM_OFFER_STATE_KEM_CT_FRAGMENT ||
+           offer.ecdh.pub || offer.kem.ct
+
     encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
 
     packet.header = header
@@ -289,11 +295,16 @@ ambry:
     return tunnel, ct, tag
 ```
 
+Note that a cathedral does not hold the keys to unwrap Ambries.
+
 ## Cathedral secret (CS)
 
 A cathedral secret is a 256-bit symmetrical key used to provide
-confidentiality and integrity for messages that are sent and
-received to and from the cathedral.
+traffic protection for offers that are sent and received from
+the cathedrals.
+
+Note: for messages sent from a cathedral to a client, the CS is
+still used to authenticate the cathedral.
 
 Each CS on the cathedral is tied to a 32-bit identifier.
 For more information on cathedrals, see docs/cathedral.md.
@@ -301,7 +312,7 @@ For more information on cathedrals, see docs/cathedral.md.
 The CS is not used directly, but instead different keys are
 derived for different purposes.
 
-Note that a cathedral does not hold the keys to unwrap Ambries.
+See COSK to see how the cathedral authenticates offers.
 
 ```
 cathedral_derive(seed):
@@ -310,47 +321,19 @@ cathedral_derive(seed):
     ck = sanctum_base_key(cs, PURPOSE_OFFER)
     wk = KMAC256(ck, "SANCTUM.CATHEDRAL.KDF", x), 512-bit
     return wk
-
-Peer to cathedral notify message:
-    now  = seconds since boot, 64-bit
-    spi  = set to the CS identifier, 32-bit
-    salt = the current ambry generation, 32-bit
-    id   = the tunnel spi that we want traffic for, 64-bit
-
-    key           = unused and set to random data
-    internal_seed = unused and set to random data
-    internal_tag  = unused and set to random data
-
-    seed = seed selected uniformly at random, 512-bit
-    dk = cathedral_derive(seed)
-
-    magic = 0x4b4154454452414c, 64-bit
-
-    header = magic || spi || seed
-    encdata = id || salt || now || internal_seed || key || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
-
-    send(header || encdata)
-
-Cathedral to peer ambry message:
-    now  = seconds since boot, 64-bit
-    spi  = set to the CS identifier, 32-bit
-    salt = the current ambry generation, 32-bit
-    id   = the tunnel spi that this ambry is for, 64-bit
-
-    internal_seed = set to the ambry seed.
-    internal_tag  = set to the ambry authentication tag
-    key           = set to the ambry shared secret (SS)
-
-    dk = cathedral_derive()
-    magic = 0x4b4154454452414c, 64-bit
-
-    header = magic || spi || se
-    encdata = id || salt || now || internal_seed || sk || internal_tag
-    encdata = AES256-GCM(dk, nonce=1, aad=header, encdata)
-
-    send(header || encdata)
 ```
+
+## Cathedral Offer Signing Key (COSK)
+
+A cathedral offer signing key (COSK) is an ed25519 secret key used
+to authenticate offers sent to the cathedrals. The cathedrals hold
+the matching public key.
+
+Each COSK public key on the cathedral side is tied to the same
+32-bit identifier as the CS is.
+
+When federating these signatures are kept intact and checked by the
+receiving cathedrals such that no malicious cathedral can impersonate clients.
 
 ## Traffic Encapsulation Key (TEK)
 
