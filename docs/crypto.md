@@ -303,6 +303,9 @@ A cathedral secret is a 256-bit symmetrical key used to provide
 traffic protection for offers that are sent and received from
 the cathedrals.
 
+Note: for messages sent from a cathedral to a client, the CS is
+still used to authenticate the cathedral.
+
 Each CS on the cathedral is tied to a 32-bit identifier.
 For more information on cathedrals, see docs/cathedral.md.
 
