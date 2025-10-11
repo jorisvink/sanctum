@@ -1532,6 +1532,7 @@ cathedral_p2pinfo_send(struct flockent *flock, struct flockent *dst,
 	pkt->length = sizeof(*op);
 
 	cathedral_offer_federate(flock, dst, pkt);
+	sanctum_packet_release(pkt);
 }
 
 /*
