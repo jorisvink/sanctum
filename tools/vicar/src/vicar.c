@@ -200,7 +200,7 @@ vicar_read_secret(const char *path, u_int8_t *secret, size_t len)
 	int		fd;
 	size_t		ret;
 
-	if (len != 32)
+	if (len != 32 && len != 64)
 		fatal("read: invalid length of %zu given", len);
 
 	fd = nyfe_file_open(path, NYFE_FILE_READ);
