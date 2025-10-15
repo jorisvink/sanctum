@@ -553,6 +553,7 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 {
 	struct sanctum_offer_data	*data;
 	u_int16_t			tunnel;
+	u_int32_t			generation;
 
 	PRECOND(op != NULL);
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_AMBRY);
@@ -565,10 +566,18 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 
 	data = &op->data;
 	tunnel = be16toh(data->offer.ambry.tunnel);
+	generation = be32toh(data->offer.ambry.generation);
 
 	if (tunnel != sanctum->tun_spi) {
 		sanctum_log(LOG_NOTICE,
 		    "got an ambry not ment for us (%04x)", tunnel);
+		return;
+	}
+
+	if (generation == ambry_generation) {
+		sanctum_log(LOG_NOTICE,
+		    "duplicate ambry generation %08x from cathedral",
+		    ambry_generation);
 		return;
 	}
 
