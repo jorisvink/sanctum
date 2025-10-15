@@ -163,7 +163,11 @@ is configured and done.
 
 ## Platforms
 
-Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux-y things like Ubuntu 22.04.
+Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux 5.x or higher.
+
+**Note**: On linux-aarch64 most distributions carry libsodium compiled
+without AES-GCM support, you'll want to either compile it yourself or
+compile mbedtls 3.x yourself.
 
 ## Configuring
 
