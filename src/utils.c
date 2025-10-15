@@ -1121,7 +1121,7 @@ sanctum_ambry_expired(u_int16_t days)
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 
 	expires = (time_t)SANCTUM_AMBRY_AGE_EPOCH +
-	    (days * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
+	    ((time_t)days * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
 
 	if (expires < ts.tv_sec)
 		return (-1);
