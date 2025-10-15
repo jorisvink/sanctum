@@ -175,11 +175,13 @@ purgatory_rx_recv_packets(int fd)
 			fatal("read error: %s", errno_s);
 		}
 
-		if (ret == 0)
-			continue;
-
 		if (pkt == &tpkt)
 			continue;
+
+		if (ret == 0) {
+			sanctum_packet_release(pkt);
+			continue;
+		}
 
 		pkt->length = ret;
 		pkt->target = SANCTUM_PROC_CONFESS;

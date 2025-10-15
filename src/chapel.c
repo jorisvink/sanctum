@@ -481,6 +481,14 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
+	op->hdr.spi = be32toh(op->hdr.spi);
+	if (op->hdr.spi != sanctum->cathedral_id) {
+		sanctum_log(LOG_NOTICE,
+		    "got a cathedral packet (%02x) not ment for us (%08x)",
+		    op->data.type, op->hdr.spi);
+		return;
+	}
+
 	switch (op->data.type) {
 	case SANCTUM_OFFER_TYPE_AMBRY:
 		chapel_cathedral_ambry(op, now);
@@ -558,10 +566,7 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 	data = &op->data;
 	tunnel = be16toh(data->offer.ambry.tunnel);
 
-	op->hdr.spi = be32toh(op->hdr.spi);
-
-	if (op->hdr.spi != sanctum->cathedral_id ||
-	    tunnel != sanctum->tun_spi) {
+	if (tunnel != sanctum->tun_spi) {
 		sanctum_log(LOG_NOTICE,
 		    "got an ambry not ment for us (%04x)", tunnel);
 		return;

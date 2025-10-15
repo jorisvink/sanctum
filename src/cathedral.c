@@ -1672,8 +1672,8 @@ cathedral_flock_domains_clear(struct flockent *flock)
 	struct flockdom		*domain;
 
 	while ((domain = LIST_FIRST(&flock->domains)) != NULL) {
-		cathedral_flock_domain_clear(domain);
 		LIST_REMOVE(domain, list);
+		cathedral_flock_domain_clear(domain);
 		free(domain);
 	}
 
