@@ -127,3 +127,22 @@ sanctum_packet_crypto_checklen(struct sanctum_packet *pkt)
 
 	return (0);
 }
+
+/*
+ * Check if a given packet comes from our current cathedral or not.
+ */
+int
+sanctum_packet_from_cathedral(struct sanctum_packet *pkt)
+{
+	PRECOND(pkt != NULL);
+
+	if (pkt->addr.sin_addr.s_addr != sanctum->cathedral.sin_addr.s_addr ||
+	    pkt->addr.sin_port != sanctum->cathedral.sin_port) {
+		sanctum_log(LOG_INFO,
+		    "cathedral packet from unexpected source %s",
+		    sanctum_inet_string(&pkt->addr));
+		return (-1);
+	}
+
+	return (0);
+}

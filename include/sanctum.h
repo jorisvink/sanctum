@@ -752,6 +752,7 @@ struct sanctum_proc	*sanctum_process(void);
 /* src/packet.c */
 void	sanctum_packet_init(void);
 void	sanctum_packet_release(struct sanctum_packet *);
+int	sanctum_packet_from_cathedral(struct sanctum_packet *);
 int	sanctum_packet_crypto_checklen(struct sanctum_packet *);
 
 void	*sanctum_packet_info(struct sanctum_packet *);

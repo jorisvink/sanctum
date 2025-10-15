@@ -270,9 +270,13 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 	 */
 	switch (sanctum->mode) {
 	case SANCTUM_MODE_CATHEDRAL:
+		if (sanctum_packet_from_cathedral(pkt) == -1)
+			return (-1);
 		pkt->target = SANCTUM_PROC_CATHEDRAL;
 		return (0);
 	case SANCTUM_MODE_LITURGY:
+		if (sanctum_packet_from_cathedral(pkt) == -1)
+			return (-1);
 		pkt->target = SANCTUM_PROC_LITURGY;
 		return (0);
 	}
