@@ -49,8 +49,8 @@ cd test
 ../tools/ambry/ambry generate cafeba00
 ../tools/ambry/ambry bundle cafeba00 cafeba00 10000 ambry.keys
 
-../tools/ambry/ambry signkey \
+../tools/ambry/ambry cosk-pair \
     secrets/badf00d.sign secrets/flock-cafeba00/0badf00d.pub
 
-../tools/ambry/ambry signkey \
+../tools/ambry/ambry cosk-pair \
     secrets/fe.sign secrets/flock-cafeba00/000000fe.pub
