@@ -18,7 +18,7 @@ h2 {
 
 .content {
     width: 600px;
-    text-align: justify;
+    text-align: left;
     margin-left: auto;
     margin-right: auto;
     margin-top: 45px;
@@ -80,13 +80,31 @@ a, a:visited {
 
     <div class="sep"></div>
 
-    <h2>What is sanctum?</h2>
+    <h2>What is Sanctum?</h2>
 
     <p>
-        Sanctum is a small, reviewable, capable, pq-safe and <strong>fully
-        privilege seperated</strong> VPN daemon capable of transporting
-        encrypted network traffic between two peers even if both are
-        behind NAT (when using cathedrals).
+        Sanctum is a small, reviewable, capable, pq-secure and fully privilege
+        separated VPN daemon for OpenBSD, Linux and MacOS.
+    </p>
+
+    <p>
+        Sanctum its unique privilege separation design in combination with
+        strong modern sandboxing guarantee that all of its important assets
+        are separated from processes that talk to the internet or handle
+        non-cryptography related things.
+    </p>
+
+    <p>
+        Sanctum can establish traditional site-to-site L2 or L3 tunnels,
+        one-way tunnels and even tunnels between peers when both peers
+        are behind NAT using hole-punching and Sanctum's cathedrals
+        for peer discovery.
+    </p>
+
+    <p>
+        See <a target="_blank" href="https://reliquary.se">The Reliquary</a>,
+        a community driven Sanctum cathedral setup.
+        Note that it is entirely possible to set up your own cathedrals.
     </p>
 
     <h2>Multi-process</h2>
@@ -95,19 +113,6 @@ a, a:visited {
         Sanctum is built using a multi-process approach where each process
         is only doing one thing. This allows for more fine-grained sandboxing
         in relation to permissions or allowed system calls.
-    </p>
-
-    <p>
-        Several different processes exist that all only perform one task:
-        <ul>
-        <li>bless - The encryption process.</li>
-        <li>confess - The decryption process.</li>
-        <li>chapel - The key exchange process.</li>
-        <li>heaven-rx - The red side receiving process.</li>
-        <li>heaven-tx - The red side transmitting process.</li>
-        <li>purgatory-rx - The black side receiving process.</li>
-        <li>purgatory-tx - The black side transmitting process.</li>
-        </ul>
     </p>
 
     <p>
@@ -120,10 +125,10 @@ a, a:visited {
     <h2>Encryption</h2>
 
     <p>
-        Sanctum is post-quantum safe due to its unique approach to
+        Sanctum is post-quantum secure due to its unique approach to
         deriving session keys based on a shared symmetrical secret in
         combination with a hybridized asymmetrical exchange. It combines
-        both classic ECDH (x25519) and the PQ-safe NIST standardized
+        both classic ECDH (x25519) and the PQ-secure NIST standardized
         ML-KEM-1024.
     </p>
 
@@ -291,43 +296,22 @@ key exchange:
         have been submitted on them (1 << 34), or after 1-hour.
     </p>
 
-    <h2>Why did you write sanctum?</h2>
-
-    <p>
-        I wrote it so I can be certain that my packets are blessed
-        correctly according to the scriptures of cryptology.
-    </p>
-
-    <h2>Huh?</h2>
-
-    <p>
-        Ok, I wrote sanctum because I wanted something I can trust
-        fully myself. I am a very private person and want to
-        excercise my right to privacy, even online.
-        There are definitely alternatives, but I opted to
-        carve out something for myself.
-    </p>
-
-    <p>
-        Plus, it's cool to hack on stuff.
-    </p>
-
     <h2>Why would I want to use this?</h2>
 
     <p>
-        Well, you don't have to. I built sanctum for me and my hacker friends
+        Well, you don't have to. I built Sanctum for me and my hacker friends
         with the many years of experience I have building this type of stuff
         at very high assurance levels. There are
         <a href="https://www.wireguard.com" target="_blank">plenty</a>
         <a href="https://openvpn.net" target="_blank">of</a>
         <a href="https://strongswan.org" target="_blank">alternatives</a>
-        out there that.
+        out there.
     </p>
 
     <p>
         None of them have cool mythology nor provide you with the
-        same type of post-quantum safety or privilege separation as
-        sanctum does though.
+        same type of post-quantum security or privilege separation as
+        Sanctum does though.
     </p>
 
     <p>
@@ -352,10 +336,8 @@ key exchange:
 
     <p>
         A mirror of the repository is available on <a href="https://github.com/jorisvink/sanctum" target="_blank">github</a>.
-    </p>
-
-    <p>
-        A library that implements the sanctum protocol (libkyrka) can be found <a href="https://github.com/jorisvink/libkyrka" target="_blank">here</a>.
+        <br>
+        A library that implements the Sanctum protocol can be found <a href="https://github.com/jorisvink/libkyrka" target="_blank">here</a>.
     </p>
 
     <h2>How?</h2>
