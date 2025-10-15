@@ -1,0 +1,22 @@
+#!/usr/local/bin/bash
+
+WEBHOOK=webhook
+
+while read oldrev newrev ref; do
+	if [[ $ref =~ .*/master$ ]]; then
+		logmsg=""
+		commits=$(git rev-list ${oldrev}..${newrev})
+
+		for commit in $commits; do
+			log=$(git log -1 --pretty=format:'[%h](https://github.com/jorisvink/sanctum/commit/%H) %cn: %s' $commit)
+			logmsg="$logmsg $log\\n"
+		done
+
+		curl -i \
+		    -H "Accept: application/json" \
+		    -H "Content-type: application/json" \
+		    -X POST \
+		    -d "{\"content\": \"${logmsg}\"}" \
+		    $WEBHOOK
+	fi
+done
