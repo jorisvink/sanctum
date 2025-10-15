@@ -41,10 +41,12 @@ There are several processes that make up a sanctum instance:
 
 Each process runs as its own user.
 
-Each process is fully sandboxed and only has access to the system
-calls required to perform its task. There are two exceptions: guardian
-(the main process), and bishop (liturgy manager), neither of these
-are sandboxed due what they are responsible for.
+Each process is fully sandboxed with modern Operating System techniques such
+as seccomp on Linux, pledge on OpenBSD and MacOS its sandbox(3). This gives
+each process only access to the system calls required to perform its task.
+There are two exceptions: guardian (the main process), and bishop
+(liturgy manager), neither of these are sandboxed due what they
+are responsible for.
 
 The guardian process is only monitoring its child processes and has no
 other external interfaces. The bishop process must be privileged due to
