@@ -130,6 +130,9 @@ sanctum_packet_crypto_checklen(struct sanctum_packet *pkt)
 
 /*
  * Check if a given packet comes from our current cathedral or not.
+ * We check both the origin of the packet and the length. The origin must
+ * match our current cathedral origin and the packet size must be at least
+ * the size of an offer (tfc might pad this out).
  */
 int
 sanctum_packet_from_cathedral(struct sanctum_packet *pkt)
@@ -138,9 +141,15 @@ sanctum_packet_from_cathedral(struct sanctum_packet *pkt)
 
 	if (pkt->addr.sin_addr.s_addr != sanctum->cathedral.sin_addr.s_addr ||
 	    pkt->addr.sin_port != sanctum->cathedral.sin_port) {
-		sanctum_log(LOG_INFO,
+		sanctum_log(LOG_NOTICE,
 		    "cathedral packet from unexpected source %s",
 		    sanctum_inet_string(&pkt->addr));
+		return (-1);
+	}
+
+	if (pkt->length < sizeof(struct sanctum_offer)) {
+		sanctum_log(LOG_NOTICE,
+		    "cathedral packet of invalid size (%zu)", pkt->length);
 		return (-1);
 	}
 
