@@ -107,9 +107,6 @@ variable at compile time with one of the following:
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 - nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
 
-Note that no matter which CIPHER is selected libsodium is always
-a dependency as it is used for x25519.
-
 ## One-directional tunnels
 
 Sanctum supports one-directional tunnels, this is called the pilgrim
@@ -159,7 +156,7 @@ $ make
 # make install
 ```
 
-It is entirely possible to swap the underlying kem, ecdh, cipher and random
+It is possible to swap the underlying kem, ecdh, cipher and random
 implementations used in sanctum, please see the **mk** directory how this
 is configured and done.
 
