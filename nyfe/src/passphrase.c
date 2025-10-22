@@ -19,7 +19,7 @@
 
 #if !defined(__APPLE__) && !defined(NYFE_PLATFORM_WINDOWS) && \
     !defined(NYFE_PLATFORM_ESP32)
-#include <sys/endian.h>
+#include <endian.h>
 #endif
 
 #include <stdio.h>
