@@ -17,8 +17,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#if !defined(__APPLE__) && !defined(NYFE_PLATFORM_WINDOWS)
-#include <endian.h>
+#if !defined(__APPLE__) && !defined(NYFE_PLATFORM_WINDOWS) && \
+    !defined(NYFE_PLATFORM_ESP32)
+#include <sys/endian.h>
 #endif
 
 #include <stdio.h>
