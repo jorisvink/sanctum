@@ -14,7 +14,7 @@ permissions, and more.
 
 .SH COMMON OPTIONS
 .TP
-.BR mode " " tunnel/pilgrim/shrine/cathedral/liturgy
+.BR mode " " <tunnel/pilgrim/shrine/cathedral/liturgy>
 Set the operating mode of the daemon. Options include:
 .RS 4
 .TP
@@ -34,53 +34,53 @@ Mode for authenticated peer discovery, relay and key distribution.
 Mode for autodiscovery of peers in a cathedral.
 .RE
 .TP
-.BR instance " " name
+.BR instance " " <name>
 Specify the name of the instance.
 .TP
-.BR secret " " path
-Path to the shared secret file for tunnels or cathedral synchronization.
+.BR secret " " <path>
+Path to the shared secret file for tunnels or cathedral federation.
 .TP
-.BR encapsulation " " hex_value
+.BR encapsulation " " <hex>
 Set the key used for encapsulation. If used, this value must be set
 on all instances that are part of the same setup.
 .TP
-.BR run " " process " as " user
+.BR run " " <process> " as " <user>
 Run the specified process as a specified user.
 .TP
-.BR control " " path " " user
+.BR control " " <path> " " <user>
 Specify the control socket path and the user who owns it.
 .TP
-.BR local " " ip:port
+.BR local " " <ip:port>
 Specify the local IP address and port sanctum shall bind too. May be set
 to 0.0.0.0:0 for non cathedrals.
 
 .SH TUNNEL SPECIFIC OPTIONS
 .TP
-.BR tunnel " " ip/mask " " mtu
+.BR tunnel " " <ip/mask> " " <mtu>
 Configure the tunnel settings, including the IP address, subnet mask,
 and MTU (Maximum Transmission Unit).
 .TP
-.BR route " " network
+.BR route " " <network>
 Add a route to the specified network so that it gets routed over the tunnel.
 .TP
-.BR peer " " ip:port
+.BR peer " " <ip:port>
 Specify the peer's IP address and port. This can be set to 0.0.0.0:0 if the
 peer location is unknown at the time of configuration.
 .TP
-.BR tap " " yes/no
+.BR tap " " <yes/no>
 When set to yes, create a tap device (L2) instead of a tun device (L3).
 .TP
-.BR tfc " " on/off
+.BR tfc " " <on/off>
 Enable or disable traffic flow control, which pads packets to the maximum
 MTU size before encrypting them.
 .TP
-.BR cathedral " " ip:port
+.BR cathedral " " <ip:port>
 Specify the IP address and port of the cathedral server.
 .TP
-.BR cathedral_id " " hex_value
+.BR cathedral_id " " <hex>
 Set the ID used to authenticate the instance to the cathedral.
 .TP
-.BR cathedral_remembrance " " path
+.BR cathedral_remembrance " " <path>
 Path to the remembrance file used by the cathedral. This enables the
 use of
 .I remembrance
@@ -88,49 +88,55 @@ which is a feature where the cathedral will inform the peer about all
 other cathedrals in the same setup, allowing the instance to perform
 fail-over in the case of a cathedral becoming unresponsive.
 .TP
-.BR cathedral_nat_port " " port
+.BR cathedral_nat_port " " <port>
 Specify the NAT port for the cathedral. If set, the instance will send
 packets to thise port as well so that the cathedral can determine if
 what NAT type the instance is behind.
 .TP
-.BR cathedral_flock " " hex_value
+.BR cathedral_flock " " <hex>
 Set the flock value to which the instance belongs to,
 when communicating via a cathedral.
 .TP
-.BR cathedral_flock_dst " " hex_value
+.BR cathedral_flock_dst " " <hex>
 Set the flock value to which the instance is going to talk to,
 when communicating via a cathedral. If not configured, this gets
 the value of the
 .BR cathedral_flock
 setting.
 .TP
-.BR cathedral_secret " " path
-Path to the secret file used by the cathedral for federation.
+.BR cathedral_secret " " <path>
+Path to the cathedral secret, which is a 256-bit symmetrical key used
+to provide traffic protection for offers that are sent and received from
+the cathedrals.
+.TP
+.BR cathedral_cosk " " <path>
+Path to the Cathedral Offer Signing Key. This is an ed25519 secret
+key used to authenticate offers sent to the cathedrals.
 
 .SH CATHEDRAL SPECIFIC OPTIONS
 .TP
-.BR secretdir " " path
+.BR secretdir " " <path>
 Directory containing secret files for cathedral mode. This path contains
-the client authentication secrets.
+the client cathedral secrets and COSKs.
 .TP
-.BR settings " " path
+.BR settings " " <path>
 Path to the settings file for cathedral mode. This settings file can be
 reloaded by the cathedral while running and contains flock and peer
 information.
 .TP
-.BR cathedral_nat_port " " port
+.BR cathedral_nat_port " " <port>
 Specify the NAT port for the cathedral. If set, the cathedral will listen
 on this port for incoming packets to perform NAT detection.
 .TP
-.BR cathedral_p2p_sync " " yes/no
+.BR cathedral_p2p_sync " " <yes/no>
 Enables the cathedral-wide p2p information synchronization.
 
 .SH LITURGY SPECIFIC OPTIONS
 .TP
-.BR liturgy_group " " hex_value
+.BR liturgy_group " " <hex>
 Set the group ID for liturgy mode.
 .TP
-.BR liturgy_prefix " " ip
+.BR liturgy_prefix " " <ip>
 Specify the IP prefix for liturgy mode. This IP prefix should be in the
 format
 .I
