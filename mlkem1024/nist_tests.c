@@ -23,7 +23,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../include/sanctum_cipher.h"
+#include "libnyfe.h"
+#include "sanctum_cipher.h"
 
 /*
  * We perform the NIST ACVP AFT tests for ML-KEM-1024 using the
@@ -66,6 +67,8 @@ main(void)
 	struct keygen_test		keygen;
 	struct sanctum_mlkem1024	ref, test;
 	u_int8_t			coins[2 * SANCTUM_KEY_LENGTH];
+
+	nyfe_random_init();
 
 	if ((fd = open(KEYGEN_TEST, O_RDONLY)) == -1)
 		fatal("open: %s", KEYGEN_TEST);
@@ -146,6 +149,12 @@ main(void)
 	printf("all tests passed\n");
 
 	return (0);
+}
+
+void
+sanctum_random_bytes(void *buf, size_t len)
+{
+	nyfe_random_bytes(buf, len);
 }
 
 void
