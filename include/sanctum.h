@@ -47,6 +47,7 @@ extern const char	*sanctum_build_date;
 #include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
 #include "sanctum_ctl.h"
+#include "sanctum_kdf.h"
 
 #include "libnyfe.h"
 
@@ -150,15 +151,6 @@ extern const char	*sanctum_build_date;
 #define SANCTUM_KDF_PURPOSE_TRAFFIC_TX	3
 #define SANCTUM_KDF_PURPOSE_KEK_UNWRAP	4
 
-/* The KDF label for offer key derivation from shared secret. */
-#define SANCTUM_KEY_OFFER_KDF_LABEL	"SANCTUM.KEY.OFFER.KDF"
-
-/* The KDF label for traffic key derivation from shared secret (RX). */
-#define SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.RX.KDF"
-
-/* The KDF label for traffic key derivation from shared secret (TX). */
-#define SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL	"SANCTUM.KEY.TRAFFIC.TX.KDF"
-
 /* The half-time window in which offers are valid. */
 #define SANCTUM_OFFER_VALID		10
 
@@ -173,15 +165,6 @@ extern const char	*sanctum_build_date;
 
 /* The magic for NAT detection messages (CIBORIUM). */
 #define SANCTUM_CATHEDRAL_NAT_MAGIC	0x4349424f5249554d
-
-/* The KDF label for the cathedral. */
-#define SANCTUM_CATHEDRAL_KDF_LABEL	"SANCTUM.CATHEDRAL.KDF"
-
-/* The KDF label for traffic encapsulation. */
-#define SANCTUM_ENCAP_LABEL		"SANCTUM.ENCAP.KDF"
-
-/* The KDF label for traffic key derivation. */
-#define SANCTUM_TRAFFIC_KDF_LABEL	"SANCTUM.TRAFFIC.KDF"
 
 /* The maximum number of federated cathedrals we can have. */
 #define SANCTUM_CATHEDRALS_MAX		32

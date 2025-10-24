@@ -17,12 +17,6 @@
 #ifndef __H_SANCTUM_AMBRY_H
 #define __H_SANCTUM_AMBRY_H
 
-/* The label for KMAC256. */
-#define SANCTUM_AMBRY_KDF			"SANCTUM.AMBRY.KDF"
-
-/* The KDF label for the unwrapping key derivation from the KEK. */
-#define SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL	"SANCTUM.KEY.KEK.UNWRAP.KDF"
-
 /* Length of a seed using for deriving Ambry wrapping keys. */
 #define SANCTUM_AMBRY_SEED_LEN			64
 

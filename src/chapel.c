@@ -31,9 +31,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The SACRAMENT KDF label. */
-#define CHAPEL_DERIVE_LABEL		"SANCTUM.SACRAMENT.KDF"
-
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
@@ -909,7 +906,7 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
@@ -993,7 +990,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));

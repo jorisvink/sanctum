@@ -52,9 +52,6 @@
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
 
-/* The KDF label for the tunnel sync. */
-#define CATHEDRAL_CATACOMB_LABEL	"SANCTUM.CATHEDRAL.CATACOMB"
-
 /* The length of an ambry bundle. */
 #if defined(SANCTUM_USE_AGELAS)
 #define CATHEDRAL_AMBRY_BUNDLE_LEN	4793050
@@ -535,7 +532,7 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 
 	if (catacomb) {
 		secret = sanctum->secret;
-		label = CATHEDRAL_CATACOMB_LABEL;
+		label = SANCTUM_CATHEDRAL_CATACOMB_LABEL;
 	} else {
 		cathedral_secret_path(path, sizeof(path), flock->id, id);
 		secret = path;
@@ -889,7 +886,7 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_offer_kdf(sanctum->secret, CATHEDRAL_CATACOMB_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CATHEDRAL_CATACOMB_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    flock->id | flock->domain->id, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));

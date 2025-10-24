@@ -29,9 +29,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The PILGRIM KDF label. */
-#define PILGRIM_DERIVE_LABEL	"SANCTUM.PILGRIMAGE.KDF"
-
 /*
  * A key offer sent to our peer, this is wrapped with a key derived
  * from a shared secret.
@@ -228,7 +225,8 @@ pilgrim_offer_encrypt(u_int64_t now)
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_offer_kdf(sanctum->secret, PILGRIM_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret,
+	    SANCTUM_SHRINE_PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed), 0, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
