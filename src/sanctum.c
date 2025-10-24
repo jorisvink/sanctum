@@ -81,20 +81,6 @@ main(int argc, char *argv[])
 	config = NULL;
 	foreground = 1;
 
-	printf("%s\n", SANCTUM_KEY_OFFER_KDF_LABEL);
-	printf("%s\n", SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL);
-	printf("%s\n", SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL);
-	printf("%s\n", SANCTUM_CATHEDRAL_KDF_LABEL);
-	printf("%s\n", SANCTUM_ENCAP_LABEL);
-	printf("%s\n", SANCTUM_TRAFFIC_KDF_LABEL);
-	printf("%s\n", SANCTUM_SHRINE_PILGRIM_DERIVE_LABEL);
-	printf("%s\n", SANCTUM_CHAPEL_DERIVE_LABEL);
-	printf("%s\n", SANCTUM_CATHEDRAL_CATACOMB_LABEL);
-	printf("%s\n", SANCTUM_AMBRY_KDF);
-	printf("%s\n", SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL);
-
-	exit(1);
-
 	while ((ch = getopt(argc, argv, "c:dhv")) != -1) {
 		switch (ch) {
 		case 'c':
