@@ -1275,22 +1275,22 @@ chapel_session_key_derive(struct sanctum_offer *op, u_int8_t dir)
  * Mark the given sanctum key as needing to be erased by the owner process.
  */
 static void
-chapel_erase(struct sanctum_key *state, u_int32_t spi)
+chapel_erase(struct sanctum_key *key, u_int32_t spi)
 {
-	PRECOND(state != NULL);
+	PRECOND(key != NULL);
 
-	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
+	while (sanctum_atomic_read(&key->state) != SANCTUM_KEY_EMPTY)
 		sanctum_cpu_pause();
 
-	if (!sanctum_atomic_cas_simple(&state->state,
+	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
 		fatal("failed to swap key state to generating");
 
-	sanctum_atomic_write(&state->salt, 0);
-	sanctum_atomic_write(&state->spi, spi);
-	sanctum_mem_zero(state->key, sizeof(state->key));
+	sanctum_atomic_write(&key->salt, 0);
+	sanctum_atomic_write(&key->spi, spi);
+	sanctum_mem_zero(key->key, sizeof(key->key));
 
-	if (!sanctum_atomic_cas_simple(&state->state,
+	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
 		fatal("failed to swap key state to erase");
 }
