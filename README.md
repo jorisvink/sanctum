@@ -157,8 +157,9 @@ $ make
 ```
 
 It is possible to swap the underlying kem, ecdh, cipher and random
-implementations used in sanctum, please see the **mk** directory how this
-is configured and done.
+implementations used in sanctum,
+please see the [docs/building.md](docs/building.md) for more information
+on how this works.
 
 ## Platforms
 
