@@ -6,6 +6,9 @@ Sanctum builds out of the box on several different operating systems.
 * Linux 5.x+
 * OpenBSD 6.8+
 
+A default build requires at least pkg-config and libsodium.
+Note that on OpenBSD you will need gmake installed.
+
 # Customization
 
 Sanctum can be built with different cryptographic libraries,
