@@ -59,6 +59,7 @@ For the encryption Sanctum comes with backends for the
 following libraries:
 
 * nyfe-agelas
+* libsodium-aegis
 * libsodium-aes-gcm (default)
 * mbedtls-aes-gcm (mbedtls 3.x)
 

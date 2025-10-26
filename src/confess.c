@@ -279,6 +279,8 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	ctlen = pkt->length - sizeof(*hdr) - SANCTUM_TAG_LENGTH;
 
 	memcpy(&aad, hdr, sizeof(*hdr));
+
+	memset(nonce, 0, sizeof(nonce));
 	memcpy(nonce, &sa->salt, sizeof(sa->salt));
 	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
 
