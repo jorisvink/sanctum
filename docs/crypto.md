@@ -28,6 +28,12 @@ This IKM is run through KMAC256() instantiated with the derived
 key from the shared symmetrical secret, to produce strong and unique
 session keys in both RX and TX directions.
 
+## KDF
+
+All labels used for KDF purposes are prefixed with "SANCTUM.". This
+prefix can be overriden at compile-time by setting SANCTUM_KDF_PREFIX
+in CFLAGS.
+
 ## Keys
 
 Sanctum uses several different secrets and keys to provide
