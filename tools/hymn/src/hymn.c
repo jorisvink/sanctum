@@ -615,8 +615,10 @@ hymn_add(int argc, char *argv[])
 		if (which & HYMN_SECRET)
 			fatal("no need to specify a secret when using a kek");
 
-		len = snprintf(secret, sizeof(secret), "%s/%02x-%02x.secret",
-		    HYMN_BASE_PATH, config.src, config.dst);
+		len = snprintf(secret, sizeof(secret),
+		    "%s/%" PRIx64 "-%" PRIx64 "-%02x-%02x.secret",
+		    HYMN_BASE_PATH, config.cathedral_flock,
+		    config.cathedral_flock_dst, config.src, config.dst);
 		if (len == -1 || (size_t)len >= sizeof(secret))
 			fatal("snprintf on tunnel secret path");
 

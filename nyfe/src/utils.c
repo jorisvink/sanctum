@@ -51,7 +51,7 @@ void
 nyfe_fatal(const char *fmt, ...)
 {
 	va_list		args;
-#if !defined(NYFE_PLATFORM_WINDOWS)
+#if !defined(NYFE_PLATFORM_WINDOWS) && !defined(NYFE_PLATFORM_ESP32)
 	sigset_t	sig;
 
 	if (sigfillset(&sig) == -1)

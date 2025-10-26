@@ -41,10 +41,12 @@ There are several processes that make up a sanctum instance:
 
 Each process runs as its own user.
 
-Each process is fully sandboxed and only has access to the system
-calls required to perform its task. There are two exceptions: guardian
-(the main process), and bishop (liturgy manager), neither of these
-are sandboxed due what they are responsible for.
+Each process is fully sandboxed with modern Operating System techniques such
+as seccomp on Linux, pledge on OpenBSD and MacOS its sandbox(3). This gives
+each process only access to the system calls required to perform its task.
+There are two exceptions: guardian (the main process), and bishop
+(liturgy manager), neither of these are sandboxed due what they
+are responsible for.
 
 The guardian process is only monitoring its child processes and has no
 other external interfaces. The bishop process must be privileged due to
@@ -105,9 +107,6 @@ variable at compile time with one of the following:
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
 - nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
 
-Note that no matter which CIPHER is selected libsodium is always
-a dependency as it is used for x25519.
-
 ## One-directional tunnels
 
 Sanctum supports one-directional tunnels, this is called the pilgrim
@@ -157,9 +156,10 @@ $ make
 # make install
 ```
 
-It is entirely possible to swap the underlying kem, ecdh, cipher and random
-implementations used in sanctum, please see the **mk** directory how this
-is configured and done.
+It is possible to swap the underlying kem, ecdh, cipher and random
+implementations used in sanctum,
+please see the [docs/building.md](docs/building.md) for more information
+on how this works.
 
 ## Platforms
 

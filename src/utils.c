@@ -482,8 +482,11 @@ sanctum_base_key(const char *path, u_int64_t flock_src, u_int64_t flock_dst,
 	PRECOND(len == SANCTUM_KEY_LENGTH);
 
 	switch (purpose) {
-	case SANCTUM_KDF_PURPOSE_OFFER:
-		label = SANCTUM_KEY_OFFER_KDF_LABEL;
+	case SANCTUM_KDF_PURPOSE_PEER_OFFER:
+		label = SANCTUM_PEER_OFFER_KDF_LABEL;
+		break;
+	case SANCTUM_KDF_PURPOSE_CATHEDRAL_OFFER:
+		label = SANCTUM_CATHEDRAL_OFFER_KDF_LABEL;
 		break;
 	case SANCTUM_KDF_PURPOSE_TRAFFIC_RX:
 		label = SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL;
@@ -553,6 +556,7 @@ sanctum_offer_kdf(const char *path, const char *label,
 {
 	struct nyfe_kmac256		kdf;
 	u_int8_t			len;
+	int				purpose;
 	u_int8_t			secret[SANCTUM_KEY_LENGTH];
 
 	PRECOND(path != NULL);
@@ -564,8 +568,14 @@ sanctum_offer_kdf(const char *path, const char *label,
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(secret, sizeof(secret));
 
+	if (!strcmp(label, SANCTUM_CATHEDRAL_KDF_LABEL)) {
+		purpose = SANCTUM_KDF_PURPOSE_CATHEDRAL_OFFER;
+	} else {
+		purpose = SANCTUM_KDF_PURPOSE_PEER_OFFER;
+	}
+
 	if (sanctum_base_key(path, flock_a, flock_b,
-	    SANCTUM_KDF_PURPOSE_OFFER, secret, sizeof(secret)) == -1) {
+	    purpose, secret, sizeof(secret)) == -1) {
 		nyfe_zeroize(&kdf, sizeof(kdf));
 		nyfe_zeroize(secret, sizeof(secret));
 		return (-1);
@@ -1121,7 +1131,7 @@ sanctum_ambry_expired(u_int16_t days)
 	(void)clock_gettime(CLOCK_REALTIME, &ts);
 
 	expires = (time_t)SANCTUM_AMBRY_AGE_EPOCH +
-	    (days * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
+	    ((time_t)days * SANCTUM_AMBRY_AGE_SECONDS_PER_DAY);
 
 	if (expires < ts.tv_sec)
 		return (-1);

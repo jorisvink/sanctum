@@ -29,9 +29,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The PILGRIM KDF label. */
-#define SHRINE_DERIVE_LABEL	"SANCTUM.PILGRIMAGE.KDF"
-
 /* The half-time window in which offers are valid. */
 #define SHRINE_OFFER_VALID		(SANCTUM_SA_LIFETIME_SOFT / 2)
 
@@ -141,7 +138,8 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_offer_kdf(sanctum->secret, SHRINE_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret,
+	    SANCTUM_SHRINE_PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed), 0, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;

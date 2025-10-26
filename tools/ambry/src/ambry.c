@@ -34,6 +34,7 @@
 #include "sanctum_portability.h"
 #include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
+#include "sanctum_kdf.h"
 
 #include "libnyfe.h"
 

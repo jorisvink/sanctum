@@ -8,13 +8,13 @@ sanctum \- A small, reviewable and capable VPN daemon.
 [\-c file] [\-d] [\-h] [\-v]
 .SH DESCRIPTION
 .I Sanctum
-is a small, reviewable, capable and fully privilege seperated VPN
-daemon capable of transporting encrypted network traffic between two peers.
+is a small, reviewable, capable, PQ-secure and fully privilege
+separated VPN daemon.
 
 .SH OPTIONS
 .TP
 .BR \-d
-Run as
+Run
 .I sanctum
 as a daemon. This option allows the program to run in the background,
 detaching from the terminal.
@@ -42,14 +42,17 @@ side without passing the encryption process and vice-versa.
 .SH ENCRYPTION
 Traffic is by default encrypted under AES256-GCM with unique keys in
 both the RX and TX directions using a 96-bit nonce consisting of a 32-bit
-salt and 64-bit packet counter (see rfc4106).
+salt and 64-bit packet counter.
 
 .I Sanctum
-uses a strong shared symmetrical secret shared between two peers that wish to
-communicate. This key is primarily used for key offers and key encryption.
-Session keys are derived partially from the shared secret and partially from a
-post-quantum safe, forward-secrecy protecting ECDH (x25519) and ML-KEM-1024
-handshake.
+uses a strong symmetrical secret shared between two peers that wish to
+communicate. Session keys are derived from the shared symmetrical secret
+in combination with the shared secrets from a classical ECDH (x25519)
+exchange and a PQ-secure ML-KEM-1024 exchange that happens in both RX
+and TX directions.
+
+Key exchanges are protected using a different key derived from the
+shared symmetrical secret.
 
 Keys are automatically expired after a given number of packets
 have been sent on them (1 << 34), or after a 1-hour period.

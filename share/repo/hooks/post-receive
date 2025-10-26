@@ -1,0 +1,41 @@
+#!/usr/local/bin/bash
+#
+# Copyright (c) 2025 Joris Vink <joris@sanctorum.se>
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+# A git post-receive hook that is used to notify a discord
+# channel upon receiving new commits.
+#
+# Make sure to replace WEBHOOK with the actual hook before running.
+
+WEBHOOK=webhook
+
+while read oldrev newrev ref; do
+	if [[ $ref =~ .*/master$ ]]; then
+		logmsg=""
+		commits=$(git rev-list ${oldrev}..${newrev})
+
+		for commit in $commits; do
+			log=$(git log -1 --pretty=format:'[%h](https://github.com/jorisvink/sanctum/commit/%H) %cn: %s' $commit)
+			logmsg="$logmsg $log\\n"
+		done
+
+		curl -i \
+		    -H "Accept: application/json" \
+		    -H "Content-type: application/json" \
+		    -X POST \
+		    -d "{\"content\": \"${logmsg}\"}" \
+		    $WEBHOOK
+	fi
+done

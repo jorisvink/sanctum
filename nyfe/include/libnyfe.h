@@ -24,6 +24,10 @@
 #include "portable_win.h"
 #endif
 
+#if defined(NYFE_PLATFORM_ESP32)
+#include "portable_esp32.h"
+#endif
+
 /* Keccak1600 defines. */
 #define NYFE_KECCAK_1600_RATE		1600
 #define NYFE_KECCAK_1600_MIN_BITS	256

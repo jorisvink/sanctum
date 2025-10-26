@@ -84,8 +84,10 @@ sanctum_base_key(key, purpose):
         flock_a = htobe64(cathedral_flock_dst)
         flock_b = htobe64(cathedral_flock)
 
-    if purpose == PURPOSE_OFFER:
-        label = "SANCTUM.OFFER.KDF"
+    if purpose == PURPOSE_PEER_OFFER:
+        label = "SANCTUM.PEER.OFFER.KDF"
+    else if purpose == PURPOSE_CATHEDRAL_OFFER:
+        label = "SANCTUM.CATHEDRAL.OFFER.KDF"
     else if purpose == PURPOSE_RX_KEY:
         label = "SANCTUM.KEY.TRAFFIC.RX.KDF"
     else if purpose == PURPOSE_TX_KEY:
@@ -151,7 +153,7 @@ key or when the keys become too old.
 derive_offer_encryption_key(seed):
     x = len(seed) || seed
     ss = shared symmetrical secret, 256-bit
-    key = sanctum_base_key(ss, PURPOSE_OFFER)
+    key = sanctum_base_key(ss, PURPOSE_PEER_OFFER)
     wk = KMAC256(key, "SANCTUM.SACRAMENT.KDF", x), 256-bit
     return wk
 
@@ -318,7 +320,7 @@ See COSK to see how the cathedral authenticates offers.
 cathedral_derive(seed):
     x = len(seed) || seed
     cs = cathedral secret, 256-bit
-    ck = sanctum_base_key(cs, PURPOSE_OFFER)
+    ck = sanctum_base_key(cs, PURPOSE_CATHEDRAL_OFFER)
     wk = KMAC256(ck, "SANCTUM.CATHEDRAL.KDF", x), 512-bit
     return wk
 ```

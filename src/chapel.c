@@ -31,9 +31,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The SACRAMENT KDF label. */
-#define CHAPEL_DERIVE_LABEL		"SANCTUM.SACRAMENT.KDF"
-
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
@@ -553,6 +550,7 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 {
 	struct sanctum_offer_data	*data;
 	u_int16_t			tunnel;
+	u_int32_t			generation;
 
 	PRECOND(op != NULL);
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_AMBRY);
@@ -565,10 +563,18 @@ chapel_cathedral_ambry(struct sanctum_offer *op, u_int64_t now)
 
 	data = &op->data;
 	tunnel = be16toh(data->offer.ambry.tunnel);
+	generation = be32toh(data->offer.ambry.generation);
 
 	if (tunnel != sanctum->tun_spi) {
 		sanctum_log(LOG_NOTICE,
 		    "got an ambry not ment for us (%04x)", tunnel);
+		return;
+	}
+
+	if (generation == ambry_generation) {
+		sanctum_log(LOG_NOTICE,
+		    "duplicate ambry generation %08x from cathedral",
+		    ambry_generation);
 		return;
 	}
 
@@ -900,7 +906,7 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
@@ -984,7 +990,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	op = sanctum_packet_head(pkt);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
-	if (sanctum_offer_kdf(sanctum->secret, CHAPEL_DERIVE_LABEL,
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CHAPEL_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    sanctum->cathedral_flock, sanctum->cathedral_flock_dst) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
@@ -1266,22 +1272,22 @@ chapel_session_key_derive(struct sanctum_offer *op, u_int8_t dir)
  * Mark the given sanctum key as needing to be erased by the owner process.
  */
 static void
-chapel_erase(struct sanctum_key *state, u_int32_t spi)
+chapel_erase(struct sanctum_key *key, u_int32_t spi)
 {
-	PRECOND(state != NULL);
+	PRECOND(key != NULL);
 
-	while (sanctum_atomic_read(&state->state) != SANCTUM_KEY_EMPTY)
+	while (sanctum_atomic_read(&key->state) != SANCTUM_KEY_EMPTY)
 		sanctum_cpu_pause();
 
-	if (!sanctum_atomic_cas_simple(&state->state,
+	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
 		fatal("failed to swap key state to generating");
 
-	sanctum_atomic_write(&state->salt, 0);
-	sanctum_atomic_write(&state->spi, spi);
-	sanctum_mem_zero(state->key, sizeof(state->key));
+	sanctum_atomic_write(&key->salt, 0);
+	sanctum_atomic_write(&key->spi, spi);
+	sanctum_mem_zero(key->key, sizeof(key->key));
 
-	if (!sanctum_atomic_cas_simple(&state->state,
+	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
 		fatal("failed to swap key state to erase");
 }

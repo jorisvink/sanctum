@@ -273,6 +273,8 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 		pkt->target = SANCTUM_PROC_CATHEDRAL;
 		return (0);
 	case SANCTUM_MODE_LITURGY:
+		if (sanctum_packet_from_cathedral(pkt) == -1)
+			return (-1);
 		pkt->target = SANCTUM_PROC_LITURGY;
 		return (0);
 	}
@@ -303,6 +305,8 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 	    (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
 	    ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff)))) {
+		if (sanctum_packet_from_cathedral(pkt) == -1)
+			return (-1);
 		pkt->target = SANCTUM_PROC_CHAPEL;
 		return (0);
 	}

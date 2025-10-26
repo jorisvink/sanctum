@@ -122,7 +122,7 @@ The type of data that is carried in the offer depends on the **type**
 member in the data structure.
 
 A **timestamp** is given so that offers can get some form of replay
-protection. Offers that are out of range of -5,+5 seconds of the
+protection. Offers that are out of range of -10,+10 seconds of the
 receiver their clock are dropped.
 
 ## Liturgies
