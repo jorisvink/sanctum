@@ -32,7 +32,7 @@ session keys in both RX and TX directions.
 
 All labels used for KDF purposes are prefixed with "SANCTUM.". This
 prefix can be overriden at compile-time by setting SANCTUM_KDF_PREFIX
-in CFLAGS.
+in CFLAGS. See [docs/building.md](docs/building.md) for more information.
 
 ## Keys
 
