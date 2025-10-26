@@ -19,16 +19,24 @@
 
 /*
  * All labels used by sanctum when performing KDF for different purposes.
+ *
+ * Both the traffic KDF labels for tunnels and cathedral KDF labels
+ * for talking to cathedrals can be overriden at compile time.
  */
 
 #if !defined(SANCTUM_KDF_PREFIX)
-#define SANCTUM_KDF_PREFIX	"SANCTUM."
+#define SANCTUM_KDF_PREFIX		"SANCTUM."
+#endif
+
+#if !defined(SANCTUM_CATHEDRAL_KDF_PREFIX)
+#define SANCTUM_CATHEDRAL_KDF_PREFIX	"SANCTUM."
 #endif
 
 #define LABEL(x)	SANCTUM_KDF_PREFIX#x
+#define CLABEL(x)	SANCTUM_CATHEDRAL_KDF_PREFIX#x
 
-/* The KDF label for offer key derivation from shared secret. */
-#define SANCTUM_KEY_OFFER_KDF_LABEL		LABEL(KEY.OFFER.KDF)
+/* The KDF label when generating base keys for offers to peers. */
+#define SANCTUM_PEER_OFFER_KDF_LABEL		LABEL(PEER.OFFER.KDF)
 
 /* The KDF label for traffic key derivation from shared secret (RX). */
 #define SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL	LABEL(KEY.TRAFFIC.RX.KDF)
@@ -38,9 +46,6 @@
 
 /* The KDF label for the unwrapping key derivation from the KEK. */
 #define SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL	LABEL(KEY.KEK.UNWRAP.KDF)
-
-/* The KDF label for the cathedral. */
-#define SANCTUM_CATHEDRAL_KDF_LABEL		LABEL(CATHEDRAL.KDF)
 
 /* The KDF label for traffic encapsulation. */
 #define SANCTUM_ENCAP_LABEL			LABEL(ENCAP.KDF)
@@ -54,10 +59,16 @@
 /* The SACRAMENT KDF label. */
 #define SANCTUM_CHAPEL_DERIVE_LABEL		LABEL(SACRAMENT.KDF)
 
-/* The KDF label for the cathedral federation. */
-#define SANCTUM_CATHEDRAL_CATACOMB_LABEL	LABEL(CATHEDRAL.CATACOMB)
-
-/* The KDF label for KMAC256. */
+/* The KDF label for an ambry. */
 #define SANCTUM_AMBRY_KDF			LABEL(AMBRY.KDF)
+
+/* The KDF label for talking to a cathedral. */
+#define SANCTUM_CATHEDRAL_KDF_LABEL		CLABEL(CATHEDRAL.KDF)
+
+/* The KDF label for the cathedral federation. */
+#define SANCTUM_CATHEDRAL_CATACOMB_LABEL	CLABEL(CATHEDRAL.CATACOMB)
+
+/* The KDF label when generating base keys for offers to cathedrals. */
+#define SANCTUM_CATHEDRAL_OFFER_KDF_LABEL	CLABEL(CATHEDRAL.OFFER.KDF)
 
 #endif

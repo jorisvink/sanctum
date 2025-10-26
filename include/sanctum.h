@@ -146,10 +146,11 @@ extern const char	*sanctum_build_date;
 #define SANCTUM_PROC_MAX		14
 
 /* KDF purposes for use with our shared secret. */
-#define SANCTUM_KDF_PURPOSE_OFFER	1
-#define SANCTUM_KDF_PURPOSE_TRAFFIC_RX	2
-#define SANCTUM_KDF_PURPOSE_TRAFFIC_TX	3
-#define SANCTUM_KDF_PURPOSE_KEK_UNWRAP	4
+#define SANCTUM_KDF_PURPOSE_PEER_OFFER		1
+#define SANCTUM_KDF_PURPOSE_TRAFFIC_RX		2
+#define SANCTUM_KDF_PURPOSE_TRAFFIC_TX		3
+#define SANCTUM_KDF_PURPOSE_KEK_UNWRAP		4
+#define SANCTUM_KDF_PURPOSE_CATHEDRAL_OFFER	5
 
 /* The half-time window in which offers are valid. */
 #define SANCTUM_OFFER_VALID		10

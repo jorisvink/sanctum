@@ -9,6 +9,15 @@ Sanctum builds out of the box on several different operating systems.
 A default build requires at least pkg-config and libsodium.
 Note that on OpenBSD you will need gmake installed.
 
+Quick build start:
+
+```
+$ git clone https://github.com/jorisvink/sanctum
+$ cd sanctum
+$ make
+# make install
+```
+
 # Customization
 
 Sanctum can be built with different cryptographic libraries,
@@ -31,8 +40,17 @@ prefixed with "SANCTUM.". This can be overriden to provide
 domain separation between applications or tunnels at compile
 time by specifying SANCTUM_KDF_PREFIX as a define under CFLAGS.
 
+You may also choose to override the KDF labels specific to cathedral
+communication if you wish by setting SANCTUM_CATHEDRAL_KDF_PREFIX
+in the same manner.
+
 ```
 $ CFLAGS=-DSANCTUM_KDF_PREFIX='\"MY_PREFIX.\"' make
+```
+
+```
+$ CFLAGS=-DSANCTUM_KDF_PREFIX='\"MY_PREFIX.\"' \
+         -DSANCTUM_CATHEDRAL_KDF_PREFIX='\"CUSTOM_CATHEDRAL.\"' make
 ```
 
 ## Encryption
