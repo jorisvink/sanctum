@@ -23,6 +23,14 @@
 #include "sanctum.h"
 
 /*
+ * Note that while AEGIS-256 supports nonces of up to 256-bit,
+ * we only contain the original sanctum 96-bit nonce inside of it.
+ *
+ * This nonce is constructed as follows:
+ *	32-bit salt derived at key exchange || 64-bit packet counter.
+ */
+
+/*
  * State structure, we only need to hold the key here.
  */
 struct cipher_aegis {
