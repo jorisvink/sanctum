@@ -45,15 +45,15 @@ See below for an example.
 ## Authentication
 
 When a client notifies a cathedral about its presence, this packet is
-encrypted and authenticated via the cathedral secret (CS, see docs/key.md).
+encrypted and authenticated via the cathedral secret (CS, see docs/crypto.md).
 
 This secret is mapped with the identity configured.
 
 ## Ambry
 
-A cathedral can be used to distribute new shared secrets (SS, see docs/keys.md)
-to clients. A wrapped SS is called an Ambry and the cathedral is never able
-to unwrap these keys.
+A cathedral can be used to distribute new shared secrets (SS, see
+docs/crypto.md) to clients. A wrapped SS is called an Ambry and the cathedral
+is never able to unwrap these keys.
 
 Each flock has their own Ambry bundle.
 
@@ -93,14 +93,14 @@ and can be reloaded while the cathedral is running.
 
 ```
 flock cafeba00 {
-    allow deadbeef spi 01
-    allow badf00d spi 02
+    allow deadbeef spi 0x01 25
+    allow badf00d spi 0x02 25
 
     ambry /home/cathedral/shared/ambries/ambry-cafebabe
 }
 
 flock badf000 {
-    allow 010203 spi 01
+    allow 010203 spi 0x01 0
 
     ambry /home/cathedral/shared/ambries/ambry-badf00d
 }
