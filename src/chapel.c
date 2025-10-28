@@ -34,6 +34,9 @@
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
+/* Number in seconds between cathedral offers. */
+#define CATHEDRAL_NOTIFY_NEXT		5
+
 /* Should we generate an offer that includes the ML-KEM-1024 public key. */
 #define OFFER_INCLUDE_KEM_PK		(1 << 0)
 
@@ -365,7 +368,7 @@ chapel_cathedral_notify(u_int64_t now)
 	if (sanctum->cathedral_nat_port != 0)
 		chapel_cathedral_send_info(SANCTUM_CATHEDRAL_NAT_MAGIC);
 
-	cathedral_next = now + 5;
+	cathedral_next = now + CATHEDRAL_NOTIFY_NEXT;
 }
 
 /*
