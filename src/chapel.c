@@ -836,7 +836,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 		return;
 	}
 
-	sanctum_log(LOG_INFO, "starting new key offering (%s) "
+	sanctum_log(LOG_INFO, "starting new key exchange (%s) "
 	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->local.spi, offer_ttl, offer_next_send);
 }
@@ -958,7 +958,8 @@ chapel_offer_clear(void)
 {
 	PRECOND(offer != NULL);
 
-	sanctum_log(LOG_INFO, "key offer cleared (spi=%08x)", offer->local.spi);
+	sanctum_log(LOG_INFO,
+	    "key exchange cleared (spi=%08x)", offer->local.spi);
 
 	offer_ttl = 15;
 	offer_next = 0;
