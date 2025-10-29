@@ -415,9 +415,8 @@ chapel_cathedral_send_info(u_int64_t magic)
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
-	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock, 0) == -1) {
+	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher, op->hdr.seed,
+	    sizeof(op->hdr.seed), sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -466,9 +465,8 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
-	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock, 0) == -1) {
+	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher, op->hdr.seed,
+	    sizeof(op->hdr.seed), sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
