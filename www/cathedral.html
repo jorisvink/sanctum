@@ -1,0 +1,373 @@
+<!DOCTYPE>
+
+<html>
+
+<head>
+<title>Cathedral setup</title>
+
+<style>
+body {
+    color: #ffffd7;
+    background-color: #101010;
+    font-family: Verdana, sans-serif;
+}
+
+h2, h3, h4 {
+    color: #a66520;
+}
+
+pre {
+    margin-left: 30px;
+    border-radius: 5px;
+    background-color: #101010;
+    color: #dbd0b6;
+    padding: 15px;
+    max-width: 600px;
+}
+
+.content {
+    width: 600px;
+    text-align: justify;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 45px;
+}
+
+.release {
+    margin-bottom: 15px;
+}
+
+.logo {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.sep {
+    background-color: #daa520;
+    width: 100%;
+    height: 5px;
+    border-radius: 5px;
+}
+
+.release {
+    margin-bottom: 15px;
+}
+
+.menu {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.menu-sep {
+    color: #a66520;
+}
+
+a, a:visited {
+    color: #daa520;
+    text-decoration: none;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="content">
+<div class="logo">
+<a href="/"><img src="/sanctorum_transparent.png" width="64px" height="auto"></a>
+</div>
+
+<div class="release">
+Latest release: <a href="/releases/sanctum-0.9.33.tgz">sanctum 0.9.33</a>
+</div>
+
+<div class="sep"></div>
+
+<div class="menu">
+    <a href="/">About</a>
+    <span class="menu-sep">+</span>
+    <a href="/errata.html">Errata</a>
+    <span class="menu-sep">+</span>
+    <a href="/guide.html">Guide</a>
+    <span class="menu-sep">+</span>
+    <a href="/cathedral.html">Cathedrals</a>
+</div>
+
+<div class="sep"></div>
+
+<h2>How to setup a cathedral</h2>
+
+<p>
+    This guide will help you setup your own cathedral that can be used as a
+    discovery and key distribution point for your own flocks and peers. This
+    guide assumes that you are familiar with your system and networking.
+</p>
+
+<h3>Prerequisites</h3>
+
+<p>
+    You should have compiled and installed sanctum according to the
+    <a href="https://sanctorum.se/guide.html" target="_blank">
+    tunnel setup guide</a>.
+</p>
+
+<h3>Cathedral setup</h3>
+
+<p>
+    You should create three system accounts that will be used by the
+    cathedral to properly privilege separate the control, cathedral and
+    purgatory processes.
+</p>
+
+<p>
+    How you do that is left as an excercise for the reader as that depends
+    on your OS. A suggestion on what to name the accounts could be as
+    follows:
+
+    <ul>
+        <li>_purgatory-rx</li>
+        <li>_purgatory-tx</li>
+        <li>_cathedral</li>
+    </ul>
+</p>
+
+<h3>Key management</h3>
+
+<p>
+    The cathedral requires an ambry bundle for each flock that it should serve,
+    refer to the reliquary its <a href="https://reliquary.se/guide.html#key-management">key management guide</a> on how to do this.
+</p>
+
+<h3>Cathedral configuration</h3>
+
+<p>
+    You use the sanctum binary in cathedral mode to run a cathedral.
+</p>
+
+<p>
+    Here is a minimal example configuration:
+
+<pre>
+mode cathedral
+instance cathedral-test
+
+pidfile /tmp/cathedral-test.pid
+local 1.2.3.4:4500
+secret /home/cathedral/sync.secret
+secretdir /home/cathedral/shared/identities
+settings /home/cathedral/shared/settings.conf
+
+run control as root
+run cathedral as _cathedral
+run purgatory-rx as _purgatory-rx
+run purgatory-tx as _purgatory-tx
+</pre>
+</p>
+
+<p>
+    Besides the paths that are explicitly mentioned in the configuration file,
+    in the secretdir you have to create a directory for each flock that you
+    will serve with the cathedral.
+
+<pre>
+$ mkdir -p /home/cathedral/shared/identities
+$ mkdir /home/cathedral/shared/identities/flock-&lt;flock&gt;
+</pre>
+
+</p>
+
+<p>
+    The format for their name should be flock-&lt;flock id&gt;. In this
+    directory, you have to put a secret key and cosk public key per peer
+    in this flock. These are used for traffic protection and offer
+    authentication between the client and cathedral, never for normal traffic.
+</p>
+
+<p>
+    The secret key is a 256-bit symmetrical shared secret shared between the
+    cathedral and client and is stored on the cathedral in the format of
+    &lt;peer id&gt;.key. The cosk public key is an ed25519 public key
+    generated using ambry tool on the client side. The cosk public key
+    is stored in this directory as &lt;peer id&gt;.pub. The peer id
+    is the id you will define later in settings.conf
+</p>
+
+<p>
+    These keys have to be distributed to the peers that will use the cathedral
+    in a secure way, but that is left as an excercise to the reader because
+    that is out of scope for this guide.
+</p>
+
+<p>
+    Local has to be an IP and port that is reachable by all the peers that will
+    be using the cathedral.
+</p>
+
+<p>
+    Secret is a key that should be 32 bytes of random data.
+    An example of how to generate this key is by using the following command:
+<pre>
+$ dd if=/dev/urandom of=/home/cathedral/sync.secret bs=32 count=1
+</pre>
+
+    While the cosk can be generated as follows:
+<pre>
+$ ambry cosk-pair /tmp/cosk-private /tmp/cosk-public
+</pre>
+</p>
+
+<h3>Flock configuration</h3>
+
+<p>
+    To create one or several flocks, they have to be defined in the file
+    pointed to by the settings option in the cathedral configuration.
+</p>
+
+<p>
+    In our example configuration, that path is <strong>/home/cathedral/shared/settings.conf</strong>. The format for the configuration of a flock is:
+
+<pre>
+flock &lt;flock id&gt; {
+    allow &lt;peer id 1&gt; spi &lt;kek id 1&gt; &lt;bandwidth limit&gt;
+    allow &lt;peer id 2&gt; spi &lt;kek id 2&gt; &lt;bandwidth limit&gt;
+
+    ambry /path/to/ambry.bundle
+}
+</pre>
+</p>
+
+<p>
+    The format for the flock name is a 64-bit hex value. The peer
+    ids are 32-bit hex strings. The kek ids is the hex number of
+    the kek associated with the peer, prefixed with 0x.
+</p>
+
+<p>
+    The bandwidth limit is a unsigned integer that represents the limit in
+    Mbit per second that the peer will be limited to. A value of 0 is the
+    equivalent to unlimited bandwidth.
+</p>
+
+<p>
+    An example flock, with two peers defined could look like this:
+
+<pre>
+flock cafebabe {
+    allow deadbeef spi 0x1 0
+    allow deadbabe spi 0x2 0
+
+    ambry /home/cathedral/shared/ambries/ambry-cafebabe
+}
+</pre>
+
+<p>
+    Using an ambry bundle is not strictly required for a flock, if there
+    already is a shared secret distributed to all the peers. The cathedral
+    would then only be used to relay the traffic but this is left as an
+    excercise to the reader.
+</p>
+
+<h3>Peer configuration</h3>
+
+<p>
+    The easiest way to configure a tunnel that uses the cathedral and flock
+    that just was setup is to use the hymn tool.
+</p>
+
+<p>
+    If we were configuring the peer deadbeef, with kek id 1 to use the
+    cathedral with hymn:
+
+<pre>
+$ hymn add cafebabe-01-02 tunnel 172.31.253.1/24 mtu 1422 \
+    kek /tmp/kek-0x01 cathedral 1.2.3.4:4500 \
+    identity deadbeef:/tmp/cs-deadbeef cosk /tmp/cosk-private
+</pre>
+
+    Note that you need /tmp/kek-0x01, /tmp/cs-deadbeef and /tmp/cosk-private
+    on that system.
+</p>
+
+<p>
+    Likewise, configuring the peer deadbabe to connect to deadbeef with
+    hymn looks similar:
+
+<pre>
+$ hymn add cafebabe-02-01 tunnel 172.31.253.2/24 mtu 1422 \
+    kek /tmp/kek-0x02 cathedral 1.2.3.4:4500 \
+    identity deadbabe:/tmp/cs-deadbabe cosk /tmp/cosk-private
+</pre>
+
+    Note that you need /tmp/kek-0x02, /tmp/cs-deadbabe and /tmp/cosk-private
+    on that system.
+</p>
+
+<h3>NAT discovery and hole punching</h3>
+
+<p>
+    The cathedral mode has the possibility of detecting if its possible for
+    peers to connect directly to eachother to get a peer-to-peer connection.
+</p>
+
+<p>
+    To setup the cathedral to listen for traffic from the client to
+    determine its NAT type, specify the following configuration:
+
+<pre>
+cathedral_p2p_sync yes
+cathedral_nat_port 4501
+</pre>
+</p>
+
+<p>
+    The option cathedral_p2p_sync enables the cathedral to sync p2p states
+    with other cathedrals. This allows p2p discovery even if each client
+    is connected to a different cathedral in the setup.
+</p>
+
+<p>
+    The option cathedral_nat_port configures on which port the cathedral will
+    listen to additional peer traffic to determine its NAT type.
+</p>
+
+<p>
+    If the cathedral learns that both peers are behind a NAT type that
+    allows hole punching it will inform both sides with the relevant
+    information to do this.
+</p>
+
+<h3>Federation</h3>
+
+<p>
+    The cathedral mode also has the possibilty of federating with other
+    cathedrals which allows you to truly build distributed infrastructure.
+</p>
+
+<p>
+    For that to work all cathedrals that want to federate with each other
+    need the same federation secret. How this federation secret is distributed
+    between the cathedrals is left as an excercise to the reader.
+</p>
+
+<p>
+    To enable federation for a cathedral, use the following configuration
+    in the cathedral configuration:
+
+<pre>
+secret /path/to/federation.secret
+</pre>
+</p>
+
+<p>
+    Then add the federated cathedrals in the <i>settings.conf</i> file:
+<pre>
+federate &ltip address&gt; &lt;port&gt;
+</pre>
+</p>
+
+<p>
+    You can federate to up to 32 other cathedrals.
+</p>
+
+</body>
+</html>
