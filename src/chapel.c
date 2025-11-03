@@ -943,12 +943,10 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 
 	sanctum_offer_tfc(pkt);
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1) {
+	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
-		sanctum_log(LOG_NOTICE, "failed to queue %d:%u", which, frag);
-	} else {
+	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
-	}
 }
 
 /*
