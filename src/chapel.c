@@ -1066,7 +1066,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
-		break;
+		return;
 	}
 
 	peer_id = exchange->id;
