@@ -55,8 +55,14 @@ int crypto_kem_keypair(uint8_t *pk,
                        uint8_t *sk)
 {
   uint8_t coins[2*KYBER_SYMBYTES];
+
+  nyfe_zeroize_register(coins, sizeof(coins));
+
   sanctum_random_bytes(coins, 2*KYBER_SYMBYTES);
   crypto_kem_keypair_derand(pk, sk, coins);
+
+  nyfe_zeroize(coins, sizeof(coins));
+
   return 0;
 }
 
@@ -86,6 +92,9 @@ int crypto_kem_enc_derand(uint8_t *ct,
   /* Will contain key, coins */
   uint8_t kr[2*KYBER_SYMBYTES];
 
+  nyfe_zeroize_register(kr, sizeof(kr));
+  nyfe_zeroize_register(buf, sizeof(buf));
+
   memcpy(buf, coins, KYBER_SYMBYTES);
 
   /* Multitarget countermeasure for coins + contributory KEM */
@@ -96,6 +105,10 @@ int crypto_kem_enc_derand(uint8_t *ct,
   indcpa_enc(ct, buf, pk, kr+KYBER_SYMBYTES);
 
   memcpy(ss,kr,KYBER_SYMBYTES);
+
+  nyfe_zeroize(kr, sizeof(kr));
+  nyfe_zeroize(buf, sizeof(buf));
+
   return 0;
 }
 
@@ -119,8 +132,14 @@ int crypto_kem_enc(uint8_t *ct,
                    const uint8_t *pk)
 {
   uint8_t coins[KYBER_SYMBYTES];
+
+  nyfe_zeroize_register(coins, sizeof(coins));
+
   sanctum_random_bytes(coins, KYBER_SYMBYTES);
   crypto_kem_enc_derand(ct, ss, pk, coins);
+
+  nyfe_zeroize(coins, sizeof(coins));
+
   return 0;
 }
 
@@ -153,6 +172,9 @@ int crypto_kem_dec(uint8_t *ss,
   uint8_t cmp[KYBER_CIPHERTEXTBYTES];
   const uint8_t *pk = sk+KYBER_INDCPA_SECRETKEYBYTES;
 
+  nyfe_zeroize_register(kr, sizeof(kr));
+  nyfe_zeroize_register(buf, sizeof(buf));
+
   indcpa_dec(buf, ct, sk);
 
   /* Multitarget countermeasure for coins + contributory KEM */
@@ -169,6 +191,9 @@ int crypto_kem_dec(uint8_t *ss,
 
   /* Copy true key to return buffer if fail is false */
   cmov(ss,kr,KYBER_SYMBYTES,!fail);
+
+  nyfe_zeroize(kr, sizeof(kr));
+  nyfe_zeroize(buf, sizeof(buf));
 
   return 0;
 }
