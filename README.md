@@ -170,6 +170,10 @@ Sanctum builds on MacOS 13+, OpenBSD 6.8+ and Linux 5.x or higher.
 without AES-GCM support, you'll want to either compile it yourself or
 compile mbedtls 3.x yourself.
 
+## Hacking
+
+Please send patches to joris@sanctorum.se.
+
 ## Configuring
 
 Sanctum uses a configuration file. Find an example of
