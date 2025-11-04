@@ -105,6 +105,7 @@ variable at compile time with one of the following:
 - libsodium-aes-gcm (AES256-GCM via libsodium) **[default]**
 - mbedtls-aes-gcm (AES256-GCM via mbedtls 3.x its mbedcrypto lib).
 - intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
+- libsodium-aegis (AEGIS-256 via libsodium)
 - nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
 
 ## One-directional tunnels

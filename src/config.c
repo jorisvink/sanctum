@@ -226,6 +226,10 @@ sanctum_config_load(const char *file)
 		config_cathedral_check();
 		if (sanctum->liturgy_prefix.sin_addr.s_addr == 0)
 			fatal("no liturgy_prefix has been set");
+		if (sanctum->kek == NULL)
+			fatal("liturgy mode requires kek path");
+		if (sanctum->tun_spi > UCHAR_MAX)
+			fatal("spi should only have local bits set");
 		break;
 	case SANCTUM_MODE_TUNNEL:
 		if (sanctum->kek != NULL &&

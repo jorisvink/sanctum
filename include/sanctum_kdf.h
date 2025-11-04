@@ -38,13 +38,13 @@
 /* The KDF label when generating base keys for offers to peers. */
 #define SANCTUM_PEER_OFFER_KDF_LABEL		LABEL(PEER.OFFER.KDF)
 
-/* The KDF label for traffic key derivation from shared secret (RX). */
+/* The KDF label when generating base keys for traffic RX derivation. */
 #define SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL	LABEL(KEY.TRAFFIC.RX.KDF)
 
-/* The KDF label for traffic key derivation from shared secret (TX). */
+/* The KDF label when generating base keys for traffic TX derivation. */
 #define SANCTUM_KEY_TRAFFIC_TX_KDF_LABEL	LABEL(KEY.TRAFFIC.TX.KDF)
 
-/* The KDF label for the unwrapping key derivation from the KEK. */
+/* The KDF label when generating base keys for ambry KEK derivation. */
 #define SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL	LABEL(KEY.KEK.UNWRAP.KDF)
 
 /* The KDF label for traffic encapsulation. */

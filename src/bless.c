@@ -195,7 +195,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	struct sanctum_cipher		cipher;
 	struct sanctum_proto_hdr	*hdr, aad;
 	size_t				overhead, offset;
-	u_int8_t			nonce[12], *data;
+	u_int8_t			nonce[SANCTUM_NONCE_LENGTH], *data;
 
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
@@ -266,6 +266,8 @@ bless_packet_process(struct sanctum_packet *pkt)
 	pkt->length += sizeof(*tail);
 
 	memcpy(&aad, hdr, sizeof(*hdr));
+
+	memset(nonce, 0, sizeof(nonce));
 	memcpy(nonce, &state.salt, sizeof(state.salt));
 	memcpy(&nonce[sizeof(state.salt)], &hdr->pn, sizeof(hdr->pn));
 

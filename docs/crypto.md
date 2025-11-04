@@ -28,6 +28,12 @@ This IKM is run through KMAC256() instantiated with the derived
 key from the shared symmetrical secret, to produce strong and unique
 session keys in both RX and TX directions.
 
+## KDF
+
+All labels used for KDF purposes are prefixed with "SANCTUM.". This
+prefix can be overriden at compile-time by setting SANCTUM_KDF_PREFIX
+in CFLAGS. See [docs/building.md](docs/building.md) for more information.
+
 ## Keys
 
 Sanctum uses several different secrets and keys to provide
@@ -187,6 +193,10 @@ offer_send_pk(offer):
 offer_recv_pk(offer):
     packet = recv()
 
+    now = TIME(WALL_CLOCK), 64-bit
+    if packet.now < (now - 10) || packet.now > (now + 10)
+        return
+
     ss = shared symmetrical secret, 256-bit
     dk = derive_offer_encryption_key(packet.header.seed)
     pt = AES256-GCM(dk, nonce=1, aad=packet.header, packet.data)
@@ -224,6 +234,10 @@ offer_send_ct(offer):
 
 offer_recv_ct(offer):
     packet = recv()
+
+    now = TIME(WALL_CLOCK), 64-bit
+    if packet.now < (now - 10) || packet.now > (now + 10)
+        return
 
     ss = shared symmetrical secret, 256-bit
     dk = derive_offer_encryption_key(packet.header.seed)
@@ -279,12 +293,12 @@ An ambry is a shared secret (SS) that is wrapped using a unique device KEK.
 
 ```
 ambry:
-    flock_src = source flock ID, 64-bit
-    flock_dst = destination flock ID, 64-bit
+    flock_src  = source flock ID, 64-bit
+    flock_dst  = destination flock ID, 64-bit
     generation = ambry generation, 32-bit
-    tunnel = the tunnel this ambry is valid for, 16-bit
-    seed = ambry bundle seed, selected uniformly at random, 512-bit
-    expires = the expiration counted in days since SANCTUM_EPOCH, 16-bit
+    tunnel     = the tunnel this ambry is valid for, 16-bit
+    seed       = ambry bundle seed, selected uniformly at random, 512-bit
+    expires    = the expiration counted in days since SANCTUM_EPOCH, 16-bit
 
     key = the new SS, selected uniformly at random, 256-bit
 

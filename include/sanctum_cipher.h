@@ -35,16 +35,19 @@
 /* Length for an encapsulation key in hex. */
 #define SANCTUM_ENCAP_HEX_LEN			(SANCTUM_KEY_LENGTH * 2)
 
-/* The nonce size, in our case 96-bit. */
+/*
+ * The nonce size used during encryption, by default 96-bit
+ * but can be overriden by different CIPHER selections at compile time.
+ */
+#if !defined(SANCTUM_NONCE_LENGTH)
 #define SANCTUM_NONCE_LENGTH			12
+#endif
 
 /*
- * The packet tag size depends on the select cipher. For AES-GCM the tag
- * size is 128-bit while for Agelas we have a 256-bit tag.
+ * An encrypted packet its tag length for authentication. By default 128-bit
+ * but can be overriden by different CIPHER selections at compile time.
  */
-#if defined(SANCTUM_USE_AGELAS)
-#define SANCTUM_TAG_LENGTH			32
-#else
+#if !defined(SANCTUM_TAG_LENGTH)
 #define SANCTUM_TAG_LENGTH			16
 #endif
 

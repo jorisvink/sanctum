@@ -34,6 +34,9 @@
 /* The clock jump in seconds we always offer keys at. */
 #define CHAPEL_CLOCK_JUMP_MAX		60
 
+/* Number in seconds between cathedral offers. */
+#define CATHEDRAL_NOTIFY_NEXT		5
+
 /* Should we generate an offer that includes the ML-KEM-1024 public key. */
 #define OFFER_INCLUDE_KEM_PK		(1 << 0)
 
@@ -365,7 +368,7 @@ chapel_cathedral_notify(u_int64_t now)
 	if (sanctum->cathedral_nat_port != 0)
 		chapel_cathedral_send_info(SANCTUM_CATHEDRAL_NAT_MAGIC);
 
-	cathedral_next = now + 5;
+	cathedral_next = now + CATHEDRAL_NOTIFY_NEXT;
 }
 
 /*
@@ -412,9 +415,8 @@ chapel_cathedral_send_info(u_int64_t magic)
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
-	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock, 0) == -1) {
+	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher, op->hdr.seed,
+	    sizeof(op->hdr.seed), sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -463,9 +465,8 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
-	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher,
-	    op->hdr.seed, sizeof(op->hdr.seed),
-	    sanctum->cathedral_flock, 0) == -1) {
+	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher, op->hdr.seed,
+	    sizeof(op->hdr.seed), sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_packet_release(pkt);
 		return;
@@ -836,7 +837,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 		return;
 	}
 
-	sanctum_log(LOG_INFO, "starting new key offering (%s) "
+	sanctum_log(LOG_INFO, "starting new key exchange (%s) "
 	    "(spi=%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->local.spi, offer_ttl, offer_next_send);
 }
@@ -942,12 +943,10 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 
 	sanctum_offer_tfc(pkt);
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1) {
+	if (sanctum_ring_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
-		sanctum_log(LOG_NOTICE, "failed to queue %d:%u", which, frag);
-	} else {
+	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
-	}
 }
 
 /*
@@ -958,7 +957,8 @@ chapel_offer_clear(void)
 {
 	PRECOND(offer != NULL);
 
-	sanctum_log(LOG_INFO, "key offer cleared (spi=%08x)", offer->local.spi);
+	sanctum_log(LOG_INFO,
+	    "key exchange cleared (spi=%08x)", offer->local.spi);
 
 	offer_ttl = 15;
 	offer_next = 0;
@@ -1066,7 +1066,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
-		break;
+		return;
 	}
 
 	peer_id = exchange->id;

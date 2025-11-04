@@ -45,9 +45,12 @@ See below for an example.
 ## Authentication
 
 When a client notifies a cathedral about its presence, this packet is
-encrypted and authenticated via the cathedral secret (CS, see docs/crypto.md).
+encrypted under the Cathedral Secret (CS) and signed with the client
+its Cathedral Offer Signing Key (COSK), see docs/crypto.md for further
+information on this.
 
-This secret is mapped with the identity configured.
+This CS and COSK public key are mapped according to the identity configured
+in the cathedral settings.
 
 ## Ambry
 

@@ -37,6 +37,9 @@
 #define CATHEDRAL_FLOCK_DOMAINS		(1 << CATHEDRAL_FLOCK_DOMAIN_BITS)
 #define CATHEDRAL_FLOCK_DOMAIN_MASK	(CATHEDRAL_FLOCK_DOMAINS - 1)
 
+/* The number of seconds in between allowed federation for offers. */
+#define CATHEDRAL_FEDERATE_NEXT		(1 * 1000)
+
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
 
@@ -53,12 +56,14 @@
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
 
 /* The length of an ambry bundle. */
-#if defined(SANCTUM_USE_AGELAS)
+#if SANCTUM_TAG_LENGTH == 32
 #define CATHEDRAL_AMBRY_BUNDLE_LEN	4793050
 #define CATHEDRAL_AMBRY_INTERFLOCK_LEN	9623770
-#else
+#elif SANCTUM_TAG_LENGTH == 16
 #define CATHEDRAL_AMBRY_BUNDLE_LEN	3756730
 #define CATHEDRAL_AMBRY_INTERFLOCK_LEN	7542970
+#else
+#error "Unknown SANCTUM_TAG_LENGTH"
 #endif
 
 /*
@@ -87,6 +92,9 @@ struct tunnel {
 	u_int16_t		p2p_port;
 	int			p2p_pending;
 
+	/* Next federation timestamp. */
+	u_int64_t		at;
+
 	/* leaky bucket for bw handling. */
 	u_int32_t		limit;
 	u_int32_t		current;
@@ -112,6 +120,7 @@ struct allow {
  */
 struct liturgy {
 	u_int32_t		ip;
+	u_int64_t		at;
 	u_int64_t		age;
 	u_int16_t		id;
 	u_int16_t		port;
@@ -668,8 +677,15 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		info->instance = htobe64(info->instance);
 		info->ambry_generation = htobe32(info->ambry_generation);
 
-		cathedral_offer_federate(flock, dst, pkt);
-		cathedral_p2pinfo_send(flock, dst, tun, id);
+		if (now >= tun->at) {
+			tun->at = now + CATHEDRAL_FEDERATE_NEXT;
+			cathedral_offer_federate(flock, dst, pkt);
+			cathedral_p2pinfo_send(flock, dst, tun, id);
+		} else {
+			sanctum_log(LOG_NOTICE,
+			    "%s is sending offers too quickly",
+			    cathedral_tunnel_name(flock, dst, info->tunnel));
+		}
 	}
 }
 
@@ -765,8 +781,15 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (catacomb == 0) {
-		cathedral_offer_federate(flock, flock, pkt);
-		cathedral_liturgy_send(flock, entry, &pkt->addr, id);
+		if (now >= entry->at) {
+			entry->at = now + CATHEDRAL_FEDERATE_NEXT;
+			cathedral_offer_federate(flock, flock, pkt);
+			cathedral_liturgy_send(flock, entry, &pkt->addr, id);
+		} else {
+			sanctum_log(LOG_NOTICE,
+			    "%s is sending liturgies too quickly",
+			    cathedral_tunnel_name(flock, flock, lit->id));
+		}
 	}
 }
 
