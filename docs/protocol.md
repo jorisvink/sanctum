@@ -53,18 +53,25 @@ An offer packet is defined as follows:
 struct sanctum_offer {
 	struct sanctum_offer_hdr	hdr;
 	struct sanctum_offer_data	data;
-	u_int8_t			sig[SANCTUM_ED25519_SIGN_LENGTH];
+
+	union {
+		u_int8_t		sig[SANCTUM_ED25519_SIGN_LENGTH];
+		u_int8_t		random[SANCTUM_EXCHANGE_RANDOM_LENGTH];
+	} extra;
 	u_int8_t			tag[SANCTUM_TAG_LENGTH];
 } __attribute__((packed));
 ```
 
 The **hdr** field is transmitted in plaintext while the **data** and
-**sig** fields are encrypted under offer_key (see docs/crypto.md). The
+**extra** fields are encrypted under offer_key (see docs/crypto.md). The
 **tag** field contains the authentication tag for said encrypted data.
 
 Offers sent to the cathedral by clients are also signed using ed25519
 under the client its private key, this signature is calculated over
-the **data** field and written to **sig**.
+the **data** field and written to **extra.sig**.
+
+Offers sent to peers for key exchanges carry random data that is
+to be included in the session key derivation inside of **extra.random**.
 
 Note that **hdr** is added as AAD.
 

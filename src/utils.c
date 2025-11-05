@@ -600,7 +600,8 @@ sanctum_offer_kdf(const char *path, const char *label,
  * the ML-KEM-1024 exchange.
  *
  * IKM = len(ecdh_ss) || ecdh_ss || len(mlkem1024_ss) || mlkem1024_ss ||
- *       len(local.pub) || local.pub || len(offer.pub) || offer.pub
+ *       len(local.pub) || local.pub || len(offer.pub) || offer.pub ||
+ *       len(random) || random
  *
  * OKM = KMAC256(traffic_key, SANCTUM_TRAFFIC_KDF_LABEL, IKM)
  *
@@ -661,6 +662,10 @@ sanctum_traffic_kdf(struct sanctum_kex *kex, u_int8_t *okm, size_t okm_len)
 	nyfe_kmac256_update(&kdf, &len, sizeof(len));
 	nyfe_kmac256_update(&kdf, kex->pub2, sizeof(kex->pub2));
 
+	len = sizeof(kex->random);
+	nyfe_kmac256_update(&kdf, &len, sizeof(len));
+	nyfe_kmac256_update(&kdf, kex->random, sizeof(kex->random));
+
 	nyfe_kmac256_final(&kdf, okm, okm_len);
 
 	nyfe_zeroize(&kdf, sizeof(kdf));
@@ -715,7 +720,7 @@ sanctum_offer_init(struct sanctum_packet *pkt, u_int32_t spi,
 	op->hdr.spi = htobe32(spi);
 	op->hdr.magic = htobe64(magic);
 
-	sanctum_random_bytes(op->sig, sizeof(op->sig));
+	sanctum_random_bytes(&op->extra, sizeof(op->extra));
 	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 	sanctum_random_bytes(&op->hdr.flock_src, sizeof(op->hdr.flock_src));
 	sanctum_random_bytes(&op->hdr.flock_dst, sizeof(op->hdr.flock_dst));
@@ -753,7 +758,7 @@ sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)
 	cipher.pt = &op->data;
 	cipher.ct = &op->data;
 	cipher.tag = &op->tag[0];
-	cipher.data_len = sizeof(op->data) + sizeof(op->sig);
+	cipher.data_len = sizeof(op->data) + sizeof(op->extra);
 
 	sanctum_cipher_encrypt(&cipher);
 	sanctum_cipher_cleanup(cipher.ctx);
@@ -790,8 +795,8 @@ sanctum_offer_sign(struct sanctum_offer *op)
 
 	(void)close(fd);
 
-	if (sanctum_signature_create(sk, sizeof(sk),
-	    &op->data, sizeof(op->data), op->sig, sizeof(op->sig)) == -1) {
+	if (sanctum_signature_create(sk, sizeof(sk), &op->data,
+	    sizeof(op->data), op->extra.sig, sizeof(op->extra.sig)) == -1) {
 		nyfe_zeroize(sk, sizeof(sk));
 		sanctum_log(LOG_NOTICE, "failed to sign cathedral offer");
 		return (-1);
@@ -828,8 +833,8 @@ sanctum_offer_verify(const char *path, struct sanctum_offer *op)
 
 	(void)close(fd);
 
-	if (sanctum_signature_verify(pk, sizeof(pk),
-	    &op->data, sizeof(op->data), op->sig, sizeof(op->sig)) == -1)
+	if (sanctum_signature_verify(pk, sizeof(pk), &op->data,
+	    sizeof(op->data), op->extra.sig, sizeof(op->extra.sig)) == -1)
 		return (-1);
 
 	return (0);
@@ -894,7 +899,7 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 	cipher.ct = &op->data;
 	cipher.pt = &op->data;
 	cipher.tag = &op->tag[0];
-	cipher.data_len = sizeof(op->data) + sizeof(op->sig);
+	cipher.data_len = sizeof(op->data) + sizeof(op->extra);
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
 		sanctum_log(LOG_INFO, "offer rejected, integrity failure");

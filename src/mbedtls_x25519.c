@@ -116,8 +116,8 @@ sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 	    kex->private, sizeof(kex->private)) != 0)
 		goto cleanup;
 
-	if ((ret = mbedtls_ecdh_compute_shared(&grp, &ss, &pub_key,
-	    &priv_key, asymmetry_random_bytes, NULL)) != 0)
+	if (mbedtls_ecdh_compute_shared(&grp, &ss, &pub_key,
+	    &priv_key, asymmetry_random_bytes, NULL) != 0)
 		goto cleanup;
 
 	if (mbedtls_mpi_write_binary_le(&ss, out, len) != 0)

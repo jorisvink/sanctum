@@ -310,7 +310,12 @@ struct sanctum_offer_data {
 struct sanctum_offer {
 	struct sanctum_offer_hdr	hdr;
 	struct sanctum_offer_data	data;
-	u_int8_t			sig[SANCTUM_ED25519_SIGN_LENGTH];
+
+	union {
+		u_int8_t		sig[SANCTUM_ED25519_SIGN_LENGTH];
+		u_int8_t		random[SANCTUM_EXCHANGE_RANDOM_LENGTH];
+	} extra;
+
 	u_int8_t			tag[SANCTUM_TAG_LENGTH];
 } __attribute__((packed));
 

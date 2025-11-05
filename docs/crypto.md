@@ -164,12 +164,13 @@ derive_offer_encryption_key(seed):
     return wk
 
 offer_create():
-    offer.ecdh = X25519-KEYGEN()
-    offer.kem  = ML-KEM-1024-KEYGEN()
-    offer.now  = TIME(WALL_CLOCK), 64-bit
-    offer.id   = PRNG(64-bit), unique sanctum id
-    offer.salt = PRNG(32-bit), salt for nonce construction
-    offer.spi  = PRNG(32-bit), the spi for this association
+    offer.ecdh   = X25519-KEYGEN()
+    offer.kem    = ML-KEM-1024-KEYGEN()
+    offer.now    = TIME(WALL_CLOCK), 64-bit
+    offer.id     = PRNG(64-bit), unique sanctum id
+    offer.salt   = PRNG(32-bit), salt for nonce construction
+    offer.spi    = PRNG(32-bit), the spi for this association
+    offer.random = PRNG(128-bit), random value for key derivation.
 
     return offer
 
@@ -182,7 +183,7 @@ offer_send_pk(offer):
     data = SANCTUM_OFFER_TYPE_EXCHANGE || offer.now ||
            offer.id || offer.spi || offer.salt ||
            SANCTUM_OFFER_STATE_KEM_PK_FRAGMENT ||
-           offer.ecdh.pub || offer.kem.pk
+           offer.ecdh.pub || offer.kem.pk || offer.random
 
     encdata = AES256-GCM(dk, nonce=1, aad=header, data)
 
@@ -209,8 +210,11 @@ offer_recv_pk(offer):
     else
         traffic_key = sanctum_base_key(ss, PURPOSE_TX_KEY)
 
+    r = offer.random || packet.extra.random
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
-        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
+        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub ||
+        len(r) || r
+
     rx = KMAC256(traffic_key, "SANCTUM.TRAFFIC.KDF", x), 256-bit
 
     return rx
@@ -224,7 +228,7 @@ offer_send_ct(offer):
     data = SANCTUM_OFFER_TYPE_EXCHANGE || offer.now ||
            offer.id || offer.spi || offer.salt ||
            SANCTUM_OFFER_STATE_KEM_CT_FRAGMENT ||
-           offer.ecdh.pub || offer.kem.ct
+           offer.ecdh.pub || offer.kem.ct || offer.random
 
     encdata = AES256-GCM(dk, nonce=1, aad=header, pt)
 
@@ -251,8 +255,11 @@ offer_recv_ct(offer):
     else
         traffic_key = sanctum_base_key(ss, PURPOSE_RX_KEY)
 
+    r = offer.random || packet.extra.random
     x = len(ecdh_ss) || ecdh_ss || len(kem_ss) || kem_ss ||
-        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub
+        len(ecdh.pub) || ecdh.pub || len(pt.ecdh.pub) || pt.ecdh.pub ||
+        len(r) || r
+
     tx = KMAC256(traffic_key, "SANCTUM.TRAFFIC.KDF", x), 256-bit
 
     return tx
