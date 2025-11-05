@@ -26,6 +26,9 @@
 /* Length of our symmetrical keys, in bytes. */
 #define SANCTUM_KEY_LENGTH			32
 
+/* Length of random data carried in offer.extra for a key exchange. */
+#define SANCTUM_EXCHANGE_RANDOM_LENGTH		16
+
 /* Length of x25519 scalars. */
 #define SANCTUM_X25519_SCALAR_BYTES		SANCTUM_KEY_LENGTH
 
@@ -80,6 +83,7 @@ struct sanctum_kex {
 	u_int8_t		pub2[SANCTUM_X25519_SCALAR_BYTES];
 	u_int8_t		remote[SANCTUM_X25519_SCALAR_BYTES];
 	u_int8_t		private[SANCTUM_X25519_SCALAR_BYTES];
+	u_int8_t		random[SANCTUM_EXCHANGE_RANDOM_LENGTH * 2];
 };
 
 /*

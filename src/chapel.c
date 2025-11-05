@@ -52,6 +52,7 @@ struct exchange_info {
 	u_int32_t			salt;
 	u_int8_t			public[SANCTUM_X25519_SCALAR_BYTES];
 	u_int8_t			private[SANCTUM_X25519_SCALAR_BYTES];
+	u_int8_t			random[SANCTUM_EXCHANGE_RANDOM_LENGTH];
 };
 
 /*
@@ -809,6 +810,11 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	offer->ttl = offer_ttl;
 	offer->flags = OFFER_INCLUDE_KEM_PK;
 
+	sanctum_random_bytes(offer->local.random,
+	    sizeof(offer->local.random));
+	sanctum_random_bytes(offer->remote.random,
+	    sizeof(offer->remote.random));
+
 	sanctum_random_bytes(&offer->local.spi, sizeof(offer->local.spi));
 	sanctum_random_bytes(&offer->local.salt, sizeof(offer->local.salt));
 
@@ -923,6 +929,8 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 	exchange->spi = htobe32(info->spi);
 
 	nyfe_memcpy(exchange->ecdh, info->public, sizeof(info->public));
+	nyfe_memcpy(op->extra.random, info->random, sizeof(info->random));
+
 	offset = frag * SANCTUM_OFFER_KEM_FRAGMENT_SIZE;
 
 	if (which == OFFER_INCLUDE_KEM_CT) {
@@ -1232,6 +1240,10 @@ chapel_session_key_derive(struct sanctum_offer *op, u_int8_t dir)
 		nyfe_memcpy(kex.pub1, info->public, sizeof(info->public));
 		nyfe_memcpy(kex.pub2, exchange->ecdh, sizeof(exchange->ecdh));
 
+		nyfe_memcpy(kex.random, info->random, sizeof(info->random));
+		nyfe_memcpy(&kex.random[sizeof(info->random)],
+		    op->extra.random, sizeof(op->extra.random));
+
 		if (dir == SANCTUM_KEY_DIRECTION_RX)
 			kex.purpose = SANCTUM_KDF_PURPOSE_TRAFFIC_RX;
 		else
@@ -1239,6 +1251,11 @@ chapel_session_key_derive(struct sanctum_offer *op, u_int8_t dir)
 	} else {
 		nyfe_memcpy(kex.pub1, exchange->ecdh, sizeof(exchange->ecdh));
 		nyfe_memcpy(kex.pub2, info->public, sizeof(info->public));
+
+		nyfe_memcpy(kex.random, op->extra.random,
+		    sizeof(op->extra.random));
+		nyfe_memcpy(&kex.random[sizeof(op->extra.random)],
+		    info->random, sizeof(info->random));
 
 		if (dir == SANCTUM_KEY_DIRECTION_RX)
 			kex.purpose = SANCTUM_KDF_PURPOSE_TRAFFIC_TX;
