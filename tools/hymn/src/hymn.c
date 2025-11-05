@@ -987,10 +987,12 @@ hymn_list(int argc, char *argv[])
 			    tun->config.dst);
 			hymn_ctl_status(path, &resp);
 
-			if (resp.tx.spi != 0 && resp.rx.spi != 0)
+			if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
+			    resp.rx.last > 0) {
 				printf("online");
-			else
+			} else {
 				printf("pending");
+			}
 		}
 
 		if (tun->config.name != NULL)
