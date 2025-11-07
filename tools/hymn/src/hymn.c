@@ -939,9 +939,11 @@ hymn_status(int argc, char *argv[])
 static int
 hymn_list(int argc, char *argv[])
 {
+	struct timespec				ts;
 	struct tunnels				list;
 	struct tunnel				*tun;
 	struct sanctum_ctl_status_response	resp;
+	time_t					last;
 	char					path[PATH_MAX];
 	int					normal_tunnels, seen_liturgy;
 
@@ -987,8 +989,11 @@ hymn_list(int argc, char *argv[])
 			    tun->config.dst);
 			hymn_ctl_status(path, &resp);
 
+			(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+			last = ts.tv_sec - resp.rx.last;
+
 			if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
-			    resp.rx.last > 0) {
+			    resp.rx.last > 0 && last < 120) {
 				printf("online");
 			} else {
 				printf("pending");
