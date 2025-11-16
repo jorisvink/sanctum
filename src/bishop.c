@@ -205,7 +205,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 	int		len;
 	pid_t		pid;
 	char		*argv[32];
-	char		buf[256], ip[INET_ADDRSTRLEN];
+	char		buf[2048], ip[INET_ADDRSTRLEN];
 
 	PRECOND(cmd != NULL);
 	PRECOND(src != dst);
