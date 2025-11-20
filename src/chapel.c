@@ -460,9 +460,7 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL);
 	PRECOND(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE);
 
-	sanctum->cathedral_last = now;
 	op = sanctum_packet_head(pkt);
-
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
@@ -487,6 +485,9 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 		    op->data.type, op->hdr.spi);
 		return;
 	}
+
+	sanctum->cathedral_pkts++;
+	sanctum->cathedral_last = now;
 
 	switch (op->data.type) {
 	case SANCTUM_OFFER_TYPE_AMBRY:
