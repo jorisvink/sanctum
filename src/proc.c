@@ -254,6 +254,8 @@ sanctum_proc_create(u_int16_t type,
 		fatal("failed to fork child: %s", errno_s);
 
 	if (proc->pid == 0) {
+		tzset();
+		closelog();
 		openlog(proc->name, LOG_NDELAY | LOG_PID, LOG_DAEMON);
 		sanctum_proc_title(proc->name);
 		(void)sanctum_last_signal();

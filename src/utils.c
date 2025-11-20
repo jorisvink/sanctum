@@ -1059,6 +1059,12 @@ sanctum_cathedral_timeout(u_int64_t now)
 	if (sanctum->cathedral_remembrance == NULL)
 		return;
 
+	if (sanctum->cathedral_alive == 0 && sanctum->cathedral_pkts > 0) {
+		sanctum->cathedral_alive = 1;
+		sanctum_log(LOG_INFO, "cathedral %s alive",
+		    sanctum_inet_string(&sanctum->cathedral));
+	}
+
 	if ((now - sanctum->cathedral_last) < SANCTUM_CATHEDRAL_TIMEOUT)
 		return;
 
@@ -1075,6 +1081,9 @@ sanctum_cathedral_timeout(u_int64_t now)
 	if (sanctum->cathedrals[sanctum->cathedral_idx].sin_addr.s_addr == 0)
 		sanctum->cathedral_idx = 0;
 
+	sanctum->cathedral_pkts = 0;
+	sanctum->cathedral_alive = 0;
+	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
 	sanctum->cathedral = sanctum->cathedrals[sanctum->cathedral_idx];
 
 	sanctum_log(LOG_INFO, "switching to cathedral %s",

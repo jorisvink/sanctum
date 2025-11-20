@@ -601,6 +601,12 @@ struct sanctum_state {
 	/* The last time we heard from cathedral (tunnel mode only). */
 	u_int64_t		cathedral_last;
 
+	/* If our current cathedral has responded at least once. */
+	u_int8_t		cathedral_alive;
+
+	/* The number of received packets from our current cathedral. */
+	u_int32_t		cathedral_pkts;
+
 	/* All cathedrals in remembrance (tunnel mode only). */
 	struct sockaddr_in	cathedrals[SANCTUM_CATHEDRALS_MAX];
 
