@@ -73,3 +73,16 @@ for manual tunnels, or for ones managed via hymn:
 ```
 # systemctl start sanctum-hymn@hymn-01-02
 ```
+
+If you are using the sanctum-hymn@.service for starting liturgy
+tunnels you must set HYMN_USER in the environment so hymn can
+pickup the indented user to configure things as:
+
+```
+# systemctl edit sanctum-hymn@hymn-01-02
+```
+
+```
+[Service]
+Environment="HYMN_USER=username"
+```
