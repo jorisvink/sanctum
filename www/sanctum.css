@@ -1,7 +1,7 @@
 body {
-    color: #ffffd7;
+    color: #eeeef1;
     background-color: #101010;
-    font-family: Verdana, sans-serif;
+    font-family: monospace;
 }
 
 h2, h3 {
@@ -21,6 +21,10 @@ h2, h3 {
     width: 800px;
     text-align: left;
     display: table-cell;
+}
+
+.content > h2, .content > h3 {
+    margin-top: 25px;
 }
 
 .nav {
