@@ -12,6 +12,11 @@ h2, h3 {
     color: #ffffd7;
 }
 
+.nav > .menu > a {
+    display: inline-block;
+    margin-bottom: 8px;
+}
+
 .content {
     width: 800px;
     text-align: left;
