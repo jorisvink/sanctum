@@ -41,7 +41,8 @@
 /* The format string for adding a new tunnel using the hymn tool. */
 #define HYMN_FMT_ADD						\
     "hymn add %" PRIx64 "-%02x-%02x tunnel %s/32 "		\
-    "cathedral %s:%u kek %s identity %x:%s cosk %s natport %u"
+    "cathedral %s:%u kek %s identity %x:%s cosk %s natport %u "	\
+    "device %s %s"
 
 /* The format string for up/down of a tunnel via the hymn tool. */
 #define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x"
@@ -180,7 +181,9 @@ bishop_liturgy_request(struct sanctum_packet *pkt)
 	if (info->present) {
 		if (bishop_instance_exists(src, dst) == -1) {
 			bishop_hymn_run("add", src, dst);
-			bishop_hymn_run("route", src, dst);
+
+			if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP))
+				bishop_hymn_run("route", src, dst);
 		}
 
 		if (bishop_instance_running(src, dst) == -1) {
@@ -204,20 +207,41 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 {
 	int		len;
 	pid_t		pid;
+	const char	*device;
 	char		*argv[32];
-	char		buf[2048], ip[INET_ADDRSTRLEN];
+	char		buf[2048], bridge[32], ip[INET_ADDRSTRLEN];
 
 	PRECOND(cmd != NULL);
 	PRECOND(src != dst);
 
+	bridge[0] = '\0';
+
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP) {
+		device = "tap";
+
+		if (sanctum->bridge != NULL) {
+			len = snprintf(bridge, sizeof(bridge),
+			    "bridge %s", sanctum->bridge);
+			if (len == -1 || (size_t)len >= sizeof(bridge))
+				fatal("failed to create bridge name");
+		}
+	} else {
+		device = "tun";
+	}
+
 	if (!strcmp(cmd, "add")) {
-		bishop_liturgy_address(ip, sizeof(ip), src, dst);
+		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+			(void)snprintf(ip, sizeof(ip), "0.0.0.0");
+		else
+			bishop_liturgy_address(ip, sizeof(ip), src, dst);
+
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_ADD,
 		    sanctum->cathedral_flock, src, dst, ip,
 		    inet_ntoa(sanctum->cathedral.sin_addr),
 		    be16toh(sanctum->cathedral.sin_port), sanctum->kek,
 		    sanctum->cathedral_id, sanctum->cathedral_secret,
-		    sanctum->cathedral_cosk, sanctum->cathedral_nat_port);
+		    sanctum->cathedral_cosk, sanctum->cathedral_nat_port,
+		    device, bridge);
 	} else if (!strcmp(cmd, "up") || !strcmp(cmd, "down")) {
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_UP_DOWN,
 		    cmd, sanctum->cathedral_flock, src, dst);

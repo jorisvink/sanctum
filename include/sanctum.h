@@ -669,6 +669,9 @@ struct sanctum_state {
 	/* The path to the cathedral settings (cathedral mode only). */
 	char			*settings;
 
+	/* The l2 bridge name to create/join (tunnel/liturgy mode only). */
+	char			*bridge;
+
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
 

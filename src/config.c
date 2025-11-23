@@ -21,6 +21,8 @@
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 
+#include <net/if.h>
+
 #include <ctype.h>
 #include <limits.h>
 #include <inttypes.h>
@@ -48,6 +50,7 @@ static void	config_parse_route(char *);
 static void	config_parse_descr(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_accept(char *);
+static void	config_parse_bridge(char *);
 static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
@@ -75,6 +78,7 @@ static void	config_parse_ip_mask(char *, struct sockaddr_in *,
 		    struct sockaddr_in *);
 
 static void	config_mtu_check(void);
+static void	config_l2_check(void);
 static void	config_cathedral_check(void);
 static void	config_unix_set(struct sanctum_sun *,
 		    const char *, const char *);
@@ -94,6 +98,7 @@ static const struct {
 	{ "run",			config_parse_runas },
 	{ "descr",			config_parse_descr },
 	{ "accept",			config_parse_accept },
+	{ "bridge",			config_parse_bridge },
 	{ "tunnel",			config_parse_tunnel },
 	{ "secret",			config_parse_secret },
 	{ "control",			config_parse_control },
@@ -223,6 +228,7 @@ sanctum_config_load(const char *file)
 			fatal("cathedral: no secretdir configured");
 		break;
 	case SANCTUM_MODE_LITURGY:
+		config_l2_check();
 		config_cathedral_check();
 		if (sanctum->liturgy_prefix.sin_addr.s_addr == 0)
 			fatal("no liturgy_prefix has been set");
@@ -237,10 +243,12 @@ sanctum_config_load(const char *file)
 			fatal("kek configured but no cathedral set");
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)
 			config_cathedral_check();
+		config_l2_check();
 		config_mtu_check();
 		break;
 	case SANCTUM_MODE_SHRINE:
 	case SANCTUM_MODE_PILGRIM:
+		config_l2_check();
 		config_mtu_check();
 		break;
 	default:
@@ -573,6 +581,24 @@ config_parse_accept(char *opt)
 	rt->net.sin_addr.s_addr &= rt->mask.sin_addr.s_addr;
 
 	LIST_INSERT_HEAD(&routable, rt, list);
+}
+
+/*
+ * Parse a bridge configuration option.
+ */
+static void
+config_parse_bridge(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (strlen(opt) >= IFNAMSIZ)
+		fatal("bridge name too long");
+
+	if (sanctum->bridge != NULL)
+		fatal("bridge already specified");
+
+	if ((sanctum->bridge = strdup(opt)) == NULL)
+		fatal("strdup failed");
 }
 
 /*
@@ -1038,6 +1064,23 @@ config_mtu_check(void)
 		fatal("mtu misconfigured, %d cannot be set (%zu max)",
 		    sanctum->tun_mtu, SANCTUM_PACKET_DATA_LEN - overhead);
 	}
+}
+
+/*
+ * Check that the configuration is sane if the use of a tap device
+ * was requested.
+ */
+static void
+config_l2_check(void)
+{
+	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
+		if (sanctum->bridge != NULL)
+			fatal("bridge makes no sense without using tap");
+		return;
+	}
+
+	if (sanctum->tun_ip.sin_addr.s_addr != 0)
+		fatal("tunnel address should be 0.0.0.0 when using tap");
 }
 
 /*

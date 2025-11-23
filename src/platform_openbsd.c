@@ -19,11 +19,15 @@
 #include <sys/futex.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/sockio.h>
 
 #include <arpa/inet.h>
 
 #include <net/if.h>
 #include <net/route.h>
+
+#include <netinet/if_ether.h>
+#include <net/if_bridge.h>
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -39,6 +43,7 @@ struct rtmsg {
 
 #define PATH_SKIP	(sizeof("/dev/") - 1)
 
+static void	openbsd_configure_bridge(const char *);
 static void	openbsd_configure_tundev(const char *);
 static void	openbsd_sandbox_pledge(struct sanctum_proc *);
 
@@ -88,7 +93,11 @@ sanctum_platform_tundev_create(void)
 
 	openbsd_configure_tundev(&path[PATH_SKIP]);
 
-	if (sanctum->tun_ip.sin_addr.s_addr != 0 &&
+	if (sanctum->bridge != NULL)
+		openbsd_configure_bridge(&path[PATH_SKIP]);
+
+	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP) &&
+	    sanctum->tun_ip.sin_addr.s_addr != 0 &&
 	    sanctum->tun_mask.sin_addr.s_addr != 0xffffffff) {
 		sanctum_platform_tundev_route(&sanctum->tun_ip,
 		    &sanctum->tun_mask);
@@ -358,6 +367,51 @@ openbsd_configure_tundev(const char *dev)
 		if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
 			fatal("ioctl(SIOCSIFMTU): %s", errno_s);
 	}
+
+	(void)close(fd);
+}
+
+/*
+ * Create and join the configured bridge interface with our interface.
+ */
+static void
+linux_configure_bridge(void)
+{
+	int		fd;
+	struct ifreq	ifr;
+	struct ifbreq	ifbr;
+
+	PRECOND(dev != NULL);
+	PRECOND(sanctum->bridge != NULL);
+
+	memset(&ifbr, 0, sizeof(ifbr));
+
+	if (strlcpy(ifr.ifr_name, sanctum->bridge,
+	    sizeof(ifr.ifr_name)) >= sizeof(ifr.ifr_name))
+		fatal("bridge name '%s' to long", sanctum->bridge);
+
+	if (strlcpy(ifbr.ifbr_name, sanctum->bridge,
+	    sizeof(ifbr.ifbr_name)) >= sizeof(ifbr.ifbr_name))
+		fatal("bridge name '%s' to long", sanctum->bridge);
+
+	if (strlcpy(ifbr.ifbr_ifsname, dev,
+	    sizeof(ifbr.ifbr_ifsname)) >= sizeof(ifbr.ifbr_ifsname))
+		fatal("bridge name '%s' to long", sanctum->bridge);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	if (ioctl(fd, SIOCIFCREATE, &ifr) == -1 && errno != EEXIST)
+		fatal("ioctl(SIOCIFCREATE): %s", errno_s);
+
+	if (ioctl(fd, SIOCBRDGADD, &ifbr) == -1) {
+		if (errno != EEXIST)
+			fatal("ioctl(SIOCBRDGADD): %s", errno_s);
+	}
+
+	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
 
 	(void)close(fd);
 }

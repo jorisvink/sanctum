@@ -68,7 +68,16 @@ Specify the peer's IP address and port. This can be set to 0.0.0.0:0 if the
 peer location is unknown at the time of configuration.
 .TP
 .BR tap " " <yes/no>
-When set to yes, create a tap device (L2) instead of a tun device (L3).
+When set to yes, create a tap device (L2) instead of a tun device (L3). Note
+that this currently does not work on MacOS.
+.TP
+.BR bridge " " <name>
+When using a
+.I tap
+device, specifies the bridge interface that the newly created
+.I tap
+device is added into. If the bridge interface does not exist sanctum
+will automatically create it.
 .TP
 .BR tfc " " <on/off>
 Enable or disable traffic flow control, which pads packets to the maximum

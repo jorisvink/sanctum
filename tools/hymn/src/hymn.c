@@ -21,6 +21,7 @@
 #include <sys/un.h>
 #include <sys/queue.h>
 
+#include <net/if.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
@@ -101,6 +102,7 @@ struct config {
 	char			*kek;
 	char			*name;
 	char			*encap;
+	char			*bridge;
 	char			*secret;
 	char			*prefix;
 	char			*cosk_path;
@@ -127,6 +129,7 @@ static void	usage_del(void) __attribute__((noreturn));
 static void	usage_mtu(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
+static void	usage_bridge(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
 static void	usage_cathedral(void) __attribute__((noreturn));
@@ -158,6 +161,7 @@ static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
 static int	hymn_route(int, char **);
+static int	hymn_bridge(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
 static int	hymn_keygen(int, char **);
@@ -184,6 +188,7 @@ static void	hymn_config_parse_peer(struct config *, char *);
 static void	hymn_config_parse_descr(struct config *, char *);
 static void	hymn_config_parse_local(struct config *, char *);
 static void	hymn_config_parse_route(struct config *, char *);
+static void	hymn_config_parse_bridge(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
 static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
@@ -237,6 +242,7 @@ static const struct {
 	{ "down",		hymn_down },
 	{ "name",		hymn_name },
 	{ "route",		hymn_route },
+	{ "bridge",		hymn_bridge },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
 	{ "liturgy",		hymn_liturgy },
@@ -257,6 +263,7 @@ static const struct {
 	{ "descr",		hymn_config_parse_descr },
 	{ "local",		hymn_config_parse_local },
 	{ "route",		hymn_config_parse_route },
+	{ "bridge",		hymn_config_parse_bridge },
 	{ "accept",		hymn_config_parse_accept },
 	{ "tunnel",		hymn_config_parse_tunnel },
 	{ "secret",		hymn_config_parse_secret },
@@ -279,6 +286,7 @@ usage(void)
 	fprintf(stderr, "usage: hymn [cmd]\n");
 	fprintf(stderr, "commands:\n");
 	fprintf(stderr, "  add         - add a new tunnel\n");
+	fprintf(stderr, "  bridge      - attach to a bridge interface\n");
 	fprintf(stderr, "  cathedral   - change cathedral for a tunnel\n");
 	fprintf(stderr, "  del         - delete an existing tunnel\n");
 	fprintf(stderr, "  down        - kills the given tunnel\n");
@@ -362,9 +370,12 @@ usage_liturgy(void)
 {
 	fprintf(stderr,
 	    "usage: hymn liturgy <flock>-<src> cathedral <ip:port> \\\n");
-	fprintf(stderr, "    identity <32-bit hexint>:<path> kek <path> \\\n");
-	fprintf(stderr, "    prefix <prefix> group <16-bit hexint> ");
-	fprintf(stderr, " [natport <port>]\n    [discoverable <yes|no>]\n");
+	fprintf(stderr, "    identity <32-bit hexint>:<path> kek <path> ");
+	fprintf(stderr,
+	    "cosk <path> \\\n    prefix <prefix> group <16-bit hexint> ");
+	fprintf(stderr, " [natport <port>]\n");
+	fprintf(stderr, "    [discoverable <yes|no>] [device <tun|tap>] ");
+	fprintf(stderr, "[bridge <name>]\n");
 
 	exit (1);
 
@@ -449,6 +460,22 @@ hymn_liturgy(int argc, char *argv[])
 			if ((config.cosk_path = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
 			which |= HYMN_COSK;
+		} else if (!strcmp(argv[i], "device")) {
+			if (!strcmp(argv[i + 1], "tap"))
+				config.tap = 1;
+			else if (!strcmp(argv[i + 1], "tun"))
+				config.tap = 0;
+			else
+				fatal("unknown device '%s'", argv[i + 1]);
+		} else if (!strcmp(argv[i], "bridge")) {
+			if (strlen(argv[i + 1]) >= IFNAMSIZ)
+				fatal("bridge name too long");
+			if (config.bridge != NULL)
+				fatal("duplicate bridge");
+			if (config.tap == 0)
+				fatal("bridge only works with device tap");
+			if ((config.bridge = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -477,9 +504,10 @@ usage_add(void)
 	    "tunnel <ip/mask> [mtu <mtu>] \\\n");
 	fprintf(stderr, "    local <ip:port> secret <path> "
 	    "[peer <ip:port>] [cathedral <ip:port>] \\\n");
-	fprintf(stderr, "    [kek <path>] [name <name>] ");
+	fprintf(stderr, "    [kek <path>] [name <name>] [cosk <path>] ");
 	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
-	fprintf(stderr, "    [natport <port>] [device [tun | tap]]\n");
+	fprintf(stderr, "    [natport <port>] [device <tun|tap>] ");
+	fprintf(stderr, "[bridge <name>]\n");
 
 	exit(1);
 }
@@ -581,6 +609,15 @@ hymn_add(int argc, char *argv[])
 				config.tap = 0;
 			else
 				fatal("unknown device '%s'", argv[i + 1]);
+		} else if (!strcmp(argv[i], "bridge")) {
+			if (strlen(argv[i + 1]) >= IFNAMSIZ)
+				fatal("bridge name too long");
+			if (config.bridge != NULL)
+				fatal("duplicate bridge");
+			if (config.tap == 0)
+				fatal("bridge only works with device tap");
+			if ((config.bridge = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_add();
@@ -666,6 +703,70 @@ hymn_add(int argc, char *argv[])
 	}
 
 	hymn_config_save(confpath, flock, &config);
+
+	return (0);
+}
+
+static void
+usage_bridge(void)
+{
+	fprintf(stderr,
+	    "usage: hymn bridge [<flock>-]<src>-<dst> [on <bridge> | clear]\n");
+
+	exit(1);
+}
+
+static int
+hymn_bridge(int argc, char *argv[])
+{
+	struct config		config;
+	const char		*flock;
+	int			delete;
+	char			path[PATH_MAX];
+
+	delete = 0;
+
+	if (argc == 3) {
+		if (strcmp(argv[1], "on"))
+			usage_bridge();
+		if (strlen(argv[2]) >= IFNAMSIZ)
+			fatal("bridge name too long");
+	} else if (argc == 2) {
+		if (strcmp(argv[1], "clear"))
+			usage_bridge();
+		delete = 1;
+	} else {
+		usage_bridge();
+	}
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_bridge();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	if (config.tap == 0)
+		fatal("bridge only makes sense with tap was set to yes");
+
+	if (delete) {
+		config.bridge = NULL;
+	} else {
+		if ((config.bridge = strdup(argv[2])) == NULL)
+			fatal("strdup");
+	}
+
+	hymn_config_save(path, flock, &config);
+
+	if (delete) {
+		printf("tunnel %s-%02x-%02x bridged cleared\n",
+		    flock, config.src, config.dst);
+	} else {
+		printf("tunnel %s-%02x-%02x bridged onto %s\n",
+		    flock, config.src, config.dst, argv[2]);
+	}
 
 	return (0);
 }
@@ -1724,6 +1825,9 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
 
+	if (config.tap && config.bridge != NULL)
+		printf("  bridge\t%s\n", config.bridge);
+
 	if (config.local.ip != 0)
 		printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 
@@ -1888,8 +1992,11 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	hymn_config_write(fd, "pidfile %s/%s-%02x-%02x.pid\n",
 	    HYMN_RUN_PATH, flock, cfg->src, cfg->dst);
 
-	if (cfg->tap == 1)
+	if (cfg->tap == 1) {
 		hymn_config_write(fd, "tap yes\n");
+		if (cfg->bridge != NULL)
+			hymn_config_write(fd, "bridge %s\n", cfg->bridge);
+	}
 
 	if (cfg->is_liturgy == 0) {
 		hymn_config_write(fd, "tunnel %s %u\n",
@@ -2071,6 +2178,16 @@ static void
 hymn_config_parse_local(struct config *cfg, char *local)
 {
 	hymn_ip_port_parse(&cfg->local, local);
+}
+
+static void
+hymn_config_parse_bridge(struct config *cfg, char *bridge)
+{
+	if (cfg->bridge != NULL)
+		fatal("duplicate bridge");
+
+	if ((cfg->bridge = strdup(bridge)) == NULL)
+		fatal("strdup");
 }
 
 static void
