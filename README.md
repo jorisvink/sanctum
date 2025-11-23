@@ -9,9 +9,10 @@ Due to its privilege separated design sanctum guarantees
 that all of its important assets are separated from processes
 that talk to the internet or handle non-cryptography related things.
 
-Sanctum can establish traditional site-to-site L2 or L3 tunnels,
-one-way tunnels and even tunnels between peers when both peers
-are behind NAT using hole-punching and Sanctum's cathedrals
+Sanctum allows you to create different topologies, from traditional
+site-to-site L2/L3 tunnels, to more niche topologies such as
+one-way tunnels, full-mesh L2/L3 and even P2P tunnels between
+devices behind NAT using hole-punching and Sanctum's cathedrals
 for peer discovery.
 
 See [The Reliquary](https://reliquary.se), a community driven
