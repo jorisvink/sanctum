@@ -375,7 +375,7 @@ openbsd_configure_tundev(const char *dev)
  * Create and join the configured bridge interface with our interface.
  */
 static void
-linux_configure_bridge(void)
+openbsd_configure_bridge(const char *dev)
 {
 	int		fd;
 	struct ifreq	ifr;
