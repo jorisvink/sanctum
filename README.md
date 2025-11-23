@@ -179,6 +179,8 @@ Please send patches to joris@sanctorum.se.
 Sanctum uses a configuration file. Find an example of
 a simple configuration below.
 
+For all options, see sanctum.conf(5).
+
 ```config
 # Name of this sanctum instance.
 instance laptop
