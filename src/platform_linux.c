@@ -598,6 +598,9 @@ linux_configure_bridge(void)
 		fatal("ioctl(SIOCBRADDIF): %s", errno_s);
 
 	(void)close(fd);
+
+	sanctum_log(LOG_INFO, "added %s to %s",
+	    sanctum->instance, sanctum->bridge);
 }
 
 /*

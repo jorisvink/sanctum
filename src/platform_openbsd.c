@@ -414,6 +414,8 @@ openbsd_configure_bridge(const char *dev)
 		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
 
 	(void)close(fd);
+
+	sanctum_log(LOG_INFO, "added %s to %s", dev, sanctum->bridge);
 }
 
 /*
