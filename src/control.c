@@ -105,7 +105,7 @@ control_handle_request(int fd)
 		}
 
 		if (ret == 0)
-			fatal("eof on keying socket");
+			continue;
 
 		if ((size_t)ret != sizeof(ctl))
 			break;
