@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+<title>Sanctum liturgy mode</title>
+<link rel="stylesheet" href="/sanctum.css">
+</head>
+
+<body>
+
+<div class="nav">
+    <div class="logo">
+        <a href="/"><img src="/sanctorum_transparent.png" alt="logo"></a>
+    </div>
+
+    <div class="menu">
+        <h3>Introduction</h3>
+        <a href="/">About</a>
+        <br>
+        <h3>Security</h3>
+        <a href="/errata.html">Errata</a>
+        <br>
+        <a href="/crypto.html">Cryptography</a>
+        <br>
+        <h3>Resources</h3>
+        <a href="/guide.html">Setup Guide</a>
+        <br>
+        <a href="/liturgy.html">Liturgy Guide</a>
+        <br>
+        <a href="/cathedral.html">Cathedral Guide</a>
+        <h3>Community</h3>
+        <a href="https://reliquary.se">The Reliquary</a>
+        <br>
+        <a href="https://conclave.se">The Conclave</a>
+        <br>
+        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
+    </div>
+</div>
+
+<div class="content">
+
+<div class="release">
+Latest release: <a href="/releases/sanctum-0.9.36.tgz">sanctum 0.9.36</a>
+</div>
+
+<div class="sep"></div>
+
+<h2 id="liturgy">Liturgy mode</h2>
+
+<p>
+Sanctum has a full mesh mode called liturgy, which has the basic principle
+that you don't setup the tunnels manually. With the help from cathedrals,
+clients discover each other and automatically setup tunnels.
+This can be used for fault tolerant networking or p2p chat amongst others.
+</p>
+
+<p>
+Even though the standard mode of liturgy is a full mesh, you can configure which
+clients should be discoverable so that you can create hub-and-spoke
+scenarios. Unlike a traditional hub-and-spoke scenario, liturgy mode is not
+limited to just one hub, you could have as many hubs as you like.
+</p>
+
+<p>
+There is a hymn subcommand (<strong>hymn liturgy</strong>) that can be used to
+setup liturgy but this guide will only go through the manual way to properly
+explain it.
+</p>
+
+<p>
+Here is a basic liturgy mode configuration for a client that is discoverable:
+</p>
+<pre>
+spi 01
+mode liturgy
+instance liturgy-example-discoverable
+pidfile /run/hymn/cafebabe-01-00.pid
+kek /home/sanctum/cafebabe/kek-0x01
+
+liturgy_prefix 172.12.0.0
+liturgy_discoverable yes
+
+local 0.0.0.0:0
+cathedral_id 12345678
+cathedral_flock cafebabe
+cathedral_secret /home/sanctum/cafebabe/id-12345678
+cathedral_cosk /home/sanctum/cafebabe/cosk-12345678
+cathedral 1.2.3.4:4500
+
+run heaven-rx as sanctum-server
+run heaven-tx as sanctum-server
+run purgatory-rx as sanctum-server
+run purgatory-tx as sanctum-server
+run liturgy as sanctum-server
+
+run control as root
+control /tmp/cafebabe-01-00.control root
+
+run bishop as root
+run bless as root
+run confess as root
+</pre>
+
+<p>
+The <strong>spi</strong> option should be the local device KEK id
+(henceforth called kek id), which in this configuration is 0x01 but the 0x can
+be omitted in the configuration.
+</p>
+
+<p>
+The <strong>mode</strong> option instructs sanctum that this instance will be
+running in liturgy mode.
+</p>
+
+<p>
+The <strong>pidfile</strong> option tells sanctum where it should put its
+pidfile, for compatibility with the <strong>hymn</strong> tool, its best
+to put it in the /run/hymn directory.
+</p>
+
+<p>
+The <strong>kek</strong> option tells sanctum where to find the KEK. See the
+<a href="https://github.com/jorisvink/sanctum/blob/master/docs/crypto.md">
+	Crypto documentation
+</a> for an explanation of what the KEK is and what its used for.
+</p>
+
+<p>
+The <strong>liturgy_prefix</strong> option configures the network prefix
+that liturgy will use to set IP addresses for the automatically configured
+tunnels. Only the first two octets matter, because the third and fourth
+octet will be replaced by the source kek id and the destination kek id
+respectively.
+</p>
+
+<p>
+The <strong>liturgy_discoverable</strong> option configures if the client
+should be discoverable (a hub) or not (a spoke).
+</p>
+
+<p>
+The <strong>local</strong> option configures what local IP address that sanctum
+binds to, 0.0.0.0/0 means that it will bind to all interfaces, with a randomly
+picked ephemeral port (usually 32768 and above, depends on OS).
+</p>
+
+<p>
+The <strong>cathedral_id</strong> option configures what id that the client
+will present to the cathedral. This id is tied to what kek id and flocks the
+client is allowed to use.
+</p>
+
+<p>
+The <strong>cathedral_flock</strong> option configures which flock the
+liturgy will belong to. See the
+<a href="https://reliquary.se/guide.html/#flock-creation">reliquary guide</a>
+for an explanation of what a flock is.
+</p>
+
+<p>
+The <strong>cathedral_secret</strong> option points to a shared key
+between the cathedral and the client called CS in the Crypto documentation.
+</p>
+
+<p>
+The <strong>cathedral_cosk</strong> option points to a private key that the
+client uses to sign their offers that are sent to the cathedral with, called
+COSK in the Crypto documentation.
+</p>
+
+<p>
+The <strong>cathedral</strong> option gives what IP address and port the
+cathedral has.
+</p>
+
+<p>
+The <strong>control</strong> option gives a path to where the control socket
+will be created and what user that will own it.
+</p>
+
+<p>
+All options that have the form <strong>run &lt;process&gt; as &lt;user&gt;
+</strong> configures what user that process is going to be run as.
+</p>
+
+<p>
+The configuration for a client that is only supposed to connect to discoverable
+clients but not be discoverable themself looks almost identical, but
+<strong>liturgy_discoverable</strong> is set to <strong>no</strong>. An
+example that could be used to connect to the earlier example configuration
+could look like this:
+</p>
+<pre>
+spi 02
+mode liturgy
+instance liturgy-example-non-discoverable
+pidfile /run/hymn/cafebabe-02-00.pid
+kek /home/sanctum/cafebabe/kek-0x02
+
+liturgy_prefix 172.12.0.0
+liturgy_discoverable no
+
+local 0.0.0.0:0
+cathedral_id 87654321
+cathedral_flock cafebabe
+cathedral_secret /home/sanctum/cafebabe/id-87654321
+cathedral_cosk /home/sanctum/cafebabe/cosk-87654321
+cathedral 1.2.3.4:4500
+
+run heaven-rx as sanctum-client
+run heaven-tx as sanctum-client
+run purgatory-rx as sanctum-client
+run purgatory-tx as sanctum-client
+run liturgy as sanctum-client
+
+run control as root
+control /tmp/cafebabe-02-00.control root
+
+run bishop as root
+run bless as root
+run confess as root
+</pre>
+
+<p>
+In the aforementioned scenario, both peers would set up their part of the
+tunnel and the first client would set the IP address
+172.12.<strong>1.2</strong> on their endpoint and the second client would set
+the IP address 172.12.<strong>2.1</strong>.
+</p>
+
+</div>
+
+</body>
+</html>

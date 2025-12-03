@@ -27,6 +27,7 @@
 #include <net/if.h>
 #include <linux/if_tun.h>
 #include <linux/netlink.h>
+#include <linux/sockios.h>
 #include <linux/rtnetlink.h>
 
 #include <linux/futex.h>
@@ -47,6 +48,7 @@
 #include "sanctum.h"
 #include "seccomp.h"
 
+static void	linux_configure_bridge(void);
 static void	linux_configure_tundev(struct ifreq *);
 static void	linux_sandbox_netns(struct sanctum_proc *);
 static void	linux_sandbox_seccomp(struct sanctum_proc *);
@@ -234,6 +236,9 @@ sanctum_platform_tundev_create(void)
 		fatal("fcntl: %s", errno_s);
 
 	linux_configure_tundev(&ifr);
+
+	if (sanctum->bridge != NULL)
+		linux_configure_bridge();
 
 	return (fd);
 }
@@ -507,7 +512,13 @@ linux_rt_sin(struct nlmsghdr *hdr, void *attr, u_int16_t type,
 	hdr->nlmsg_len = NLMSG_ALIGN(hdr->nlmsg_len) + RTA_ALIGN(rta->rta_len);
 }
 
-/* Configure the tunnel device. */
+/*
+ * Configure our newly create tunnel device by setting its ip, mtu etc.
+ *
+ * If we are configured to create a tap instead of tun device and we
+ * have a bridge configured, we will instead set the address on the
+ * bridge interface instead.
+ */
 static void
 linux_configure_tundev(struct ifreq *ifr)
 {
@@ -518,20 +529,20 @@ linux_configure_tundev(struct ifreq *ifr)
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		fatal("socket: %s", errno_s);
 
-	if (sanctum->tun_ip.sin_addr.s_addr != 0) {
+	if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP) &&
+	    sanctum->tun_ip.sin_addr.s_addr != 0) {
 		memcpy(&ifr->ifr_addr,
 		    &sanctum->tun_ip, sizeof(sanctum->tun_ip));
 
 		if (ioctl(fd, SIOCSIFADDR, ifr) == -1)
 			fatal("ioctl(SIOCSIFADDR): %s", errno_s);
 
-		if (!(sanctum->flags & SANCTUM_FLAG_USE_TAP)) {
-			if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
-				fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
-		}
+		if (ioctl(fd, SIOCSIFDSTADDR, ifr) == -1)
+			fatal("ioctl(SIOCSIFDSTADDR): %s", errno_s);
 
 		memcpy(&ifr->ifr_addr,
 		    &sanctum->tun_mask, sizeof(sanctum->tun_mask));
+
 		if (ioctl(fd, SIOCSIFNETMASK, ifr) == -1)
 			fatal("ioctl(SIOCSIFNETMASK): %s", errno_s);
 	}
@@ -550,6 +561,46 @@ linux_configure_tundev(struct ifreq *ifr)
 	}
 
 	(void)close(fd);
+}
+
+/*
+ * Create and join the configured bridge interface with our interface.
+ */
+static void
+linux_configure_bridge(void)
+{
+	struct ifreq	ifr;
+	int		fd, len;
+
+	PRECOND(sanctum->bridge != NULL);
+
+	memset(&ifr, 0, sizeof(ifr));
+
+	len = snprintf(ifr.ifr_name,
+	    sizeof(ifr.ifr_name), "%s", sanctum->bridge);
+	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+		fatal("bridge name '%s' to long", sanctum->bridge);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	if (ioctl(fd, SIOCBRADDBR, ifr.ifr_name) == -1) {
+		if (errno != EEXIST)
+			fatal("ioctl(SIOCBRADDBR): %s", errno_s);
+	}
+
+	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCSIFFLAGS): %s", errno_s);
+
+	ifr.ifr_ifindex = if_nametoindex(sanctum->instance);
+	if (ioctl(fd, SIOCBRADDIF, &ifr) == -1)
+		fatal("ioctl(SIOCBRADDIF): %s", errno_s);
+
+	(void)close(fd);
+
+	sanctum_log(LOG_INFO, "added %s to %s",
+	    sanctum->instance, sanctum->bridge);
 }
 
 /*
