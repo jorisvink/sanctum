@@ -5,7 +5,7 @@ export TOPDIR
 
 OBJDIR?=obj
 BIN=sanctum
-VERSION=$(OBJDIR)/version.c
+VERSION=$(OBJDIR)/version
 LIBNYFE=$(CURDIR)/nyfe/libnyfe.a
 
 DESTDIR?=
@@ -73,7 +73,9 @@ else ifeq ("$(OSNAME)", "openbsd")
 	SRC+=src/platform_openbsd.c
 endif
 
-all: $(BIN)
+all:
+	$(MAKE) $(OBJDIR)
+	$(MAKE) $(BIN)
 	$(MAKE) tools-build-hymn
 	$(MAKE) tools-build-vicar
 	$(MAKE) tools-build-ambry
@@ -87,25 +89,33 @@ include $(SIGNATURE_MK_PATH)
 OBJS=	$(SRC:%.c=$(OBJDIR)/%.o)
 OBJS+=	$(OBJDIR)/version.o
 
-$(BIN): $(OBJDIR) $(LIBNYFE) $(KEMLIB) $(OBJS) $(VERSION)
+$(BIN): $(LIBNYFE) $(KEMLIB) $(OBJS) $(VERSION).c
 	$(CC) $(OBJS) $(LDFLAGS) -o $(BIN)
 
-$(VERSION): $(OBJDIR) force
+$(VERSION).c: force
 	@if [ -f RELEASE ]; then \
 		printf "const char *sanctum_build_rev = \"%s\";\n" \
-		    `cat RELEASE` > $(VERSION); \
+		    `cat RELEASE` > $(VERSION)_gen; \
 	elif [ -d .git ]; then \
 		GIT_REVISION=`git rev-parse --short=8 HEAD`; \
 		GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`; \
-		rm -f $(VERSION); \
+		rm -f $(VERSION)_gen; \
 		printf "const char *sanctum_build_rev = \"%s-%s\";\n" \
-		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION); \
+		    $$GIT_BRANCH $$GIT_REVISION > $(VERSION)_gen; \
 	else \
 		echo "No version information found (no .git or RELEASE)"; \
 		exit 1; \
 	fi
 	@printf "const char *sanctum_build_date = \"%s\";\n" \
-	    `date +"%Y-%m-%d"` >> $(VERSION);
+	    `date +"%Y-%m-%d"` >> $(VERSION)_gen;
+	@if [ -f $(VERSION).c ]; then \
+		cmp -s $(VERSION)_gen $(VERSION).c; \
+		if [ $$? -ne 0 ]; then \
+			cp $(VERSION)_gen $(VERSION).c; \
+		fi \
+	else \
+		cp $(VERSION)_gen $(VERSION).c; \
+	fi
 
 install: $(INSTALL_TARGETS)
 
@@ -138,7 +148,7 @@ tools-clean-%:
 $(LIBNYFE):
 	$(MAKE) -C nyfe
 
-src/sanctum.c: $(VERSION)
+src/sanctum.c: $(VERSION).c
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
