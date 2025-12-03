@@ -3,10 +3,9 @@
 ## About
 
 Sanctum is a small, reviewable, capable, pq-secure and fully privilege
-separated VPN daemon for OpenBSD, Linux and MacOS.
-
-It is designed from the ground up with security in mind and
-will always be open and free, licensed under the ISC license.
+separated VPN daemon for OpenBSD, Linux and MacOS. It is designed from
+the ground up with security in mind and will always be open and free,
+licensed under the ISC license.
 
 Due to its privilege separated design sanctum guarantees
 that all of its important assets are separated from processes
