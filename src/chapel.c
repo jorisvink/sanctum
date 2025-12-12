@@ -73,9 +73,9 @@ struct exchange_offer {
 };
 
 static void	chapel_peer_check(u_int64_t);
-static void	chapel_session_decapsulate(struct sanctum_offer *);
-static void	chapel_session_encapsulate(struct sanctum_offer *, u_int64_t);
 static void	chapel_session_key_derive(struct sanctum_offer *, u_int8_t);
+static void	chapel_session_decapsulate(struct sanctum_offer *, u_int64_t);
+static void	chapel_session_encapsulate(struct sanctum_offer *, u_int64_t);
 
 static void	chapel_cathedral_notify(u_int64_t);
 static void	chapel_cathedral_send_info(u_int64_t);
@@ -107,6 +107,9 @@ static struct exchange_offer	*offer = NULL;
 
 /* The next time we can offer at the earliest. */
 static u_int64_t		offer_next = 0;
+
+/* Should we forcefully recreate an offer? */
+static int			offer_force = 0;
 
 /* The last remote spi we negotiated keys for. */
 static u_int32_t		last_spi = 0;
@@ -760,7 +763,11 @@ chapel_offer_check(u_int64_t now)
 	offer_now = 0;
 	reason = NULL;
 
-	if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
+	if (offer_force) {
+		offer_now = 1;
+		offer_force = 0;
+		reason = "re-sync";
+	} else if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
 		age = sanctum_atomic_read(&sanctum->rx.age);
 		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
 		hbeat = sanctum_atomic_read(&sanctum->heartbeat);
@@ -1071,7 +1078,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		chapel_session_encapsulate(op, now);
 		break;
 	case SANCTUM_OFFER_STATE_KEM_CT_FRAGMENT:
-		chapel_session_decapsulate(op);
+		chapel_session_decapsulate(op, now);
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
@@ -1153,7 +1160,7 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
  * We then derive a TX session key using all of the input key material.
  */
 static void
-chapel_session_decapsulate(struct sanctum_offer *op)
+chapel_session_decapsulate(struct sanctum_offer *op, u_int64_t now)
 {
 	size_t				off;
 	struct sanctum_exchange_offer	*xchg;
@@ -1169,6 +1176,8 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 		sanctum_log(LOG_INFO,
 		    "ct fragment, wrong spi (got:%08x - expected:%08x)",
 		    xchg->spi, offer->local.spi);
+		chapel_offer_clear();
+		offer_force = 1;
 		return;
 	}
 
