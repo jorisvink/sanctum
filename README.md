@@ -3,7 +3,9 @@
 ## About
 
 Sanctum is a small, reviewable, capable, pq-secure and fully privilege
-separated VPN daemon for OpenBSD, Linux and MacOS.
+separated VPN daemon for OpenBSD, Linux and MacOS. It is designed from
+the ground up with security in mind and will always be open and free,
+licensed under the ISC license.
 
 Due to its privilege separated design sanctum guarantees
 that all of its important assets are separated from processes
@@ -11,12 +13,17 @@ that talk to the internet or handle non-cryptography related things.
 
 Sanctum allows you to create different topologies, from traditional
 site-to-site L2/L3 tunnels, to more niche topologies such as
-one-way tunnels, full-mesh L2/L3 and even P2P tunnels between
+one-way tunnels, full-mesh L2/L3 and even P2P E2E tunnels between
 devices behind NAT using hole-punching and Sanctum's cathedrals
 for peer discovery.
 
-See [The Reliquary](https://reliquary.se), a community driven
-sanctum cathedral setup.
+Cathedral networks can be used to implement more secure replacements
+for things like Tailscale or Zerotier, where you are in control and
+where all traffic is properly cryptographically separated from each
+other.
+
+See [The Reliquary](https://reliquary.se) for a community driven
+sanctum cathedral network.
 
 It is entirely possible to set up your own cathedrals.
 
@@ -100,14 +107,11 @@ A 96-bit nonce is used, constructed as follows:
 nonce = 32-bit salt from key exchange || 64-bit packet counter
 ```
 
-You can select what cipher sanctum will use by specifying a CIPHER environment
-variable at compile time with one of the following:
+Different encryption implementations can be selected at compile-time,
+please see the [docs/building.md](docs/building.md) for more information.
 
-- libsodium-aes-gcm (AES256-GCM via libsodium) **[default]**
-- mbedtls-aes-gcm (AES256-GCM via mbedtls 3.x its mbedcrypto lib).
-- intel-aes-gcm (AES256-GCM via Intel its highly performant libisal_crypto lib).
-- libsodium-aegis (AEGIS-256 via libsodium)
-- nyfe-agelas (Agelas via nyfe, an AEAD cipher based on Keccak).
+By default sanctum uses libsodium but alternatives such as mbedtls are
+included in the repo.
 
 ## One-directional tunnels
 

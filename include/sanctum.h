@@ -439,21 +439,11 @@ struct sanctum_proto_tail {
 } __attribute__((packed));
 
 /*
- * The encapsulation header consisting of a normal ESP header
- * in combination with a 16 byte seed. The entire header is
- * used for mask generation when encapsulating an outgoing packet.
- * The mask is then used to hide the inner sanctum header entirely.
+ * The encapsulation header consisting of a random 16-byte seed.
+ * This seed is used for mask generation which in turn is used to
+ * encapsulate or decapsulate the sanctum_proto_hdr.
  */
 struct sanctum_encap_hdr {
-	struct {
-		struct {
-			u_int32_t	spi;
-			u_int32_t	seq;
-		} esp;
-
-		u_int64_t		pn;
-	} ipsec;
-
 	u_int8_t			seed[16];
 } __attribute__((packed));
 

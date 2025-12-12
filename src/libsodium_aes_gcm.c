@@ -40,6 +40,9 @@ sanctum_cipher_init(void)
 {
 	if (sodium_init() == -1)
 		fatal("failed to initialize libsodium");
+
+	if (crypto_aead_aes256gcm_is_available() == 0)
+		fatal("libsodium does not support aes-gcm");
 }
 
 /*

@@ -35,17 +35,12 @@
  */
 #define PURGATORY_ENCAP_PKT_MAX		(1U << 24)
 
-static void	purgatory_tx_encap_reset(void);
 static void	purgatory_tx_drop_access(void);
 static void	*purgatory_tx_encapsulate(struct sanctum_packet *);
 static void	purgatory_tx_send_packet(int, struct sanctum_packet *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
-
-/* Traffic encapsulation settings. */
-static u_int64_t		encap_pn = 0;
-static u_int32_t		encap_spi = 0;
 
 /*
  * The process responsible for sending encrypted packets into purgatory.
@@ -70,7 +65,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 
 	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE) {
 		sanctum_random_init();
-		purgatory_tx_encap_reset();
+		sanctum_log(LOG_INFO, "encapsulation active");
 	}
 
 	running = 1;
@@ -199,18 +194,6 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 }
 
 /*
- * Generate a new fake SPI and reset the counter for encapsulation.
- */
-static void
-purgatory_tx_encap_reset(void)
-{
-	encap_pn = 1;
-	sanctum_random_bytes(&encap_spi, sizeof(encap_spi));
-
-	sanctum_log(LOG_INFO, "encapsulation active (spi=%08x)", encap_spi);
-}
-
-/*
  * If required, encapsulate the encrypted packet its sanctum protocol header
  * with an outer ESP layer that cannot be differentiated from any other
  * IPSec implementation following RFC 4106.
@@ -240,12 +223,8 @@ purgatory_tx_encapsulate(struct sanctum_packet *pkt)
 	hdr = sanctum_packet_start(pkt);
 	data = sanctum_packet_head(pkt);
 
-	hdr->ipsec.pn = encap_pn++;
-	hdr->ipsec.esp.spi = htobe32(encap_spi);
-	hdr->ipsec.esp.seq = htobe32(hdr->ipsec.pn & 0xffffffff);
-	hdr->ipsec.pn = htobe64(hdr->ipsec.pn);
-
 	sanctum_random_bytes(hdr->seed, sizeof(hdr->seed));
+
 	nyfe_kmac256_init(&kdf, sanctum->tek, sizeof(sanctum->tek),
 	    SANCTUM_ENCAP_LABEL, sizeof(SANCTUM_ENCAP_LABEL) - 1);
 	nyfe_kmac256_update(&kdf, hdr, sizeof(*hdr));
@@ -261,9 +240,6 @@ purgatory_tx_encapsulate(struct sanctum_packet *pkt)
 		data[idx] ^= mask[idx];
 
 	pkt->length += sizeof(*hdr);
-
-	if (encap_pn >= PURGATORY_ENCAP_PKT_MAX)
-		purgatory_tx_encap_reset();
 
 	return (hdr);
 }
