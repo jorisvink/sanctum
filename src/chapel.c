@@ -73,8 +73,8 @@ struct exchange_offer {
 };
 
 static void	chapel_peer_check(u_int64_t);
+static void	chapel_session_decapsulate(struct sanctum_offer *);
 static void	chapel_session_key_derive(struct sanctum_offer *, u_int8_t);
-static void	chapel_session_decapsulate(struct sanctum_offer *, u_int64_t);
 static void	chapel_session_encapsulate(struct sanctum_offer *, u_int64_t);
 
 static void	chapel_cathedral_notify(u_int64_t);
@@ -1078,7 +1078,7 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		chapel_session_encapsulate(op, now);
 		break;
 	case SANCTUM_OFFER_STATE_KEM_CT_FRAGMENT:
-		chapel_session_decapsulate(op, now);
+		chapel_session_decapsulate(op);
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
@@ -1160,7 +1160,7 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
  * We then derive a TX session key using all of the input key material.
  */
 static void
-chapel_session_decapsulate(struct sanctum_offer *op, u_int64_t now)
+chapel_session_decapsulate(struct sanctum_offer *op)
 {
 	size_t				off;
 	struct sanctum_exchange_offer	*xchg;
