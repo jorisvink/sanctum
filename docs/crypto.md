@@ -361,11 +361,11 @@ receiving cathedrals such that no malicious cathedral can impersonate clients.
 ## Traffic Encapsulation Key (TEK)
 
 The TEK is used when traffic encapsulation is turned on. When it is active,
-a 128-bit mask is derived using the TEK and KMAC256() based on an outer ESP
-header and a 128-bit seed.
+a 128-bit mask is derived using the TEK and KMAC256() based on an outer
+encapsulation header.
 
 This mask is then XOR'd onto the inner sanctum header and the outer header
 is stripped, leaving us with the original to be transported packet.
 
 With traffic encapsulation all sanctum traffic will be indistinguishable
-from other implementations their IPSec traffic.
+from random data on the wire.
