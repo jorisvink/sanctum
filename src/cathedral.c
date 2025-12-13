@@ -221,6 +221,7 @@ struct xflock {
 
 static u_int64_t	cathedral_ms(void);
 static void		cathedral_status_log(void);
+static void		cathedral_status_reset(void);
 static struct flockent	*cathedral_flock_lookup(u_int64_t);
 static struct tunnel	*cathedral_tunnel_lookup(struct flockent *,
 			    struct flockent *, u_int16_t);
@@ -350,6 +351,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	io = proc->arg;
 
 	sanctum_signal_trap(SIGQUIT);
+	sanctum_signal_trap(SIGUSR1);
 	sanctum_signal_ignore(SIGINT);
 
 	LIST_INIT(&flocks);
@@ -371,6 +373,9 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
+				continue;
+			case SIGUSR1:
+				cathedral_status_reset();
 				continue;
 			}
 		}
@@ -2428,4 +2433,19 @@ cathedral_status_log(void)
 	sanctum_log(LOG_INFO,
 	    "offer-stat in=%" PRIu64 " out=%" PRIu64 " fwd=%" PRIu64,
 	    offers.pkts_in, offers.pkts_out, offers.bytes);
+}
+
+/*
+ * Reset status counters.
+ */
+static void
+cathedral_status_reset(void)
+{
+	traffic.bytes = 0;
+	traffic.pkts_in = 0;
+	traffic.pkts_out = 0;
+
+	offers.bytes = 0;
+	offers.pkts_in = 0;
+	offers.pkts_out = 0;
 }
