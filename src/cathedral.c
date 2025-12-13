@@ -2448,4 +2448,6 @@ cathedral_status_reset(void)
 	offers.bytes = 0;
 	offers.pkts_in = 0;
 	offers.pkts_out = 0;
+
+	sanctum_log(LOG_INFO, "traffic-stat and offer-stat reset");
 }
