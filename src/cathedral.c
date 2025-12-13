@@ -712,9 +712,19 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	tun->ip = pkt->addr.sin_addr.s_addr;
 
 	if (catacomb) {
+		if (tun->federated == 0) {
+			cathedral_peerstat_dec(&peers, 0);
+			cathedral_peerstat_inc(&peers, 1);
+		}
+
 		tun->federated = 1;
 		tun->p2p_pending = 1;
 	} else {
+		if (tun->federated) {
+			cathedral_peerstat_dec(&peers, 1);
+			cathedral_peerstat_inc(&peers, 0);
+		}
+
 		tun->federated = 0;
 
 		info->tunnel = htobe16(info->tunnel);
@@ -794,6 +804,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		entry->update = now;
 		entry->flags = lit->flags;
 
+		cathedral_peerstat_inc(&liturgies, catacomb);
 		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
 	}
 
@@ -812,6 +823,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	entry->age = now;
 	entry->group = group;
 	entry->hidden = lit->hidden;
+	entry->federated = catacomb;
 
 	entry->port = pkt->addr.sin_port;
 	entry->ip = pkt->addr.sin_addr.s_addr;
@@ -825,8 +837,6 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (catacomb == 0) {
-		liturgies.local++;
-
 		if (now >= entry->at) {
 			entry->at = now + CATHEDRAL_FEDERATE_NEXT;
 			cathedral_offer_federate(flock, flock, pkt);
@@ -836,9 +846,6 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 			    "%s is sending liturgies too quickly",
 			    cathedral_tunnel_name(flock, flock, lit->id));
 		}
-	} else {
-		entry->federated = 1;
-		liturgies.federated++;
 	}
 }
 
@@ -1274,6 +1281,7 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 
 	tun->update = now;
 	tun->id = info->tunnel;
+	tun->federated = catacomb;
 	tun->instance = info->instance;
 	tun->limit = (bw / 8) * 1024 * 1024;
 	tun->drain_per_ms = tun->limit / 1000;
