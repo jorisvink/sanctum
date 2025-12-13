@@ -70,12 +70,20 @@
 #endif
 
 /*
- * Used to track statistics.
+ * Used to track statistics on packets.
  */
 struct ifstats {
 	u_int64_t		pkts_in;
 	u_int64_t		pkts_out;
 	u_int64_t		bytes;
+};
+
+/*
+ * Used to track statistics on things like tunnels or liturgies.
+ */
+struct peerstat {
+	u_int32_t		local;
+	u_int32_t		federated;
 };
 
 /*
@@ -140,6 +148,7 @@ struct liturgy {
 	u_int16_t		group;
 	u_int8_t		hidden;
 	u_int64_t		update;
+	int			federated;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
 	LIST_ENTRY(liturgy)	list;
 };
@@ -230,6 +239,9 @@ static void		cathedral_ambry_cache(const char *, struct ambries *);
 static struct ambry	*cathedral_ambry_find(struct ambries *,
 			    u_int64_t, u_int16_t);
 
+static void	cathedral_peerstat_inc(struct peerstat *, int);
+static void	cathedral_peerstat_dec(struct peerstat *, int);
+
 static void	cathedral_flock_allows_clear(struct flockent *);
 static void	cathedral_flock_domain_clear(struct flockdom *);
 static void	cathedral_flock_domains_clear(struct flockent *);
@@ -303,8 +315,8 @@ static LIST_HEAD(, xflock)	xflocks;
 static time_t			settings_last_mtime = -1;
 
 /* Connected peer statistics. */
-static u_int32_t		peers_local = 0;
-static u_int32_t		peers_federated = 0;
+static struct peerstat		peers;
+static struct peerstat		liturgies;
 
 /* Packet counters. */
 static struct ifstats		offers;
@@ -808,6 +820,8 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (catacomb == 0) {
+		liturgies.local++;
+
 		if (now >= entry->at) {
 			entry->at = now + CATHEDRAL_FEDERATE_NEXT;
 			cathedral_offer_federate(flock, flock, pkt);
@@ -817,6 +831,9 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 			    "%s is sending liturgies too quickly",
 			    cathedral_tunnel_name(flock, flock, lit->id));
 		}
+	} else {
+		entry->federated = 1;
+		liturgies.federated++;
 	}
 }
 
@@ -1256,12 +1273,8 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	tun->limit = (bw / 8) * 1024 * 1024;
 	tun->drain_per_ms = tun->limit / 1000;
 
+	cathedral_peerstat_inc(&peers, catacomb);
 	LIST_INSERT_HEAD(&flock->domain->tunnels, tun, list);
-
-	if (catacomb)
-		peers_federated++;
-	else
-		peers_local++;
 
 	sanctum_log(LOG_INFO, "%s discovered (%u mbit/sec) (%d)",
 	    cathedral_tunnel_name(flock, dst, info->tunnel), bw, catacomb);
@@ -1359,6 +1372,8 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 				mode = "discovery";
 
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
+				cathedral_peerstat_dec(&liturgies,
+				    liturgy->federated);
 				name = cathedral_tunnel_name(flock,
 				    flock, liturgy->id);
 				sanctum_log(LOG_INFO,
@@ -1375,10 +1390,8 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 
 			if ((now - tunnel->age) >=
 			    CATHEDRAL_TUNNEL_MAX_AGE) {
-				if (tunnel->federated)
-					peers_federated--;
-				else
-					peers_local--;
+				cathedral_peerstat_dec(&peers,
+				    tunnel->federated);
 				name = cathedral_tunnel_name_id(tunnel->src,
 				    tunnel->dst, tunnel->id);
 				sanctum_log(LOG_INFO,
@@ -1780,11 +1793,13 @@ cathedral_flock_domain_clear(struct flockdom *domain)
 	PRECOND(domain != NULL);
 
 	while ((tunnel = LIST_FIRST(&domain->tunnels)) != NULL) {
+		cathedral_peerstat_dec(&peers, tunnel->federated);
 		LIST_REMOVE(tunnel, list);
 		free(tunnel);
 	}
 
 	while ((liturgy = LIST_FIRST(&domain->liturgies)) != NULL) {
+		cathedral_peerstat_dec(&liturgies, liturgy->federated);
 		LIST_REMOVE(liturgy, list);
 		free(liturgy);
 	}
@@ -2363,13 +2378,48 @@ cathedral_tunnel_name_id(u_int64_t src, u_int64_t dst, u_int16_t tun)
 }
 
 /*
+ * Increment the given peerstat counter, either the local one
+ * or the federated one depending on catacomb.
+ */
+static void
+cathedral_peerstat_inc(struct peerstat *ps, int catacomb)
+{
+	PRECOND(ps != NULL);
+	PRECOND(catacomb == 0 || catacomb == 1);
+
+	if (catacomb)
+		ps->federated++;
+	else
+		ps->local++;
+}
+
+/*
+ * Decrement the given peerstat counter, either the local one
+ * or the federated one depending on catacomb.
+ */
+static void
+cathedral_peerstat_dec(struct peerstat *ps, int catacomb)
+{
+	PRECOND(ps != NULL);
+	PRECOND(catacomb == 0 || catacomb == 1);
+
+	if (catacomb)
+		ps->federated--;
+	else
+		ps->local--;
+}
+
+/*
  * Log our current status.
  */
 static void
 cathedral_status_log(void)
 {
 	sanctum_log(LOG_INFO, "peer-stat local=%u federated=%u",
-	    peers_local, peers_federated);
+	    peers.local, peers.federated);
+
+	sanctum_log(LOG_INFO, "liturgy-stat local=%u federated=%u",
+	    liturgies.local, liturgies.federated);
 
 	sanctum_log(LOG_INFO,
 	    "traffic-stat in=%" PRIu64 " out=%" PRIu64 " fwd=%" PRIu64,
