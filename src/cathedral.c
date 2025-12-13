@@ -49,6 +49,9 @@
 /* The interval at which we check if settings changed. */
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
+/* The interval at which we send out status log. */
+#define CATHEDRAL_STATUS_NEXT		(5 * 1000)
+
 /* The interval at which we send remembrances to peers. */
 #define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
@@ -65,6 +68,15 @@
 #else
 #error "Unknown SANCTUM_TAG_LENGTH"
 #endif
+
+/*
+ * Used to track statistics.
+ */
+struct ifstats {
+	u_int64_t		pkts_in;
+	u_int64_t		pkts_out;
+	u_int64_t		bytes;
+};
 
 /*
  * A known tunnel and its endpoint, or a federated cathedral.
@@ -199,6 +211,7 @@ struct xflock {
 };
 
 static u_int64_t	cathedral_ms(void);
+static void		cathedral_status_log(void);
 static struct flockent	*cathedral_flock_lookup(u_int64_t);
 static struct tunnel	*cathedral_tunnel_lookup(struct flockent *,
 			    struct flockent *, u_int16_t);
@@ -289,6 +302,14 @@ static LIST_HEAD(, xflock)	xflocks;
 /* The last modified time of the settings file. */
 static time_t			settings_last_mtime = -1;
 
+/* Connected peer statistics. */
+static u_int32_t		peers_local = 0;
+static u_int32_t		peers_federated = 0;
+
+/* Packet counters. */
+static struct ifstats		offers;
+static struct ifstats		traffic;
+
 /*
  * Cathedral - The place packets all meet and get exchanged.
  *
@@ -307,7 +328,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	struct sanctum_packet	*pkt;
 	struct flockent		*flock;
 	int			sig, running;
-	u_int64_t		now, next_expire, next_settings;
+	u_int64_t		now, next_expire, next_settings, next_status;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -329,6 +350,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 
 	running = 1;
 	next_expire = 0;
+	next_status = 0;
 	next_settings = 0;
 
 	while (running) {
@@ -353,6 +375,11 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
 			LIST_FOREACH(flock, &flocks, list)
 				cathedral_tunnel_expire(flock, now);
+		}
+
+		if (now >= next_status) {
+			next_status = now + CATHEDRAL_STATUS_NEXT;
+			cathedral_status_log();
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)))
@@ -995,6 +1022,8 @@ cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
 
 	PRECOND(pkt != NULL);
 
+	offers.pkts_in++;
+
 	hdr = sanctum_packet_head(pkt);
 	flock_src = be64toh(hdr->flock_src);
 	flock_dst = be64toh(hdr->flock_dst);
@@ -1028,6 +1057,9 @@ cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
+	offers.pkts_out++;
+	offers.bytes += pkt->length;
+
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 	return (0);
@@ -1057,6 +1089,8 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	u_int64_t			flock_src, flock_dst;
 
 	PRECOND(pkt != NULL);
+
+	traffic.pkts_in++;
 
 	hdr = sanctum_packet_head(pkt);
 	flock_src = be64toh(hdr->flock.src);
@@ -1104,6 +1138,9 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
+
+	traffic.pkts_out++;
+	traffic.bytes += pkt->length;
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
@@ -1221,6 +1258,11 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 
 	LIST_INSERT_HEAD(&flock->domain->tunnels, tun, list);
 
+	if (catacomb)
+		peers_federated++;
+	else
+		peers_local++;
+
 	sanctum_log(LOG_INFO, "%s discovered (%u mbit/sec) (%d)",
 	    cathedral_tunnel_name(flock, dst, info->tunnel), bw, catacomb);
 
@@ -1333,6 +1375,10 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 
 			if ((now - tunnel->age) >=
 			    CATHEDRAL_TUNNEL_MAX_AGE) {
+				if (tunnel->federated)
+					peers_federated--;
+				else
+					peers_local--;
 				name = cathedral_tunnel_name_id(tunnel->src,
 				    tunnel->dst, tunnel->id);
 				sanctum_log(LOG_INFO,
@@ -2314,4 +2360,22 @@ cathedral_tunnel_name_id(u_int64_t src, u_int64_t dst, u_int16_t tun)
 		fatal("failed to create tunnel name");
 
 	return (buf);
+}
+
+/*
+ * Log our current status.
+ */
+static void
+cathedral_status_log(void)
+{
+	sanctum_log(LOG_INFO, "peer-stat local=%u federated=%u",
+	    peers_local, peers_federated);
+
+	sanctum_log(LOG_INFO,
+	    "traffic-stat in=%" PRIu64 " out=%" PRIu64 " fwd=%" PRIu64,
+	    traffic.pkts_in, traffic.pkts_out, traffic.bytes);
+
+	sanctum_log(LOG_INFO,
+	    "offer-stat in=%" PRIu64 " out=%" PRIu64 " fwd=%" PRIu64,
+	    offers.pkts_in, offers.pkts_out, offers.bytes);
 }
