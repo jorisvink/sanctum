@@ -72,3 +72,7 @@ pre {
     border-radius: 5px;
     padding: 15px;
 }
+
+small {
+    color: gray;
+}

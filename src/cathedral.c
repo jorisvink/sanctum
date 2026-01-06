@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2025 Joris Vink <joris@sanctorum.se>
+ * Copyright (c) 2023-2026 Joris Vink <joris@sanctorum.se>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -49,6 +49,9 @@
 /* The interval at which we check if settings changed. */
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
 
+/* The interval at which we send out status log. */
+#define CATHEDRAL_STATUS_NEXT		(5 * 1000)
+
 /* The interval at which we send remembrances to peers. */
 #define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
@@ -65,6 +68,23 @@
 #else
 #error "Unknown SANCTUM_TAG_LENGTH"
 #endif
+
+/*
+ * Used to track statistics on packets.
+ */
+struct ifstats {
+	u_int64_t		pkts_in;
+	u_int64_t		pkts_out;
+	u_int64_t		bytes;
+};
+
+/*
+ * Used to track statistics on things like tunnels or liturgies.
+ */
+struct peerstat {
+	u_int32_t		local;
+	u_int32_t		federated;
+};
 
 /*
  * A known tunnel and its endpoint, or a federated cathedral.
@@ -128,6 +148,7 @@ struct liturgy {
 	u_int16_t		group;
 	u_int8_t		hidden;
 	u_int64_t		update;
+	int			federated;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
 	LIST_ENTRY(liturgy)	list;
 };
@@ -199,6 +220,8 @@ struct xflock {
 };
 
 static u_int64_t	cathedral_ms(void);
+static void		cathedral_status_log(void);
+static void		cathedral_status_reset(void);
 static struct flockent	*cathedral_flock_lookup(u_int64_t);
 static struct tunnel	*cathedral_tunnel_lookup(struct flockent *,
 			    struct flockent *, u_int16_t);
@@ -216,6 +239,9 @@ static void		cathedral_ambry_purge(struct ambries *);
 static void		cathedral_ambry_cache(const char *, struct ambries *);
 static struct ambry	*cathedral_ambry_find(struct ambries *,
 			    u_int64_t, u_int16_t);
+
+static void	cathedral_peerstat_inc(struct peerstat *, int);
+static void	cathedral_peerstat_dec(struct peerstat *, int);
 
 static void	cathedral_flock_allows_clear(struct flockent *);
 static void	cathedral_flock_domain_clear(struct flockdom *);
@@ -289,6 +315,14 @@ static LIST_HEAD(, xflock)	xflocks;
 /* The last modified time of the settings file. */
 static time_t			settings_last_mtime = -1;
 
+/* Connected peer statistics. */
+static struct peerstat		peers;
+static struct peerstat		liturgies;
+
+/* Packet counters. */
+static struct ifstats		offers;
+static struct ifstats		traffic;
+
 /*
  * Cathedral - The place packets all meet and get exchanged.
  *
@@ -307,7 +341,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	struct sanctum_packet	*pkt;
 	struct flockent		*flock;
 	int			sig, running;
-	u_int64_t		now, next_expire, next_settings;
+	u_int64_t		now, next_expire, next_settings, next_status;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -317,6 +351,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	io = proc->arg;
 
 	sanctum_signal_trap(SIGQUIT);
+	sanctum_signal_trap(SIGUSR1);
 	sanctum_signal_ignore(SIGINT);
 
 	LIST_INIT(&flocks);
@@ -329,6 +364,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 
 	running = 1;
 	next_expire = 0;
+	next_status = 0;
 	next_settings = 0;
 
 	while (running) {
@@ -337,6 +373,9 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			switch (sig) {
 			case SIGQUIT:
 				running = 0;
+				continue;
+			case SIGUSR1:
+				cathedral_status_reset();
 				continue;
 			}
 		}
@@ -353,6 +392,11 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
 			LIST_FOREACH(flock, &flocks, list)
 				cathedral_tunnel_expire(flock, now);
+		}
+
+		if (now >= next_status) {
+			next_status = now + CATHEDRAL_STATUS_NEXT;
+			cathedral_status_log();
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel)))
@@ -446,6 +490,7 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
 	struct flockent			*flock;
 
 	PRECOND(pkt != NULL);
+	PRECOND(catacomb == 0 || catacomb == 1);
 
 	if (pkt->length < sizeof(*op))
 		return;
@@ -668,9 +713,19 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	tun->ip = pkt->addr.sin_addr.s_addr;
 
 	if (catacomb) {
+		if (tun->federated == 0) {
+			cathedral_peerstat_dec(&peers, 0);
+			cathedral_peerstat_inc(&peers, 1);
+		}
+
 		tun->federated = 1;
 		tun->p2p_pending = 1;
 	} else {
+		if (tun->federated) {
+			cathedral_peerstat_dec(&peers, 1);
+			cathedral_peerstat_inc(&peers, 0);
+		}
+
 		tun->federated = 0;
 
 		info->tunnel = htobe16(info->tunnel);
@@ -710,6 +765,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	PRECOND(flock != NULL);
 	PRECOND(flock->domain != NULL);
 	PRECOND(pkt->length >= sizeof(*op));
+	PRECOND(catacomb == 0 || catacomb == 1);
 
 	op = sanctum_packet_head(pkt);
 	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
@@ -749,7 +805,9 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		entry->id = lit->id;
 		entry->update = now;
 		entry->flags = lit->flags;
+		entry->federated = catacomb;
 
+		cathedral_peerstat_inc(&liturgies, catacomb);
 		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
 	}
 
@@ -781,6 +839,13 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (catacomb == 0) {
+		if (entry->federated) {
+			cathedral_peerstat_dec(&liturgies, 1);
+			cathedral_peerstat_inc(&liturgies, 0);
+		}
+
+		entry->federated = 0;
+
 		if (now >= entry->at) {
 			entry->at = now + CATHEDRAL_FEDERATE_NEXT;
 			cathedral_offer_federate(flock, flock, pkt);
@@ -790,6 +855,13 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 			    "%s is sending liturgies too quickly",
 			    cathedral_tunnel_name(flock, flock, lit->id));
 		}
+	} else {
+		if (entry->federated == 0) {
+			cathedral_peerstat_dec(&liturgies, 0);
+			cathedral_peerstat_inc(&liturgies, 1);
+		}
+
+		entry->federated = 1;
 	}
 }
 
@@ -995,6 +1067,8 @@ cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
 
 	PRECOND(pkt != NULL);
 
+	offers.pkts_in++;
+
 	hdr = sanctum_packet_head(pkt);
 	flock_src = be64toh(hdr->flock_src);
 	flock_dst = be64toh(hdr->flock_dst);
@@ -1028,6 +1102,9 @@ cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
+	offers.pkts_out++;
+	offers.bytes += pkt->length;
+
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 	return (0);
@@ -1057,6 +1134,8 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	u_int64_t			flock_src, flock_dst;
 
 	PRECOND(pkt != NULL);
+
+	traffic.pkts_in++;
 
 	hdr = sanctum_packet_head(pkt);
 	flock_src = be64toh(hdr->flock.src);
@@ -1104,6 +1183,9 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
+
+	traffic.pkts_out++;
+	traffic.bytes += pkt->length;
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
@@ -1215,10 +1297,12 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 
 	tun->update = now;
 	tun->id = info->tunnel;
+	tun->federated = catacomb;
 	tun->instance = info->instance;
 	tun->limit = (bw / 8) * 1024 * 1024;
 	tun->drain_per_ms = tun->limit / 1000;
 
+	cathedral_peerstat_inc(&peers, catacomb);
 	LIST_INSERT_HEAD(&flock->domain->tunnels, tun, list);
 
 	sanctum_log(LOG_INFO, "%s discovered (%u mbit/sec) (%d)",
@@ -1317,6 +1401,8 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 				mode = "discovery";
 
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
+				cathedral_peerstat_dec(&liturgies,
+				    liturgy->federated);
 				name = cathedral_tunnel_name(flock,
 				    flock, liturgy->id);
 				sanctum_log(LOG_INFO,
@@ -1333,6 +1419,8 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 
 			if ((now - tunnel->age) >=
 			    CATHEDRAL_TUNNEL_MAX_AGE) {
+				cathedral_peerstat_dec(&peers,
+				    tunnel->federated);
 				name = cathedral_tunnel_name_id(tunnel->src,
 				    tunnel->dst, tunnel->id);
 				sanctum_log(LOG_INFO,
@@ -1734,11 +1822,13 @@ cathedral_flock_domain_clear(struct flockdom *domain)
 	PRECOND(domain != NULL);
 
 	while ((tunnel = LIST_FIRST(&domain->tunnels)) != NULL) {
+		cathedral_peerstat_dec(&peers, tunnel->federated);
 		LIST_REMOVE(tunnel, list);
 		free(tunnel);
 	}
 
 	while ((liturgy = LIST_FIRST(&domain->liturgies)) != NULL) {
+		cathedral_peerstat_dec(&liturgies, liturgy->federated);
 		LIST_REMOVE(liturgy, list);
 		free(liturgy);
 	}
@@ -2314,4 +2404,74 @@ cathedral_tunnel_name_id(u_int64_t src, u_int64_t dst, u_int16_t tun)
 		fatal("failed to create tunnel name");
 
 	return (buf);
+}
+
+/*
+ * Increment the given peerstat counter, either the local one
+ * or the federated one depending on catacomb.
+ */
+static void
+cathedral_peerstat_inc(struct peerstat *ps, int catacomb)
+{
+	PRECOND(ps != NULL);
+	PRECOND(catacomb == 0 || catacomb == 1);
+
+	if (catacomb)
+		ps->federated++;
+	else
+		ps->local++;
+}
+
+/*
+ * Decrement the given peerstat counter, either the local one
+ * or the federated one depending on catacomb.
+ */
+static void
+cathedral_peerstat_dec(struct peerstat *ps, int catacomb)
+{
+	PRECOND(ps != NULL);
+	PRECOND(catacomb == 0 || catacomb == 1);
+
+	if (catacomb)
+		ps->federated--;
+	else
+		ps->local--;
+}
+
+/*
+ * Log our current status.
+ */
+static void
+cathedral_status_log(void)
+{
+	sanctum_log(LOG_INFO, "peer-stat local=%u federated=%u",
+	    peers.local, peers.federated);
+
+	sanctum_log(LOG_INFO, "liturgy-stat local=%u federated=%u",
+	    liturgies.local, liturgies.federated);
+
+	sanctum_log(LOG_INFO,
+	    "traffic-stat in=%" PRIu64 " out=%" PRIu64 " fwd=%" PRIu64,
+	    traffic.pkts_in, traffic.pkts_out, traffic.bytes);
+
+	sanctum_log(LOG_INFO,
+	    "offer-stat in=%" PRIu64 " out=%" PRIu64 " fwd=%" PRIu64,
+	    offers.pkts_in, offers.pkts_out, offers.bytes);
+}
+
+/*
+ * Reset status counters.
+ */
+static void
+cathedral_status_reset(void)
+{
+	traffic.bytes = 0;
+	traffic.pkts_in = 0;
+	traffic.pkts_out = 0;
+
+	offers.bytes = 0;
+	offers.pkts_in = 0;
+	offers.pkts_out = 0;
+
+	sanctum_log(LOG_INFO, "traffic-stat and offer-stat reset");
 }

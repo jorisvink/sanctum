@@ -35,6 +35,9 @@
         <a href="https://conclave.se">The Conclave</a>
         <br>
         <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
+        <br>
+        <br>
+        <small>Made in Sweden</small>
     </div>
 </div>
 
@@ -82,13 +85,6 @@ Latest release: <a href="/releases/sanctum-0.9.37.tgz">sanctum 0.9.37</a>
     </ul>
 </p>
 
-<h3>Key management</h3>
-
-<p>
-    The cathedral requires an ambry bundle for each flock that it should serve,
-    refer to the reliquary its <a href="https://reliquary.se/guide.html#key-management">key management guide</a> on how to do this.
-</p>
-
 <h3>Cathedral configuration</h3>
 
 <p>
@@ -128,14 +124,14 @@ $ mkdir /home/cathedral/shared/identities/flock-&lt;flock&gt;
 </p>
 
 <p>
-    The format for their name should be flock-&lt;flock id&gt;. In this
-    directory, you have to put a secret key and cosk public key per peer
-    in this flock. These are used for traffic protection and offer
+    The format for their name should be flock-&lt;flock id&gt;. In a flock
+    directory, you place all peers in that flock their cathedral secrets
+    and their cosk public keys These are used for traffic protection and offer
     authentication between the client and cathedral, never for normal traffic.
 </p>
 
 <p>
-    The secret key is a 256-bit symmetrical shared secret shared between the
+    The cathedral secrets are 256-bit symmetrical keys shared between the
     cathedral and client and is stored on the cathedral in the format of
     &lt;peer id&gt;.key. The cosk public key is an ed25519 public key
     generated using ambry tool on the client side. The cosk public key
@@ -150,20 +146,10 @@ $ mkdir /home/cathedral/shared/identities/flock-&lt;flock&gt;
 </p>
 
 <p>
-    Local has to be an IP and port that is reachable by all the peers that will
-    be using the cathedral.
-</p>
-
-<p>
-    Secret is a key that should be 32 bytes of random data.
-    An example of how to generate this key is by using the following command:
+    The synchronization key used for communication between cathedrals when
+    federation data can be generated as follows:
 <pre>
 $ dd if=/dev/urandom of=/home/cathedral/sync.secret bs=32 count=1
-</pre>
-
-    While the cosk can be generated as follows:
-<pre>
-$ ambry cosk-pair /tmp/cosk-private /tmp/cosk-public
 </pre>
 </p>
 
@@ -174,8 +160,28 @@ $ ambry cosk-pair /tmp/cosk-private /tmp/cosk-public
     pointed to by the settings option in the cathedral configuration.
 </p>
 
+<h4>Key management</h4>
+
 <p>
-    In our example configuration, that path is <strong>/home/cathedral/shared/settings.conf</strong>. The format for the configuration of a flock is:
+    Each flock needs to receive an ambry file, these are wrapped shared
+    secrets that will be securely distributed to your peers, via the cathedral.
+</p>
+
+<p>
+    Use the ambry tool to generate keys for the flocks you are configuring.
+<pre>
+$ ambry generate cafebabe
+$ ambry export cafebabe cafebabe 120 /path/to/ambry.bundle
+</pre>
+
+</p>
+
+<h4>Flock configuration</h4>
+
+<p>
+    In our example configuration, that path is
+    <strong>/home/cathedral/shared/settings.conf</strong>.
+    The format for a flock defined in settings is as follows:
 
 <pre>
 flock &lt;flock id&gt; {
@@ -223,6 +229,25 @@ flock cafebabe {
 <p>
     The easiest way to configure a tunnel that uses the cathedral and flock
     that just was setup is to use the hymn tool.
+</p>
+
+<p>
+    Several keys must be generated on the client-side or distributed in
+    a secret way to the client. For example, a cosk can be generated
+    using the ambry tool:
+<pre>
+$ ambry cosk-pair /tmp/cosk-private /tmp/cosk-public
+</pre>
+
+    While the cathedral secret may be generated from /dev/urandom for
+    example after which you distribute it to your cathedrals in a safe way.
+
+<pre>
+$ dd if=/dev/urandom of=/tmp/cs-deadbeef bs=32 count=1
+</pre>
+
+    The KEK comes from your key management, using the ambry tool and can
+    be found under the kek-data directory for said flock.
 </p>
 
 <p>
