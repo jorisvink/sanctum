@@ -17,7 +17,9 @@
 #include <sys/param.h>
 #include <sys/types.h>
 
-#if defined(__APPLE__)
+#if defined(NYFE_PLATFORM_IOS)
+#include <Security/SecRandom.h>
+#elif defined(__APPLE__)
 #include <sys/random.h>
 #endif
 
@@ -131,7 +133,11 @@ random_rekey(void)
 	}
 #endif
 
-#if defined(NYFE_PLATFORM_WINDOWS)
+#if defined(NYFE_PLATFORM_IOS)
+	if (SecRandomCopyBytes(kSecRandomDefault,
+	    sizeof(seed), seed) != errSecSuccess)
+		nyfe_fatal("SecRandomCopyBytes: failed");
+#elif defined(NYFE_PLATFORM_WINDOWS)
 	/* XXX */
 	if (RtlGenRandom(seed, sizeof(seed)) == 0)
 		nyfe_fatal("RtlGenRandom: failed");
