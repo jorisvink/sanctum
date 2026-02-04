@@ -299,11 +299,12 @@ ambry_kek_renew(int argc, char **argv)
 	if (unlink(path) == -1 && errno != ENOENT)
 		fatal("failed to remove '%s' (%s)", path, errno_s);
 
+	ambry_kek_gen(path);
+
 	ambry_derived_kek_path(flock, flock, kek, path, sizeof(path));
 	if (unlink(path) == -1 && errno != ENOENT)
 		fatal("failed to remove '%s' (%s)", path, errno_s);
 
-	ambry_kek_gen(path);
 	ambry_kek_derive(flock, flock, kek);
 
 	return (0);
