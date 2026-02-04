@@ -44,6 +44,19 @@
 #define OFFER_INCLUDE_KEM_CT		(1 << 1)
 
 /*
+ * When we received a new ambry, we have the following number of seconds
+ * in time to complete a negotiation before we clear all keys and take
+ * down our tunnel.
+ *
+ * This is done to allow the "revocation" of devices by regenerating those
+ * devices their KEKs and thus preventing them from unwrapping a new ambry.
+ *
+ * This in turn prevents them from completing more key exchanges with us
+ * and thus we should consider them malicous and take down the tunnel.
+ */
+#define AMBRY_RENEGOTIATION_LIMIT	75
+
+/*
  * Exchange data for a specific direction.
  */
 struct exchange_info {
@@ -72,7 +85,9 @@ struct exchange_offer {
 	u_int8_t			ct_frag;
 };
 
+static void	chapel_drop_access(void);
 static void	chapel_peer_check(u_int64_t);
+
 static void	chapel_session_decapsulate(struct sanctum_offer *);
 static void	chapel_session_key_derive(struct sanctum_offer *, u_int8_t);
 static void	chapel_session_encapsulate(struct sanctum_offer *, u_int64_t);
@@ -96,7 +111,8 @@ static void	chapel_offer_encrypt(int, u_int8_t);
 static void	chapel_offer_create(u_int64_t, const char *);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
-static void	chapel_drop_access(void);
+static void	chapel_erase_tx(void);
+static void	chapel_erase_rx(void);
 static void	chapel_erase(struct sanctum_key *, u_int32_t);
 
 /* The local queues. */
@@ -127,7 +143,13 @@ static u_int64_t		local_id = 0;
 /* The last peer ID received during an exchange. */
 static u_int64_t		peer_id = 0;
 
-/* The ambry generation, initially 0. */
+/* Have we recently swapped ambries? Cleared after renegotiation. */
+static int			ambry_switch = 0;
+
+/* When did we receive the ambry generation switch? */
+static u_int64_t		ambry_received = 0;
+
+/* The active ambry generation, initially 0. */
 static u_int32_t		ambry_generation = 0;
 
 /*
@@ -224,6 +246,26 @@ sanctum_chapel(struct sanctum_proc *proc)
 		else
 			delay_check--;
 
+		/*
+		 * If we after AMBRY_RENEGOTIATION_LIMIT, seconds have not
+		 * been able to renegotiate after an ambry swap, we throw
+		 * away all the keys so the tunnel goes down.
+		 */
+		if (ambry_switch &&
+		    (now - ambry_received) >= AMBRY_RENEGOTIATION_LIMIT) {
+			ambry_switch = 0;
+
+			sanctum_log(LOG_NOTICE, "unable to renegotiate with "
+			    "peer %" PRIu64 " seconds after ambry swap, "
+			    "clearing keys", now - ambry_received);
+
+			if (offer != NULL)
+				chapel_offer_clear();
+
+			chapel_erase_tx();
+			chapel_erase_rx();
+		}
+
 		if (offer != NULL) {
 			/*
 			 * If we saw traffic on our current offer we
@@ -308,15 +350,8 @@ chapel_peer_check(u_int64_t now)
 	offer_ttl = 15;
 	offer_next_send = 1;
 
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-	chapel_erase(io->rx, spi);
-	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
-
-	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
-		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
-		chapel_erase(io->tx, spi);
-		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
-	}
+	chapel_erase_rx();
+	chapel_erase_tx();
 
 	if (offer != NULL)
 		chapel_offer_clear();
@@ -733,6 +768,10 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 		if (offer != NULL)
 			chapel_offer_clear();
+
+		ambry_switch = 1;
+		ambry_received = now;
+
 		chapel_offer_create(now, "ambry generation switch");
 	}
 }
@@ -881,8 +920,15 @@ chapel_offer_send(u_int64_t now)
 			chapel_offer_encrypt(OFFER_INCLUDE_KEM_CT, frag);
 	}
 
-	if (offer->ttl == 0)
+	if (offer->ttl == 0) {
 		chapel_offer_clear();
+
+		/* Try again on an ambry swap after 10 seconds. */
+		if (ambry_switch) {
+			offer_force = 1;
+			offer_next = now + 10;
+		}
+	}
 }
 
 /*
@@ -1209,6 +1255,13 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 	offer->flags &= ~OFFER_INCLUDE_KEM_PK;
 	sanctum_mlkem1024_decapsulate(&offer->local.kem);
 	chapel_session_key_derive(op, SANCTUM_KEY_DIRECTION_TX);
+
+	/*
+	 * We now have completed a negotiation, if this was initiated
+	 * due to an ambry switch we now know the peer also has gotten
+	 * the same ambry and can thus clear the ambry_switch flag.
+	 */
+	ambry_switch = 0;
 }
 
 /*
@@ -1317,4 +1370,36 @@ chapel_erase(struct sanctum_key *key, u_int32_t spi)
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
 		fatal("failed to swap key state to erase");
+}
+
+/*
+ * Mark the TX keys are needing to be erased and wakeup the bless
+ * process so it can immediately do so.
+ */
+static void
+chapel_erase_tx(void)
+{
+	u_int32_t	spi;
+
+	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+		chapel_erase(io->tx, spi);
+		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+	}
+}
+
+/*
+ * Mark the RX keys are needing to be erased and wakeup the confess
+ * process so it can immediately do so.
+ */
+static void
+chapel_erase_rx(void)
+{
+	u_int32_t	spi;
+
+	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) != 0) {
+		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+		chapel_erase(io->rx, spi);
+		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
+	}
 }
