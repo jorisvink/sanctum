@@ -31,6 +31,20 @@
 
 #include "sanctum.h"
 
+/* The window in seconds for logging rejected offers. */
+#define OFFER_REJECT_LOG_WINDOW		5
+
+static void			utils_offer_rejected(u_int32_t *);
+
+/* The last time we logged an offer rejection log. */
+static u_int64_t		last_reject_log = 0;
+
+/* Number of offers we rejected due to timestamp issues. */
+static u_int32_t		offers_time_rejected = 0;
+
+/* Number of offers we rejected due to integrity failures. */
+static u_int32_t		offers_integrity_rejected = 0;
+
 /*
  * Log a message to either stdout or sanctum_log, prio is sanctum_log level.
  */
@@ -902,8 +916,8 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 	cipher.data_len = sizeof(op->data) + sizeof(op->extra);
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
-		sanctum_log(LOG_INFO, "offer rejected, integrity failure");
 		sanctum_cipher_cleanup(cipher.ctx);
+		utils_offer_rejected(&offers_integrity_rejected);
 		return (-1);
 	}
 
@@ -914,9 +928,7 @@ sanctum_offer_decrypt(struct sanctum_key *key,
 
 	if (timestamp < ((u_int64_t)ts.tv_sec - valid) ||
 	    timestamp > ((u_int64_t)ts.tv_sec + valid)) {
-		sanctum_log(LOG_INFO,
-		    "offer %02x rejected, time different too large",
-		    op->data.type);
+		utils_offer_rejected(&offers_time_rejected);
 		return (-1);
 	}
 
@@ -1151,4 +1163,39 @@ sanctum_ambry_expired(u_int16_t days)
 		return (-1);
 
 	return (0);
+}
+
+/*
+ * Helper function to log offers rejected for both integrity failures
+ * and timestamp failures within the given OFFER_REJECT_LOG_WINDOW.
+ */
+static void
+utils_offer_rejected(u_int32_t *which)
+{
+	u_int64_t	now;
+
+	PRECOND(which != NULL);
+
+	*which = *which + 1;
+
+	now = sanctum_atomic_read(&sanctum->uptime);
+	if (now - last_reject_log < OFFER_REJECT_LOG_WINDOW)
+		return;
+
+	last_reject_log = now;
+
+	if (offers_integrity_rejected > 0) {
+		sanctum_log(LOG_NOTICE,
+		    "%u offer(s) rejected due to integrity failures",
+		    offers_integrity_rejected);
+	}
+
+	if (offers_time_rejected > 0) {
+		sanctum_log(LOG_NOTICE,
+		    "%u offer(s) rejected due to timestamp issues",
+		    offers_time_rejected);
+	}
+
+	offers_time_rejected = 0;
+	offers_integrity_rejected = 0;
 }
