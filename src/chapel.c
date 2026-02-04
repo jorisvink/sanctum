@@ -247,7 +247,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			delay_check--;
 
 		/*
-		 * If we after AMBRY_RENEGOTIATION_LIMIT, seconds have not
+		 * If we after AMBRY_RENEGOTIATION_LIMIT seconds have not
 		 * been able to renegotiate after an ambry swap, we throw
 		 * away all the keys so the tunnel goes down.
 		 */
