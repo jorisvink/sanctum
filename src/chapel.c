@@ -253,6 +253,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 		 */
 		if (ambry_switch &&
 		    (now - ambry_received) >= AMBRY_RENEGOTIATION_LIMIT) {
+			offer_force = 0;
 			ambry_switch = 0;
 
 			sanctum_log(LOG_NOTICE, "unable to renegotiate with "
