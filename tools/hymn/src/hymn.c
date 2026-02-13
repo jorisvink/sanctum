@@ -1391,21 +1391,26 @@ hymn_net_parse(const char *route)
 static void
 hymn_ip_mask_parse(struct addr *addr, const char *opt)
 {
-	char		*p;
+	char		*p, *copy;
 
-	if ((p = strchr(opt, '/')) == NULL)
-		fatal("ip '%s' is missing a netmask", opt);
+	if ((copy = strdup(opt)) == NULL)
+		fatal("strdup");
+
+	if ((p = strchr(copy, '/')) == NULL)
+		fatal("ip '%s' is missing a netmask", copy);
 
 	*(p)++ = '\0';
 	if (*p == '\0')
-		fatal("ip '%s' is missing a netmask", opt);
+		fatal("ip '%s' is missing a netmask", copy);
 
 	addr->mask = hymn_number(p, 10, 0, UINT_MAX);
 	if (addr->mask > 32)
 		fatal("netmask '/%s' is invalid", p);
 
-	if (inet_pton(AF_INET, opt, &addr->ip) == 0)
-		fatal("ip '%s' is invalid", opt);
+	if (inet_pton(AF_INET, copy, &addr->ip) == 0)
+		fatal("ip '%s' is invalid", copy);
+
+	free(copy);
 }
 
 static const char *
