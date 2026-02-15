@@ -1095,6 +1095,8 @@ hymn_list(int argc, char *argv[])
 
 	if (argc == 0 && normal_tunnels)
 		printf("normal tunnels:\n");
+	else
+		normal_tunnels = 1;
 
 	while ((tun = TAILQ_FIRST(&list)) != NULL) {
 		/* Yes we are leaking and thats fine, we are dead soon. */
