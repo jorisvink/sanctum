@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) 2026 Joris Vink <joris@sanctorum.se>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#ifndef __H_SANCTUM_PROC_H
+#define __H_SANCTUM_PROC_H
+
+/* The different processes that can be up and running. */
+#define SANCTUM_PROC_HEAVEN_RX		1
+#define SANCTUM_PROC_HEAVEN_TX		2
+#define SANCTUM_PROC_PURGATORY_RX	3
+#define SANCTUM_PROC_PURGATORY_TX	4
+#define SANCTUM_PROC_BLESS		5
+#define SANCTUM_PROC_CONFESS		6
+#define SANCTUM_PROC_CHAPEL		7
+#define SANCTUM_PROC_CONTROL		8
+#define SANCTUM_PROC_PILGRIM		9
+#define SANCTUM_PROC_SHRINE		10
+#define SANCTUM_PROC_CATHEDRAL		11
+#define SANCTUM_PROC_LITURGY		12
+#define SANCTUM_PROC_BISHOP		13
+#define SANCTUM_PROC_MAX		14
+
+#endif
