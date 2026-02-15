@@ -100,6 +100,7 @@ struct config {
 
 	const char		*flock;
 	char			*kek;
+	char			*user;
 	char			*name;
 	char			*encap;
 	char			*bridge;
@@ -375,7 +376,7 @@ usage_liturgy(void)
 	    "cosk <path> \\\n    prefix <prefix> group <16-bit hexint> ");
 	fprintf(stderr, " [natport <port>]\n");
 	fprintf(stderr, "    [discoverable <yes|no>] [device <tun|tap>] ");
-	fprintf(stderr, "[bridge <name>]\n");
+	fprintf(stderr, "[bridge <name>] [user <user>]\n");
 
 	exit (1);
 
@@ -476,6 +477,11 @@ hymn_liturgy(int argc, char *argv[])
 				fatal("bridge only works with device tap");
 			if ((config.bridge = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
+		} else if (!strcmp(argv[i], "user")) {
+			if (config.user != NULL)
+				fatal("duplicate user");
+			if ((config.user = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -507,7 +513,7 @@ usage_add(void)
 	fprintf(stderr, "    [kek <path>] [name <name>] [cosk <path>] ");
 	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
 	fprintf(stderr, "    [natport <port>] [device <tun|tap>] ");
-	fprintf(stderr, "[bridge <name>]\n");
+	fprintf(stderr, "[bridge <name>] [user <name>]\n");
 
 	exit(1);
 }
@@ -617,6 +623,11 @@ hymn_add(int argc, char *argv[])
 			if (config.tap == 0)
 				fatal("bridge only works with device tap");
 			if ((config.bridge = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
+		} else if (!strcmp(argv[i], "user")) {
+			if (config.user != NULL)
+				fatal("duplicate user");
+			if ((config.user = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
@@ -1962,9 +1973,13 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	char		tmp[PATH_MAX];
 	int		fd, len, saved_errno;
 
-	if ((user = getlogin()) == NULL) {
-		if ((user = getenv("HYMN_USER")) == NULL)
-			fatal("who are you? failed to find a username");
+	if (cfg->user != NULL) {
+		user = cfg->user;
+	} else {
+		if ((user = getlogin()) == NULL) {
+			if ((user = getenv("HYMN_USER")) == NULL)
+				fatal("who are you? failed to find a username");
+		}
 	}
 
 	len = snprintf(tmp, sizeof(tmp), "%s.new", path);
