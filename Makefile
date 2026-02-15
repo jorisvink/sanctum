@@ -129,6 +129,7 @@ install-bin: $(BIN)
 install-man:
 	mkdir -p $(DESTDIR)$(MAN_DIR)/man1
 	mkdir -p $(DESTDIR)$(MAN_DIR)/man5
+	install -m 444 share/man/man1/hymn.1 $(DESTDIR)$(MAN_DIR)/man1
 	install -m 444 share/man/man1/sanctum.1 $(DESTDIR)$(MAN_DIR)/man1
 	install -m 444 share/man/man5/sanctum.conf.5 $(DESTDIR)$(MAN_DIR)/man5
 
