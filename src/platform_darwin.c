@@ -102,7 +102,7 @@ sanctum_platform_tundev_create(void)
 	if (ioctl(fd, CTLIOCGINFO, &info) == -1)
 		fatal("ioctl: %s", errno_s);
 
-	for (idx = 100; idx < 105; idx++) {
+	for (idx = 100; idx < 120; idx++) {
 		sctl.sc_unit = idx;
 		sctl.sc_id = info.ctl_id;
 		sctl.sc_family = AF_SYSTEM;
@@ -117,7 +117,7 @@ sanctum_platform_tundev_create(void)
 		break;
 	}
 
-	if (idx == 105)
+	if (idx == 120)
 		fatal("no free utun device found");
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1)
