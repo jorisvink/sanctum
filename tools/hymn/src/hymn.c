@@ -2007,7 +2007,7 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		} else {
 			if ((user = getlogin()) == NULL) {
 				if ((user = getenv("HYMN_USER")) == NULL)
-					fatal("who are you?");
+					fatal("who are you? specify user");
 			}
 		}
 
