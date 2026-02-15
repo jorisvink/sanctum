@@ -55,6 +55,9 @@
 /* The interval at which we send remembrances to peers. */
 #define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
+/* Cooldown period from peer restart to when we send peerinfo again. */
+#define CATHEDRAL_P2P_COOLDOWN		(10 * 1000)
+
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
 
@@ -111,6 +114,7 @@ struct tunnel {
 	u_int32_t		p2p_ip;
 	u_int16_t		p2p_port;
 	int			p2p_pending;
+	u_int64_t		p2p_cooldown;
 
 	/* Next federation timestamp. */
 	u_int64_t		at;
@@ -665,8 +669,9 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	if (tun == NULL)
 		return;
 
-	if (info->instance != tun->instance) {
+	if (info->instance != tun->instance && nat == 0) {
 		tun->peerinfo = 0;
+		tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
 		sanctum_log(LOG_INFO, "%s peer restart detected",
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
 	} else if (catacomb == 0 && nat == 0) {
@@ -695,7 +700,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			tun->p2p_ip = 0;
 			tun->p2p_port = 0;
 			tun->peerinfo = 0;
-		} else {
+		} else if (now >= tun->p2p_cooldown) {
 			tun->peerinfo = 1;
 			tun->p2p_port = pkt->addr.sin_port;
 			tun->p2p_ip = pkt->addr.sin_addr.s_addr;
