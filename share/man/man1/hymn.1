@@ -1,0 +1,80 @@
+.nh
+.ad 1
+.TH HYMN 1
+.SH NAME
+hymn \- The sanctum configuration tool.
+.SH SYNOPSIS
+.B hymn
+[cmd] [cmdopts]
+.SH DESCRIPTION
+The
+.I hymn
+tool can be used to configure sanctum tunnels on the system.
+
+.SH COMMANDS
+.TP
+.BR add
+Adds a new tunnel to the system.
+.TP
+.BR bridge
+Attach a bridge interface to an existing tunnel.
+.TP
+.BR cathedral
+Change the configured cathedral for an existing tunnel.
+.TR
+.BR del
+Removes a tunnel from the system.
+.TP
+.BR down
+Brings down a tunnel.
+.TP
+.BR mtu
+Changes the MTU for an existing tunnel.
+.TP
+.BR list
+Show all configured tunnels and their status.
+.TP
+.BR liturgy
+Adds a new liturgy to the system.
+.TP
+.BR name
+Give an existing tunnel a friendly name, this friendly name can be used
+throughout all other
+.I hymn
+commands.
+.TP
+.BR status
+Show the status for a given tunnel, or all tunnels if no argument was given.
+.TP
+.BR remembrance
+Toggle the use of a remembrance on an existing tunnel.
+.TP
+.BR restart
+Restarts a tunnel by bringing it down, and then up again.
+.TP
+.BR route
+Add a new route to an existing tunnel.
+.TP
+.BR up
+Brings up a tunnel.
+
+.SH FILES
+The
+.I hymn
+tool places all configurations under
+.I /etc/hymn.
+These configurations are named using the following naming convention:
+.I <flock>-<src>-<dst>.conf
+
+.SH EXAMPLES
+.I TODO
+
+.SH AUTHORS
+
+.I hymn
+was written by Joris Vink <joris@sanctorum.se> and is licensed under
+the ISC license.
+
+.SH "SEE ALSO"
+.BR sanctum(1),
+.BR sanctum.conf(5)

@@ -45,6 +45,7 @@ exist, below is a list of them.
 4) A liturgy offering (from us to cathedral, or cathedral to us)
 5) A remembrance offering (from cathedral to us)
 6) A key exchange offering (between peers)
+7) A p2p info offer (between cathedrals only).
 ```
 
 An offer packet is defined as follows:
@@ -120,6 +121,7 @@ struct sanctum_offer_data {
 		struct sanctum_info_offer		info;
 		struct sanctum_ambry_offer		ambry;
 		struct sanctum_liturgy_offer		liturgy;
+		struct sanctum_p2p_info_offer		p2pinfo;
 		struct sanctum_exchange_offer		exchange;
 		struct sanctum_remembrance_offer	remembrance;
 	} offer;

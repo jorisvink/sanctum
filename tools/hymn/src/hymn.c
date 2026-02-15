@@ -41,6 +41,7 @@
 
 #include "libnyfe.h"
 #include "sanctum_ctl.h"
+#include "sanctum_proc.h"
 #include "sanctum_cipher.h"
 
 #define errno_s			strerror(errno)
@@ -93,6 +94,7 @@ struct config {
 	u_int16_t		group;
 
 	int			tap;
+	int			new;
 	int			is_liturgy;
 	int			remembrance;
 	int			peer_cathedral;
@@ -110,6 +112,9 @@ struct config {
 
 	struct addrlist		routes;
 	struct addrlist		accepts;
+
+	char			*user;
+	const char		*runas[SANCTUM_PROC_MAX];
 };
 
 struct tunnel {
@@ -181,6 +186,7 @@ static void	hymn_config_set_mtu(struct config *, const char *);
 static void	hymn_config_set_cathedral(struct config *, char *);
 static void	hymn_config_set_name(struct config *, const char *);
 
+static void	hymn_config_parse_run(struct config *, char *);
 static void	hymn_config_parse_tap(struct config *, char *);
 static void	hymn_config_parse_kek(struct config *, char *);
 static void	hymn_config_parse_mode(struct config *, char *);
@@ -256,6 +262,7 @@ static const struct {
 	const char		*option;
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
+	{ "run",		hymn_config_parse_run },
 	{ "tap",		hymn_config_parse_tap },
 	{ "kek",		hymn_config_parse_kek },
 	{ "mode",		hymn_config_parse_mode },
@@ -278,6 +285,26 @@ static const struct {
 	{ "liturgy_group",	hymn_config_parse_liturgy_group },
 	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix },
 	{ NULL,			NULL },
+};
+
+static const struct {
+	const char		*name;
+	u_int16_t		type;
+} proctab[] = {
+	{ "heaven-rx",		SANCTUM_PROC_HEAVEN_RX },
+	{ "heaven-tx",		SANCTUM_PROC_HEAVEN_TX },
+	{ "purgatory-rx",	SANCTUM_PROC_PURGATORY_RX },
+	{ "purgatory-tx",	SANCTUM_PROC_PURGATORY_TX },
+	{ "chapel",		SANCTUM_PROC_CHAPEL },
+	{ "bless",		SANCTUM_PROC_BLESS },
+	{ "confess",		SANCTUM_PROC_CONFESS },
+	{ "control",		SANCTUM_PROC_CONTROL },
+	{ "pilgrim",		SANCTUM_PROC_PILGRIM },
+	{ "shrine",		SANCTUM_PROC_SHRINE },
+	{ "cathedral",		SANCTUM_PROC_CATHEDRAL },
+	{ "liturgy",		SANCTUM_PROC_LITURGY },
+	{ "bishop",		SANCTUM_PROC_BISHOP },
+	{ NULL,			0 },
 };
 
 static void
@@ -375,7 +402,7 @@ usage_liturgy(void)
 	    "cosk <path> \\\n    prefix <prefix> group <16-bit hexint> ");
 	fprintf(stderr, " [natport <port>]\n");
 	fprintf(stderr, "    [discoverable <yes|no>] [device <tun|tap>] ");
-	fprintf(stderr, "[bridge <name>]\n");
+	fprintf(stderr, "[bridge <name>] [user <user>]\n");
 
 	exit (1);
 
@@ -393,6 +420,7 @@ hymn_liturgy(int argc, char *argv[])
 		usage_liturgy();
 
 	hymn_config_init(&config);
+	config.new = 1;
 
 	if (hymn_split_string(argv[0], "-", elm, 4) != 2)
 		usage_liturgy();
@@ -476,6 +504,11 @@ hymn_liturgy(int argc, char *argv[])
 				fatal("bridge only works with device tap");
 			if ((config.bridge = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
+		} else if (!strcmp(argv[i], "user")) {
+			if (config.user != NULL)
+				fatal("duplicate user");
+			if ((config.user = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
 			usage_liturgy();
@@ -507,7 +540,7 @@ usage_add(void)
 	fprintf(stderr, "    [kek <path>] [name <name>] [cosk <path>] ");
 	fprintf(stderr, "[identity <32-bit hexint>:<path>]\n");
 	fprintf(stderr, "    [natport <port>] [device <tun|tap>] ");
-	fprintf(stderr, "[bridge <name>]\n");
+	fprintf(stderr, "[bridge <name>] [user <name>]\n");
 
 	exit(1);
 }
@@ -527,6 +560,7 @@ hymn_add(int argc, char *argv[])
 		usage_add();
 
 	hymn_config_init(&config);
+	config.new = 1;
 
 	if (hymn_tunnel_parse(argv[0],
 	    &flock, &config.src, &config.dst, 0) == -1)
@@ -617,6 +651,11 @@ hymn_add(int argc, char *argv[])
 			if (config.tap == 0)
 				fatal("bridge only works with device tap");
 			if ((config.bridge = strdup(argv[i + 1])) == NULL)
+				fatal("strdup");
+		} else if (!strcmp(argv[i], "user")) {
+			if (config.user != NULL)
+				fatal("duplicate user");
+			if ((config.user = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
 		} else {
 			printf("unknown keyword '%s'\n", argv[i]);
@@ -1056,6 +1095,8 @@ hymn_list(int argc, char *argv[])
 
 	if (argc == 0 && normal_tunnels)
 		printf("normal tunnels:\n");
+	else
+		normal_tunnels = 1;
 
 	while ((tun = TAILQ_FIRST(&list)) != NULL) {
 		/* Yes we are leaking and thats fine, we are dead soon. */
@@ -1391,21 +1432,26 @@ hymn_net_parse(const char *route)
 static void
 hymn_ip_mask_parse(struct addr *addr, const char *opt)
 {
-	char		*p;
+	char		*p, *copy;
 
-	if ((p = strchr(opt, '/')) == NULL)
-		fatal("ip '%s' is missing a netmask", opt);
+	if ((copy = strdup(opt)) == NULL)
+		fatal("strdup");
+
+	if ((p = strchr(copy, '/')) == NULL)
+		fatal("ip '%s' is missing a netmask", copy);
 
 	*(p)++ = '\0';
 	if (*p == '\0')
-		fatal("ip '%s' is missing a netmask", opt);
+		fatal("ip '%s' is missing a netmask", copy);
 
 	addr->mask = hymn_number(p, 10, 0, UINT_MAX);
 	if (addr->mask > 32)
 		fatal("netmask '/%s' is invalid", p);
 
-	if (inet_pton(AF_INET, opt, &addr->ip) == 0)
-		fatal("ip '%s' is invalid", opt);
+	if (inet_pton(AF_INET, copy, &addr->ip) == 0)
+		fatal("ip '%s' is invalid", copy);
+
+	free(copy);
 }
 
 static const char *
@@ -1957,9 +2003,30 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	char		tmp[PATH_MAX];
 	int		fd, len, saved_errno;
 
-	if ((user = getlogin()) == NULL) {
-		if ((user = getenv("HYMN_USER")) == NULL)
-			fatal("who are you? failed to find a username");
+	if (cfg->new) {
+		if (cfg->user != NULL) {
+			user = cfg->user;
+		} else {
+			if ((user = getlogin()) == NULL) {
+				if ((user = getenv("HYMN_USER")) == NULL)
+					fatal("who are you? specify user");
+			}
+		}
+
+		cfg->runas[SANCTUM_PROC_LITURGY] = user;
+		cfg->runas[SANCTUM_PROC_HEAVEN_TX] = user;
+		cfg->runas[SANCTUM_PROC_HEAVEN_RX] = user;
+		cfg->runas[SANCTUM_PROC_PURGATORY_TX] = user;
+		cfg->runas[SANCTUM_PROC_PURGATORY_RX] = user;
+
+		cfg->runas[SANCTUM_PROC_BLESS] = "root";
+		cfg->runas[SANCTUM_PROC_BISHOP] = "root";
+		cfg->runas[SANCTUM_PROC_CHAPEL] = "root";
+		cfg->runas[SANCTUM_PROC_SHRINE] = "root";
+		cfg->runas[SANCTUM_PROC_CONTROL] = "root";
+		cfg->runas[SANCTUM_PROC_PILGRIM] = "root";
+		cfg->runas[SANCTUM_PROC_CONFESS] = "root";
+		cfg->runas[SANCTUM_PROC_CATHEDRAL] = "root";
 	}
 
 	len = snprintf(tmp, sizeof(tmp), "%s.new", path);
@@ -2086,31 +2153,46 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	hymn_config_write(fd, "\n");
 
 	if (cfg->is_liturgy == 0) {
-		hymn_config_write(fd, "run heaven-rx as %s\n", user);
-		hymn_config_write(fd, "run heaven-tx as %s\n", user);
+		hymn_config_write(fd, "run heaven-rx as %s\n",
+		    cfg->runas[SANCTUM_PROC_HEAVEN_RX]);
+		hymn_config_write(fd, "run heaven-tx as %s\n",
+		    cfg->runas[SANCTUM_PROC_HEAVEN_TX]);
 	} else {
-		hymn_config_write(fd, "run liturgy as %s\n", user);
+		hymn_config_write(fd, "run liturgy as %s\n",
+		    cfg->runas[SANCTUM_PROC_LITURGY]);
 	}
 
-	hymn_config_write(fd, "run purgatory-rx as %s\n", user);
-	hymn_config_write(fd, "run purgatory-tx as %s\n", user);
+	hymn_config_write(fd, "run purgatory-rx as %s\n",
+	    cfg->runas[SANCTUM_PROC_PURGATORY_RX]);
+	hymn_config_write(fd, "run purgatory-tx as %s\n",
+	    cfg->runas[SANCTUM_PROC_PURGATORY_TX]);
+
 	hymn_config_write(fd, "\n");
 
 	if (cfg->is_liturgy == 0) {
-		hymn_config_write(fd, "run control as root\n");
+		hymn_config_write(fd, "run control as %s\n",
+		    cfg->runas[SANCTUM_PROC_CONTROL]);
 		hymn_config_write(fd,
-		    "control /tmp/%s-%02x-%02x.control root\n",
-		    flock, cfg->src, cfg->dst);
+		    "control /tmp/%s-%02x-%02x.control %s\n",
+		    flock, cfg->src, cfg->dst,
+		    cfg->runas[SANCTUM_PROC_CONTROL]);
 		hymn_config_write(fd, "\n");
 	}
 
-	hymn_config_write(fd, "run bishop as root\n");
-	hymn_config_write(fd, "run bless as root\n");
-	hymn_config_write(fd, "run confess as root\n");
-	hymn_config_write(fd, "run chapel as root\n");
-	hymn_config_write(fd, "run shrine as root\n");
-	hymn_config_write(fd, "run pilgrim as root\n");
-	hymn_config_write(fd, "run cathedral as root\n");
+	hymn_config_write(fd, "run bishop as %s\n",
+	    cfg->runas[SANCTUM_PROC_BISHOP]);
+	hymn_config_write(fd, "run bless as %s\n",
+	    cfg->runas[SANCTUM_PROC_BLESS]);
+	hymn_config_write(fd, "run confess as %s\n",
+	    cfg->runas[SANCTUM_PROC_CONFESS]);
+	hymn_config_write(fd, "run chapel as %s\n",
+	    cfg->runas[SANCTUM_PROC_CHAPEL]);
+	hymn_config_write(fd, "run shrine as %s\n",
+	    cfg->runas[SANCTUM_PROC_SHRINE]);
+	hymn_config_write(fd, "run pilgrim as %s\n",
+	    cfg->runas[SANCTUM_PROC_PILGRIM]);
+	hymn_config_write(fd, "run cathedral as %s\n",
+	    cfg->runas[SANCTUM_PROC_CATHEDRAL]);
 
 	if (close(fd) == -1) {
 		saved_errno = errno;
@@ -2202,6 +2284,33 @@ hymn_config_parse_tunnel(struct config *cfg, char *peer)
 
 	hymn_ip_mask_parse(&cfg->tun, peer);
 	hymn_config_set_mtu(cfg, mtu);
+}
+
+static void
+hymn_config_parse_run(struct config *cfg, char *opt)
+{
+	int		idx;
+	u_int16_t	type;
+	char		proc[16], user[32];
+
+	if (sscanf(opt, "%15s as %31s", proc, user) != 2)
+		fatal("config has invalid run directive");
+
+	for (idx = 0; proctab[idx].name != NULL; idx++) {
+		if (!strcmp(proctab[idx].name, proc))
+			break;
+	}
+
+	if (proctab[idx].name == NULL)
+		fatal("config has unknown proc '%s'", proc);
+
+	type = proctab[idx].type;
+
+	if (cfg->runas[type] != NULL)
+		fatal("duplicate run %s", proc);
+
+	if ((cfg->runas[type] = strdup(user)) == NULL)
+		fatal("strdup");
 }
 
 static void

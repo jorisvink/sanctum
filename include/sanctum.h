@@ -46,6 +46,7 @@ extern const char	*sanctum_build_date;
 #include "sanctum_portability.h"
 #include "sanctum_cipher.h"
 #include "sanctum_ambry.h"
+#include "sanctum_proc.h"
 #include "sanctum_ctl.h"
 #include "sanctum_kdf.h"
 
@@ -128,22 +129,6 @@ extern const char	*sanctum_build_date;
 
 /* The amount of peers per flock. */
 #define SANCTUM_PEERS_PER_FLOCK		255
-
-/* Process types */
-#define SANCTUM_PROC_HEAVEN_RX		1
-#define SANCTUM_PROC_HEAVEN_TX		2
-#define SANCTUM_PROC_PURGATORY_RX	3
-#define SANCTUM_PROC_PURGATORY_TX	4
-#define SANCTUM_PROC_BLESS		5
-#define SANCTUM_PROC_CONFESS		6
-#define SANCTUM_PROC_CHAPEL		7
-#define SANCTUM_PROC_CONTROL		8
-#define SANCTUM_PROC_PILGRIM		9
-#define SANCTUM_PROC_SHRINE		10
-#define SANCTUM_PROC_CATHEDRAL		11
-#define SANCTUM_PROC_LITURGY		12
-#define SANCTUM_PROC_BISHOP		13
-#define SANCTUM_PROC_MAX		14
 
 /* KDF purposes for use with our shared secret. */
 #define SANCTUM_KDF_PURPOSE_PEER_OFFER		1
