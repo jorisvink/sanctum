@@ -67,7 +67,58 @@ These configurations are named using the following naming convention:
 .I <flock>-<src>-<dst>.conf
 
 .SH EXAMPLES
-.I TODO
+.TP
+.BR Add
+Adding a new tunnel is done with the
+.I add
+command. An example can be seen below, where we add a new tunnel from
+peer
+.I 01
+to peer
+.I 02,
+with our tunnel ip set to
+.I 192.168.10.1/24
+using a preshared secret under
+.I /etc/sanctum.key
+and running
+.I purgatory-tx,
+.I purgatory-rx,
+.I heaven-tx,
+and
+.I heaven-rx
+as the given user
+.I sanctum
+
+.eo
+# hymn add 01-02 tunnel 192.168.10.1/24 mtu 1422 \
+  local 1.2.3.4:1234 secret /etc/sanctum.key \
+  peer 4.3.2.1:4321 user sanctum
+.ec
+
+If we are adding a tunnel that will use a cathedral we can also use the
+.I add
+command. In the example below we configure a tunnel that uses a cathedral
+located at
+.I 1.2.3.4:1234
+where our device has the
+.I cs-id
+0x30b4c396 and is part of the flock
+.I 0xdeadbeefcafebabe.
+Our
+.I Key-Encryption-Key (KEK)
+is located under /etc/device.kek, the cathedral secret is found under
+.I /etc/cathedral.key,
+and the
+.I Cathedral Offer Signing Key (COSK)
+is located under
+.I /etc/cathedral.cosk
+
+.eo
+# hymn add deadbeefcafebabe-01-02 tunnel 192.168.10.1/24 \
+  mtu 1422 cathedral 1.2.3.4:1234 kek /etc/device.kek \
+  identity 30b4c39:/etc/cathedral.key \
+  cosk /etc/cathedral.cosk user sanctum
+.ec
 
 .SH AUTHORS
 
