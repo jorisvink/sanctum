@@ -18,6 +18,16 @@ to your devices. These shared secrets are encrypted with device unique
 .I Key-Encryption-Keys (KEKs).
 This prevents cathedrals from modifying them and injecting its own keys.
 
+You also need a
+.I Cathedral Offer Signing Keys (COSK)
+from which the public component must be added to a cathedral
+configuration so it may verify the authenticity of a request
+from a client.
+
+The
+.I ambry
+tool manages both type of keys.
+
 .SH COMMANDS
 .TP
 .BR bundle
