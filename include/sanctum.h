@@ -626,6 +626,9 @@ struct sanctum_state {
 	/* The flock we are talking to for a cathedral (tunnel mode only). */
 	u_int64_t		cathedral_flock_dst;
 
+	/* The cathedral fqdn/ip. */
+	char			*cathedral_name;
+
 	/* The path to the cathedral secret (tunnel mode only). */
 	char			*cathedral_secret;
 

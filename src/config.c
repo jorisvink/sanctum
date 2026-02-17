@@ -684,6 +684,9 @@ config_parse_cathedral(char *cathedral)
 
 	PRECOND(cathedral != NULL);
 
+	if (sanctum->cathedral_name != NULL)
+		fatal("duplicate cathedral");
+
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
@@ -712,6 +715,9 @@ config_parse_cathedral(char *cathedral)
 
 	freeaddrinfo(res);
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
+
+	if ((sanctum->cathedral_name = strdup(cathedral)) == NULL)
+		fatal("strdup");
 }
 
 /*
