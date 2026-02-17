@@ -85,7 +85,6 @@ struct config {
 
 	struct addr		peer;
 	struct addr		local;
-	struct addr		cathedral;
 
 	u_int32_t		cathedral_id;
 	u_int64_t		cathedral_flock;
@@ -108,6 +107,7 @@ struct config {
 	char			*secret;
 	char			*prefix;
 	char			*cosk_path;
+	char			*cathedral;
 	char			*identity_path;
 
 	struct addrlist		routes;
@@ -1883,7 +1883,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	if (config.peer_cathedral) {
-		printf("  cathedral\t%s", hymn_ip_port_str(&config.cathedral));
+		printf("  cathedral\t%s", config.cathedral);
 	} else {
 		printf("  peer\t\t%s", hymn_ip_port_str(&config.peer));
 	}
@@ -2132,9 +2132,7 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 
 		hymn_config_write(fd, "cathedral_nat_port %u\n",
 		    cfg->cathedral_nat_port);
-		hymn_config_write(fd, "cathedral ");
-		hymn_config_write(fd, "%s\n",
-		    hymn_ip_port_str(&cfg->cathedral));
+		hymn_config_write(fd, "cathedral %s\n", cfg->cathedral);
 		hymn_config_write(fd, "\n");
 	}
 
@@ -2451,7 +2449,12 @@ hymn_config_parse_accept(struct config *cfg, char *accept)
 static void
 hymn_config_set_cathedral(struct config *cfg, char *cathedral)
 {
-	hymn_ip_port_parse(&cfg->cathedral, cathedral);
+	if (cfg->cathedral != NULL)
+		free(cfg->cathedral);
+
+	if ((cfg->cathedral = strdup(cathedral)) == NULL)
+		fatal("strdup");
+
 	cfg->peer_cathedral = 1;
 }
 
