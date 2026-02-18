@@ -1,0 +1,116 @@
+.nh
+.ad 1
+.TH AMBRY 1
+.SH NAME
+ambry \- The sanctum key management tool.
+.SH SYNOPSIS
+.B ambry
+[cmd] [cmdopts]
+.SH DESCRIPTION
+The
+.I ambry
+tool is used to manage keys for your devices using sanctum cathedrals.
+
+.SH KEYS
+
+When using a cathedral, the shared secrets are distributed by a cathedral
+to your devices. These shared secrets are encrypted with device unique
+.I Key-Encryption-Keys (KEKs).
+This prevents cathedrals from modifying them and injecting its own keys.
+
+You also need a
+.I Cathedral Offer Signing Keys (COSK)
+from which the public component must be added to a cathedral
+configuration so it may verify the authenticity of a request
+from a client.
+
+The
+.I ambry
+tool manages both type of keys.
+
+.SH COMMANDS
+.TP
+.BR bundle
+Generate a new ambry bundle containing wrapped shared secrets.
+.TP
+.BR export
+Exports
+.I KEKs
+to be used in a cross-flock, the exported
+.I KEKs 
+can be used to generate cross-flock ambry bundles.
+.TP
+.BR generate
+Generate new device
+.I KEKs.
+.TR
+.BR renew
+Generate a new device
+.I KEK
+for the given device.
+.TP
+.BR cosk-pair
+Generate a new
+.I Cathedral Offer Signing Key (COSK)
+key-pair. These are ed25519 keys.
+
+.SH FILES
+The
+.I ambry
+tool creates a new directory when generating
+.I KEKs
+for the first time. This directory has the name of the given
+.I flock
+for which you are generating keys for. Inside of this directory the
+following directories are found:
+.TP
+.BR external
+This directory contains exported
+.I KEKs
+for cross-flock ambry generation.
+.TP
+.BR internal
+This directory is for internal use only, do not touch it.
+.TP
+.BR kek-data
+This directory contains the
+.I KEKs
+you should use when provisioning your devices in your flock.
+
+.SH EXAMPLES
+.TP
+.BR generate
+Generating the initial configuration for a
+.I flock
+with the ID deadbeefcafeba00 is done as follows:
+
+$ ambry generate deadbeefcafeba00
+
+.TP
+.BR bundle
+Once the initial configuration is done, you may create an
+.I ambry
+bundle, containing wrapped shared secrets that can be sent
+to a cathedral for distribution to your devices. In the example
+below we are generating an
+.I ambry
+bundle for our own flock, valid for 120 days and writing it
+to the
+.I ambry.bundle
+file.
+
+.eo
+$ ambry bundle deadbeefcafeba00 deadbeefcafeba00 \
+  120 ambry.bundle
+.ec
+
+.SH AUTHORS
+
+.I ambry
+was written by Joris Vink <joris@sanctorum.se> and is licensed under
+the ISC license.
+
+.SH "SEE ALSO"
+.BR hymn(1),
+.BR sanctum(1),
+.BR sanctum.conf(5)

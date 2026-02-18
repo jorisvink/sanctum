@@ -239,7 +239,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_ADD,
 		    sanctum->cathedral_flock, src, dst, ip,
-		    inet_ntoa(sanctum->cathedral.sin_addr),
+		    sanctum->cathedral_name,
 		    be16toh(sanctum->cathedral.sin_port), sanctum->kek,
 		    sanctum->cathedral_id, sanctum->cathedral_secret,
 		    sanctum->cathedral_cosk, sanctum->cathedral_nat_port,

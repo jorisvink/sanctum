@@ -139,35 +139,4 @@
 /* Used to mark the end of a BPF program. */
 #define KORE_BPF_GUARD		{ USHRT_MAX, UCHAR_MAX, UCHAR_MAX, UINT_MAX }
 
-/*
- * Macro for applications to make easily define custom filter.
- *
- * eg:
- * KORE_SECCOMP_FILTER(filter,
- *	KORE_SYSCALL_DENY_ERRNO(socket, EACCESS),
- *	KORE_SYSCALL_DENY_ERRNO(ioctl, EACCESS),
- *	KORE_SYSCALL_ALLOW(poll),
- * )
- */
-#define KORE_SECCOMP_FILTER(n, ...)			\
-	struct sock_filter n[] = {			\
-		__VA_ARGS__				\
-	}
-
-extern int	kore_seccomp_tracing;
-
-void	kore_seccomp_init(void);
-void	kore_seccomp_drop(void);
-void	kore_seccomp_enable(void);
-void	kore_seccomp_traceme(void);
-int	kore_seccomp_trace(pid_t, int);
-int	kore_seccomp_syscall_resolve(const char *);
-int	kore_seccomp_filter(const char *, void *, size_t);
-
-const char		*kore_seccomp_syscall_name(long);
-struct sock_filter	*kore_seccomp_syscall_filter(const char *, int);
-struct sock_filter	*kore_seccomp_syscall_arg(const char *, int, int, int);
-struct sock_filter	*kore_seccomp_syscall_flag(const char *, int, int, int);
-struct sock_filter	*kore_seccomp_syscall_mask(const char *, int, int, int);
-
 #endif

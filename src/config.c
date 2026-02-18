@@ -24,6 +24,7 @@
 #include <net/if.h>
 
 #include <ctype.h>
+#include <netdb.h>
 #include <limits.h>
 #include <inttypes.h>
 #include <pwd.h>
@@ -677,13 +678,46 @@ config_parse_instance(char *opt)
 static void
 config_parse_cathedral(char *cathedral)
 {
+	int			ret;
+	char			*port;
+	struct addrinfo		hints, *res, *rp;
+
 	PRECOND(cathedral != NULL);
+
+	if (sanctum->cathedral_name != NULL)
+		fatal("duplicate cathedral");
 
 	if (sanctum->tun_spi == 0)
 		fatal("no spi prefix has been configured");
 
+	if ((port = strchr(cathedral, ':')) == NULL)
+		fatal("cathedral must be in <ip:port> format");
+
+	*(port)++ = '\0';
+	memset(&hints, 0, sizeof(hints));
+
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+
+	if ((ret = getaddrinfo(cathedral, port, &hints, &res)) != 0)
+		fatal("cathedral '%s': %s", cathedral, gai_strerror(ret));
+
+	for (rp = res; rp != NULL; rp = rp->ai_next) {
+		if (rp->ai_family == AF_INET && rp->ai_socktype == SOCK_DGRAM)
+			break;
+	}
+
+	if (rp == NULL)
+		fatal("cathedral '%s' failed to resolve", cathedral);
+
+	VERIFY(rp->ai_addrlen == sizeof(sanctum->cathedral));
+	memcpy(&sanctum->cathedral, rp->ai_addr, rp->ai_addrlen);
+
+	freeaddrinfo(res);
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
-	config_parse_ip_port(cathedral, &sanctum->cathedral);
+
+	if ((sanctum->cathedral_name = strdup(cathedral)) == NULL)
+		fatal("strdup");
 }
 
 /*

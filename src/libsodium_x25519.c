@@ -67,7 +67,13 @@ sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 	PRECOND(out != NULL);
 	PRECOND(len == crypto_scalarmult_curve25519_SCALARBYTES);
 
+	if (sodium_is_zero(kex->remote, sizeof(kex->remote)))
+		return (-1);
+
 	if (crypto_scalarmult_curve25519(out, kex->private, kex->remote) == -1)
+		return (-1);
+
+	if (sodium_is_zero(out, len))
 		return (-1);
 
 	return (0);
