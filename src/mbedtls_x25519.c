@@ -23,6 +23,7 @@
 
 #include "sanctum.h"
 
+static int	asymmetry_is_zero(const u_int8_t *, size_t);
 static int	asymmetry_random_bytes(void *, unsigned char *, size_t);
 
 /* The indicator for -v. */
@@ -112,6 +113,9 @@ sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 	    kex->remote, sizeof(kex->remote)) != 0)
 		goto cleanup;
 
+	if (mbedtls_ecp_is_zero(&pub_key))
+		goto cleanup;
+
 	if (mbedtls_mpi_read_binary_le(&priv_key,
 	    kex->private, sizeof(kex->private)) != 0)
 		goto cleanup;
@@ -121,6 +125,9 @@ sanctum_asymmetry_derive(struct sanctum_kex *kex, u_int8_t *out, size_t len)
 		goto cleanup;
 
 	if (mbedtls_mpi_write_binary_le(&ss, out, len) != 0)
+		goto cleanup;
+
+	if (asymmetry_is_zero(out, len))
 		goto cleanup;
 
 	ret = 0;
@@ -144,4 +151,21 @@ asymmetry_random_bytes(void *udata, unsigned char *buf, size_t len)
 	sanctum_random_bytes(buf, len);
 
 	return (0);
+}
+
+static int
+asymmetry_is_zero(const u_int8_t *buf, size_t len)
+{
+	u_int8_t	ret;
+	size_t		idx;
+
+	PRECOND(buf != NULL);
+	PRECOND(len > 0);
+
+	ret = 0;
+
+	for (idx = 0; idx < len; idx++)
+		ret |= buf[idx];
+
+	return (1 & ((ret - 1) >> 8));
 }
