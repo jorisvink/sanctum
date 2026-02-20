@@ -101,6 +101,7 @@ main(int argc, char *argv[])
 		usage();
 
 	nyfe_fatal_callback(fatalv);
+	nyfe_selftest_kmac256();
 
 	sanctum = sanctum_alloc_shared(sizeof(*sanctum), NULL);
 	sanctum->mode = SANCTUM_MODE_TUNNEL;
