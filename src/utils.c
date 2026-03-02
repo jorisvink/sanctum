@@ -974,7 +974,7 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 	}
 
 	if ((fd = open(sanctum->cathedral_remembrance,
-	    O_CREAT | O_TRUNC | O_WRONLY, 0500)) == -1) {
+	    O_CREAT | O_TRUNC | O_WRONLY, 0400)) == -1) {
 		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
 		    sanctum->cathedral_remembrance, errno_s);
 		return;
