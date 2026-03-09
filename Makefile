@@ -57,7 +57,7 @@ ifeq ("$(JUMBO_FRAMES)", "1")
 endif
 
 TOOLS=hymn vicar ambry
-INSTALL_TARGETS=install-bin install-man
+INSTALL_TARGETS=install-bin install-man install-examples
 
 OSNAME=$(shell uname -s | sed -e 's/[-_].*//g' | tr A-Z a-z)
 ifeq ("$(OSNAME)", "linux")
@@ -133,6 +133,10 @@ install-man:
 	install -m 444 share/man/man1/ambry.1 $(DESTDIR)$(MAN_DIR)/man1
 	install -m 444 share/man/man1/sanctum.1 $(DESTDIR)$(MAN_DIR)/man1
 	install -m 444 share/man/man5/sanctum.conf.5 $(DESTDIR)$(MAN_DIR)/man5
+
+install-examples:
+	mkdir -p $(DESTDIR)/etc/sanctum
+	install -m 644 share/example.conf $(DESTDIR)/etc/sanctum
 
 install-darwin-sb:
 	mkdir -p $(DARWIN_SB_PATH)
