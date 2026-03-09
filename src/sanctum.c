@@ -36,8 +36,13 @@ static void	sanctum_pidfile_grab(void);
 static void	sanctum_pidfile_write(void);
 static void	sanctum_pidfile_unlink(void);
 
+/* The file descriptor for our PID file (if any was configured). */
 static int			pid_fd = -1;
+
+/* The last received signal. */
 volatile sig_atomic_t		sig_recv = -1;
+
+/* Our global state. */
 struct sanctum_state		*sanctum = NULL;
 
 static void
