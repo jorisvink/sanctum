@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 
 #include <arpa/inet.h>
@@ -24,10 +25,19 @@
 #include <inttypes.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <signal.h>
 #include <unistd.h>
 
 #include "sanctum.h"
+
+/*
+ * How many time in seconds we allow an instance to not have received
+ * a packet for before we also consider down.
+ *
+ * Note this is only checked once the cathedral reports the peer as down.
+ */
+#define BISHOP_INSTANCE_TIMEOUT		30
 
 /* The base directory where hymn places its configurations. */
 #define HYMN_BASE_PATH		"/etc/hymn"
@@ -37,6 +47,12 @@
  * pidfile while they are up and running.
  */
 #define HYMN_RUN_PATH		"/var/run/hymn"
+
+/* The socket path for our control requests. */
+#define HYMN_SOCKET_PATH_FMT	"/tmp/%" PRIx64 "-%02x-00.sock"
+
+/* Path where hymn places the control socket for a sanctum instance. */
+#define HYMN_CONTROL_PATH_FMT	"/tmp/%" PRIx64 "-%02x-%02x.control"
 
 /* The format string for adding a new tunnel using the hymn tool. */
 #define HYMN_FMT_ADD						\
@@ -50,6 +66,7 @@
 /* The format string for route add via the hymn tool. */
 #define HYMN_FMT_ROUTE_ADD	"hymn route add %s/32 via %" PRIx64 "-%02x-%02x"
 
+static int	bishop_instance_alive(u_int8_t, u_int8_t);
 static int	bishop_instance_exists(u_int8_t, u_int8_t);
 static int	bishop_instance_running(u_int8_t, u_int8_t);
 
@@ -60,10 +77,17 @@ static void	bishop_hymn_run(const char *, u_int8_t, u_int8_t);
 static void	bishop_liturgy_request(struct sanctum_packet *);
 static void	bishop_liturgy_address(char *, size_t, u_int8_t, u_int8_t);
 
+static void	bishop_drop_access(void);
+static void	bishop_control_init(void);
 static int	bishop_split_string(char *, const char *, char **, size_t);
+static void	bishop_unix_socket(struct sockaddr_un *, const char *, ...)
+		    __attribute__((format (printf, 2, 3)));
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
+
+/* Our local socket which we use to grab statuses from different instances. */
+static int			cfd = -1;
 
 /* Pipe we re-use to read stdout from the forked hymn processes. */
 static int			hymn_pipe[2];
@@ -83,6 +107,7 @@ static u_int8_t			instances[SANCTUM_PEERS_PER_FLOCK];
 void
 sanctum_bishop(struct sanctum_proc *proc)
 {
+	struct sockaddr_un	sun;
 	struct sanctum_packet	*pkt;
 	int			sig, running;
 	u_int8_t		local_id, idx;
@@ -92,6 +117,7 @@ sanctum_bishop(struct sanctum_proc *proc)
 	PRECOND(sanctum->mode == SANCTUM_MODE_LITURGY);
 
 	io = proc->arg;
+	bishop_drop_access();
 
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
@@ -102,6 +128,7 @@ sanctum_bishop(struct sanctum_proc *proc)
 	if (pipe(hymn_pipe) == -1)
 		fatal("pipe: %s", errno_s);
 
+	bishop_control_init();
 	sanctum_proc_started(proc);
 
 	for (idx = 1; idx < SANCTUM_PEERS_PER_FLOCK; idx++) {
@@ -156,7 +183,31 @@ sanctum_bishop(struct sanctum_proc *proc)
 	bishop_hymn_reap(-1);
 	bishop_hymn_read();
 
+	bishop_unix_socket(&sun, HYMN_SOCKET_PATH_FMT,
+	    sanctum->cathedral_flock, local_id);
+
+	if (unlink(sun.sun_path) == -1) {
+		sanctum_log(LOG_NOTICE, "failed to remove %s: %s",
+		    sun.sun_path, errno_s);
+	}
+
 	exit(0);
+}
+
+/*
+ * Drop access to the queues we do not need.
+ *
+ * Bishop only starts in liturgy mode which only allocated
+ * the chapel/purgatory/bishop queues.
+ */
+static void
+bishop_drop_access(void)
+{
+	sanctum_shm_detach(io->chapel);
+	sanctum_shm_detach(io->purgatory);
+
+	io->chapel = NULL;
+	io->purgatory = NULL;
 }
 
 /*
@@ -192,7 +243,8 @@ bishop_liturgy_request(struct sanctum_packet *pkt)
 		}
 	} else {
 		if (bishop_instance_exists(src, dst) != -1 &&
-		    bishop_instance_running(src, dst) != -1) {
+		    bishop_instance_running(src, dst) != -1 &&
+		    bishop_instance_alive(src, dst) == -1) {
 			bishop_hymn_run("down", src, dst);
 			instances[dst] = 0;
 		}
@@ -390,6 +442,90 @@ bishop_instance_running(u_int8_t src, u_int8_t dst)
 }
 
 /*
+ * Check if the tunnel of the given sanctum instance is alive by requesting
+ * the status of its control process and looking at the last time we received
+ * packets.
+ */
+static int
+bishop_instance_alive(u_int8_t src, u_int8_t dst)
+{
+	int					nfd;
+	ssize_t					ret;
+	struct pollfd				pfd;
+	struct sockaddr_un			sun;
+	struct sanctum_ctl			ctl;
+	struct sanctum_ctl_status_response	resp;
+	socklen_t				socklen;
+	u_int64_t				now, last;
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.cmd = SANCTUM_CTL_STATUS;
+
+	bishop_unix_socket(&sun, HYMN_CONTROL_PATH_FMT,
+	    sanctum->cathedral_flock, src, dst);
+
+	if ((ret = sendto(cfd, &ctl, sizeof(ctl), 0,
+	    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
+		sanctum_log(LOG_NOTICE, "%s sendto: %s", sun.sun_path, errno_s);
+		return (-1);
+	}
+
+	if ((size_t)ret != sizeof(ctl)) {
+		sanctum_log(LOG_NOTICE, "%s short send, %zd/%zu",
+		    sun.sun_path, ret, sizeof(ctl));
+		return (-1);
+	}
+
+	pfd.fd = cfd;
+	pfd.events = POLLIN;
+
+	if ((nfd = poll(&pfd, 1, 1000)) == -1) {
+		sanctum_log(LOG_NOTICE, "poll: %s", errno_s);
+		return (-1);
+	}
+
+	if (nfd == 0) {
+		sanctum_log(LOG_NOTICE, "%s no response after 1 second",
+		    sun.sun_path);
+		return (-1);
+	}
+
+	if (!(pfd.revents & POLLIN)) {
+		sanctum_log(LOG_NOTICE, "%s no read event", sun.sun_path);
+		return (-1);
+	}
+
+	socklen = sizeof(sun);
+
+	if ((ret = recvfrom(cfd, &resp, sizeof(resp), MSG_DONTWAIT,
+	    (struct sockaddr *)&sun, &socklen)) == -1) {
+		sanctum_log(LOG_NOTICE, "recvfrom: %s", errno_s);
+		return (-1);
+	}
+
+	if ((size_t)ret != sizeof(resp)) {
+		sanctum_log(LOG_NOTICE, "%s bad response %zu/%zu",
+		    sun.sun_path, ret, sizeof(resp));
+		return (-1);
+	}
+
+	now = sanctum_atomic_read(&sanctum->uptime);
+	last = now - resp.rx.last;
+
+	if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
+	    resp.rx.last > 0 && last < BISHOP_INSTANCE_TIMEOUT) {
+		sanctum_log(LOG_INFO, "%" PRIx64 "-%02x-%02x is still alive",
+		    sanctum->cathedral_flock, src, dst);
+		return (0);
+	}
+
+	sanctum_log(LOG_INFO, "%" PRIx64 "-%02x-%02x is down",
+	    sanctum->cathedral_flock, src, dst);
+
+	return (-1);
+}
+
+/*
  * Helper function that splits a string based on the given delimiter.
  */
 static int
@@ -433,4 +569,52 @@ bishop_liturgy_address(char *ip, size_t len, u_int8_t a, u_int8_t b)
 
 	if (inet_ntop(AF_INET, &addr, ip, len) == NULL)
 		fatal("inet_pton: %s", errno_s);
+}
+
+/*
+ * Initialise our client socket used for sending control requests
+ * to our different instances.
+ */
+static void
+bishop_control_init(void)
+{
+	struct sockaddr_un	sun;
+
+	PRECOND(cfd == -1);
+
+	if ((cfd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	bishop_unix_socket(&sun, HYMN_SOCKET_PATH_FMT,
+	    sanctum->cathedral_flock, sanctum->tun_spi & 0xff);
+
+	if (unlink(sun.sun_path) && errno != ENOENT)
+		fatal("unlink(%s): %s", sun.sun_path, errno_s);
+
+	if (bind(cfd, (struct sockaddr *)&sun, sizeof(sun)) == -1)
+		fatal("bind(%s): %s", sun.sun_path, errno_s);
+}
+
+/*
+ * Helper function to fill out a sockaddr_un structure with a given path.
+ */
+static void
+bishop_unix_socket(struct sockaddr_un *sun, const char *fmt, ...)
+{
+	int		len;
+	va_list		args;
+
+	PRECOND(sun != NULL);
+	PRECOND(fmt != NULL);
+
+	memset(sun, 0, sizeof(*sun));
+	sun->sun_family = AF_UNIX;
+
+	va_start(args, fmt);
+
+	len = vsnprintf(sun->sun_path, sizeof(sun->sun_path), fmt, args);
+	if (len == -1 || (size_t)len >= sizeof(sun->sun_path))
+		fatal("socket path '%s' too large", fmt);
+
+	va_end(args);
 }

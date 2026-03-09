@@ -100,8 +100,28 @@ to the
 file.
 
 .eo
-$ ambry bundle deadbeefcafeba00 deadbeefcafeba00 \
-  120 ambry.bundle
+$ ambry bundle deadbeefcafeba00 deadbeefcafeba00 120 output.file
+.ec
+
+.TP
+.BR export
+The
+.I export
+command is used to derive KEKs specifically for xflock usage. You specify
+the
+.I flock
+you want to export. The
+.I exported
+KEKs can then be sent to your partner for use in the
+.I bundle
+command without revealing any of your own flock its KEKs to your partner.
+
+.eo
+$ ambry export 8874b9a81dbbcc00 ff5eae5b77536d00
+.ec
+
+.eo
+$ ambry bundle 8874b9a81dbbcc00 ff5eae5b77536d00 120 output.file
 .ec
 
 .SH AUTHORS

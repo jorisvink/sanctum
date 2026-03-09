@@ -675,8 +675,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		sanctum_log(LOG_INFO, "%s peer restart detected",
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
 	} else if (catacomb == 0 && nat == 0) {
-		cathedral_ambry_send(flock, dst, info, &pkt->addr, id);
-
 		if (tun->peerinfo)
 			cathedral_info_send(flock, dst, info, &pkt->addr, id);
 
@@ -686,6 +684,9 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			cathedral_remembrance_send(flock, &pkt->addr, id);
 		}
 	}
+
+	if (catacomb == 0 && nat == 0)
+		cathedral_ambry_send(flock, dst, info, &pkt->addr, id);
 
 	if (nat) {
 		if (tun->federated) {

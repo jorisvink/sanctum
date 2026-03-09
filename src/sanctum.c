@@ -36,8 +36,13 @@ static void	sanctum_pidfile_grab(void);
 static void	sanctum_pidfile_write(void);
 static void	sanctum_pidfile_unlink(void);
 
+/* The file descriptor for our PID file (if any was configured). */
 static int			pid_fd = -1;
+
+/* The last received signal. */
 volatile sig_atomic_t		sig_recv = -1;
+
+/* Our global state. */
 struct sanctum_state		*sanctum = NULL;
 
 static void
@@ -101,6 +106,7 @@ main(int argc, char *argv[])
 		usage();
 
 	nyfe_fatal_callback(fatalv);
+	nyfe_selftest_kmac256();
 
 	sanctum = sanctum_alloc_shared(sizeof(*sanctum), NULL);
 	sanctum->mode = SANCTUM_MODE_TUNNEL;
@@ -311,7 +317,7 @@ sanctum_pidfile_grab(void)
 	if (sanctum->pidfile == NULL)
 		return;
 
-	pid_fd = open(sanctum->pidfile, O_CREAT | O_EXCL | O_WRONLY, 0500);
+	pid_fd = open(sanctum->pidfile, O_CREAT | O_EXCL | O_WRONLY, 0400);
 	if (pid_fd == -1) {
 		fatal("failed to grab pidfile '%s': %s",
 		    sanctum->pidfile, errno_s);

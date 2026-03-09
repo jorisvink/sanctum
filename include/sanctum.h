@@ -399,7 +399,7 @@ struct sanctum_pool {
 };
 
 /*
- * An encrypted packet its head, includes the ESP header, the
+ * An encrypted packet its header, includes the "ESP" header, the
  * 64-bit packet number used as part of the nonce later and
  * potential flock src/dst numbers.
  */

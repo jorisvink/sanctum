@@ -320,9 +320,9 @@ chapel_drop_access(void)
 static void
 chapel_peer_check(u_int64_t now)
 {
-	u_int64_t	spi, hbeat;
+	u_int64_t	hbeat;
 
-	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) == 0)
+	if (sanctum_atomic_read(&sanctum->rx.spi) == 0)
 		return;
 
 	if ((hbeat = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
