@@ -135,6 +135,7 @@ sanctum_bless(struct sanctum_proc *proc)
 	nyfe_zeroize(&state, sizeof(state));
 	nyfe_zeroize(io->tx, sizeof(*io->tx));
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

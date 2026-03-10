@@ -407,6 +407,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			cathedral_packet_handle(pkt, now);
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

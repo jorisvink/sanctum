@@ -199,6 +199,8 @@ main(int argc, char *argv[])
 	sanctum_proc_shutdown();
 	sanctum_pidfile_unlink();
 
+	sanctum_config_release();
+
 	return (0);
 }
 

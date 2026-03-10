@@ -282,6 +282,23 @@ sanctum_config_load(const char *file)
 }
 
 /*
+ * Free all config resources.
+ */
+void
+sanctum_config_release(void)
+{
+	int		i, type;
+
+	for (i = 0; proctab[i].name != NULL; i++) {
+		type = proctab[i].type;
+		free(sanctum->runas[type]);
+	}
+
+	free(sanctum->secret);
+	free(sanctum->pidfile);
+}
+
+/*
  * Route all routes from the configuration into the tunnel device.
  */
 void

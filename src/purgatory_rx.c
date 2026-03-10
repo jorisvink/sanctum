@@ -100,6 +100,7 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 			purgatory_rx_recv_packets(io->nat);
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

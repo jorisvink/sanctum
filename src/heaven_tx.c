@@ -80,6 +80,7 @@ sanctum_heaven_tx(struct sanctum_proc *proc)
 			heaven_tx_send_packet(io->clear, pkt);
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

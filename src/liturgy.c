@@ -108,6 +108,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 		}
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

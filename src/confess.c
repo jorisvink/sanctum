@@ -112,6 +112,7 @@ sanctum_confess(struct sanctum_proc *proc)
 	nyfe_zeroize(&state, sizeof(state));
 	nyfe_zeroize(io->rx, sizeof(*io->rx));
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

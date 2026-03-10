@@ -698,6 +698,7 @@ extern const char		*sanctum_signature;
 /* src/config.c */
 void	sanctum_config_init(void);
 void	sanctum_config_routes(void);
+void	sanctum_config_release(void);
 void	sanctum_config_load(const char *);
 int	sanctum_config_routable(in_addr_t);
 

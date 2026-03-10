@@ -86,6 +86,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 		heaven_rx_recv_packets(io->clear);
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);

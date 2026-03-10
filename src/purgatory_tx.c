@@ -94,6 +94,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 			purgatory_tx_send_packet(io->crypto, pkt);
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
