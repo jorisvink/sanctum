@@ -68,7 +68,11 @@ static void	linux_rt_sin(struct nlmsghdr *, void *, u_int16_t,
 #error "unsupported architecture"
 #endif
 
+/* The default kill policy. */
 #define SECCOMP_KILL_POLICY		SECCOMP_RET_KILL
+
+/* The maximum number of filters we can install. */
+#define SECCOMP_FILTER_MAX		512
 
 /*
  * The seccomp bpf program its prologue.
@@ -627,9 +631,9 @@ linux_sandbox_netns(struct sanctum_proc *proc)
 static void
 linux_sandbox_seccomp(struct sanctum_proc *proc)
 {
-	struct sock_filter		*sf;
 	struct sock_fprog		prog, pf;
 	size_t				len, idx, off;
+	struct sock_filter		sf[SECCOMP_FILTER_MAX];
 
 	PRECOND(proc != NULL);
 
@@ -690,8 +694,8 @@ linux_sandbox_seccomp(struct sanctum_proc *proc)
 	len += pf.len;
 	len += KORE_FILTER_LEN(filter_epilogue);
 
-	if ((sf = calloc(len, sizeof(*sf))) == NULL)
-		fatal("calloc(%zu): %s", len, errno_s);
+	if (len >= SECCOMP_FILTER_MAX)
+		fatal("too many seccomp filters, bump SECCOMP_FILTER_MAX");
 
 	off = 0;
 
