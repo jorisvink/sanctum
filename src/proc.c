@@ -126,8 +126,8 @@ sanctum_proc_start(void)
 		io.bless = sanctum_ring_alloc(1024);
 		io.heaven = sanctum_ring_alloc(1024);
 		io.confess = sanctum_ring_alloc(1024);
-		io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
-		io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
+		io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key));
+		io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key));
 	} else {
 		io.clear = -1;
 		io.tx = NULL;

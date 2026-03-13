@@ -299,7 +299,7 @@ sanctum_unix_socket(struct sanctum_sun *cfg)
  * so that once the process exits the shared memory goes away.
  */
 void *
-sanctum_alloc_shared(size_t len, int *key)
+sanctum_alloc_shared(size_t len)
 {
 	int		tmp;
 	void		*ptr;
@@ -313,9 +313,6 @@ sanctum_alloc_shared(size_t len, int *key)
 
 	if (shmctl(tmp, IPC_RMID, NULL) == -1)
 		fatal("%s: shmctl: %s", __func__, errno_s);
-
-	if (key != NULL)
-		*key = tmp;
 
 	return (ptr);
 }

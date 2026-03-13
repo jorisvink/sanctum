@@ -764,8 +764,8 @@ void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
 void	sanctum_logv(int, const char *, va_list);
 void	sanctum_shm_detach(void *);
+void	*sanctum_alloc_shared(size_t);
 void	sanctum_mem_zero(void *, size_t);
-void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);

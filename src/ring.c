@@ -32,7 +32,7 @@ sanctum_ring_alloc(size_t elm)
 {
 	struct sanctum_ring	*ring;
 
-	ring = sanctum_alloc_shared(sizeof(*ring), NULL);
+	ring = sanctum_alloc_shared(sizeof(*ring));
 	sanctum_ring_init(ring, elm);
 
 	return (ring);
