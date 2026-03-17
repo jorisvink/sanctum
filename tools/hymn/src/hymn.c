@@ -166,6 +166,7 @@ static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
 static int	hymn_route(int, char **);
+static int	hymn_encap(int, char **);
 static int	hymn_bridge(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
@@ -248,6 +249,7 @@ static const struct {
 	{ "down",		hymn_down },
 	{ "name",		hymn_name },
 	{ "route",		hymn_route },
+	{ "encap",		hymn_encap },
 	{ "bridge",		hymn_bridge },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
@@ -317,6 +319,7 @@ usage(void)
 	fprintf(stderr, "  cathedral   - change cathedral for a tunnel\n");
 	fprintf(stderr, "  del         - delete an existing tunnel\n");
 	fprintf(stderr, "  down        - kills the given tunnel\n");
+	fprintf(stderr, "  encap       - set the encapsulation key\n");
 	fprintf(stderr, "  mtu         - change mtu for a given tunnel\n");
 	fprintf(stderr, "  list        - list all configured tunnels\n");
 	fprintf(stderr, "  liturgy     - configure a liturgy\n");
@@ -941,6 +944,74 @@ hymn_route(int argc, char *argv[])
 }
 
 static void
+usage_encap(void)
+{
+	fprintf(stderr, "usage: hymn encap ");
+	fprintf(stderr, "[name | <flock>-<src>-<dst>] ");
+	fprintf(stderr, "[<256-bit hex key> | delete]\n");
+
+	exit(1);
+}
+
+static int
+hymn_encap(int argc, char *argv[])
+{
+	size_t			len;
+	const char		*flock;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			*p, path[PATH_MAX];
+
+	if (argc != 2)
+		usage_encap();
+
+	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+		usage_encap();
+
+	if (!strcmp(argv[1], "delete")) {
+		argv[1] = NULL;
+	} else {
+		len = strlen(argv[1]);
+		if (len != 64)
+			usage_encap();
+
+		for (p = argv[1]; *p != '\0'; p++) {
+			if ((*p >= '0' && *p <= '9') ||
+			    (*p >= 'A' && *p <= 'F') ||
+			    (*p >= 'a' && *p <= 'f'))
+				continue;
+
+			printf("invalid character '%c' in key\n", *p);
+			usage_encap();
+		}
+	}
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	config.src = src;
+	config.dst = dst;
+
+	if (argv[1] == NULL) {
+		config.encap = NULL;
+	} else {
+		if ((config.encap = strdup(argv[1])) == NULL)
+			fatal("strdup");
+	}
+
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x encapsulation key %s\n",
+	    flock, src, dst, argv[1] != NULL ? "changed": "cleared");
+
+	printf("restart the tunnel for the change to take effect\n");
+
+	return (0);
+}
+
+static void
 usage_accept(void)
 {
 	fprintf(stderr,
@@ -1322,6 +1393,7 @@ hymn_remembrance(int argc, char *argv[])
 
 	printf("%s-%02x-%02x remembrance turned %s\n",
 	    flock, src, dst, argv[1]);
+	printf("restart the tunnel for the change to take effect\n");
 
 	return (0);
 }
