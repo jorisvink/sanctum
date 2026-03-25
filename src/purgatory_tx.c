@@ -30,8 +30,8 @@
 #include "sanctum.h"
 
 static void	purgatory_tx_drop_access(void);
+static void	purgatory_tx_send_packet(struct sanctum_packet *);
 static void	*purgatory_tx_encapsulate(struct sanctum_packet *);
-static void	purgatory_tx_send_packet(int, struct sanctum_packet *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -81,11 +81,11 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 		    sanctum->mode != SANCTUM_MODE_LITURGY) {
 			while ((pkt = sanctum_ring_dequeue(io->offer)))
-				purgatory_tx_send_packet(io->crypto, pkt);
+				purgatory_tx_send_packet(pkt);
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->purgatory)))
-			purgatory_tx_send_packet(io->crypto, pkt);
+			purgatory_tx_send_packet(pkt);
 	}
 
 	sanctum_config_release();
@@ -122,7 +122,7 @@ purgatory_tx_drop_access(void)
  * This function will return the packet to the packet pool.
  */
 static void
-purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
+purgatory_tx_send_packet(struct sanctum_packet *pkt)
 {
 	struct sockaddr_in	peer;
 	void			*data;
@@ -147,7 +147,7 @@ purgatory_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	for (;;) {
 		data = purgatory_tx_encapsulate(pkt);
 
-		if (sendto(fd, data, pkt->length, 0,
+		if (sendto(io->crypto, data, pkt->length, 0,
 		    (struct sockaddr *)&peer, sizeof(peer)) == -1) {
 			if (errno == EINTR)
 				continue;
