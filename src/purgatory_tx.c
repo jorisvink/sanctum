@@ -29,12 +29,6 @@
 
 #include "sanctum.h"
 
-/*
- * The number of packets before we reset the outer layer SPI and
- * sequence number values to fake an SA rollover.
- */
-#define PURGATORY_ENCAP_PKT_MAX		(1U << 24)
-
 static void	purgatory_tx_drop_access(void);
 static void	*purgatory_tx_encapsulate(struct sanctum_packet *);
 static void	purgatory_tx_send_packet(int, struct sanctum_packet *);
