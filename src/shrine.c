@@ -98,7 +98,7 @@ sanctum_shrine(struct sanctum_proc *proc)
 }
 
 /*
- * Drop access to queues that chapel does not need.
+ * Drop access to queues that shrine does not need.
  */
 static void
 shrine_drop_access(void)

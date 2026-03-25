@@ -126,7 +126,7 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 }
 
 /*
- * Drop access to queues that chapel does not need.
+ * Drop access to queues that pilgrim does not need.
  */
 static void
 pilgrim_drop_access(void)
