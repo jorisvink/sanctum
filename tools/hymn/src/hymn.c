@@ -1937,9 +1937,11 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
 
-	if (config.is_liturgy)
-		printf("  liturgy\tyes (%04x)\n", config.group);
-
+	if (config.is_liturgy) {
+		printf("  liturgy\tyes\n");
+		printf("    group\t%04x\n", config.group);
+		printf("    prefix\t%s\n", config.prefix);
+	}
 
 	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
 
