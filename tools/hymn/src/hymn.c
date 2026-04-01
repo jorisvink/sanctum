@@ -2125,7 +2125,10 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		hymn_config_write(fd, "spi 0x%02x\n", cfg->src);
 		hymn_config_write(fd, "instance %.*s-liturgy\n", len, flock);
 	} else {
-		hymn_config_write(fd, "spi %02x%02x\n", cfg->src, cfg->dst);
+		if (cfg->peer_cathedral) {
+			hymn_config_write(fd,
+			    "spi %02x%02x\n", cfg->src, cfg->dst);
+		}
 		hymn_config_write(fd, "instance %.*s-%02x-%02x\n",
 		    len, flock, cfg->src, cfg->dst);
 	}
