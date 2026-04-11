@@ -47,9 +47,6 @@
 /* The KDF label when generating base keys for ambry KEK derivation. */
 #define SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL	LABEL(KEY.KEK.UNWRAP.KDF)
 
-/* The KDF label for traffic encapsulation. */
-#define SANCTUM_ENCAP_LABEL			LABEL(ENCAP.KDF)
-
 /* The KDF label for traffic key derivation. */
 #define SANCTUM_TRAFFIC_KDF_LABEL		LABEL(TRAFFIC.KDF)
 
@@ -62,6 +59,18 @@
 /* The KDF label for an ambry. */
 #define SANCTUM_AMBRY_KDF			LABEL(AMBRY.KDF)
 
+/* The KDF label for the shroud mask generation. */
+#define SANCTUM_SHROUD_LABEL			LABEL(SHROUD.KDF)
+
+/* The KDF label for a shroud key. */
+#define SANCTUM_SHROUD_KEY_KDF_LABEL		LABEL(SHROUD.KEY)
+
+/* The KDF label for a shroud identity. */
+#define SANCTUM_SHROUD_IDENTITY_KDF_LABEL	LABEL(SHROUD.IDENTITY)
+
+/* The KDF label for a shroud base identity. */
+#define SANCTUM_SHROUD_IDENTITY_BASE_KDF_LABEL	LABEL(SHROUD.BASE.IDENTITY)
+
 /* The KDF label for talking to a cathedral. */
 #define SANCTUM_CATHEDRAL_KDF_LABEL		CLABEL(CATHEDRAL.KDF)
 
@@ -70,5 +79,8 @@
 
 /* The KDF label when generating base keys for offers to cathedrals. */
 #define SANCTUM_CATHEDRAL_OFFER_KDF_LABEL	CLABEL(CATHEDRAL.OFFER.KDF)
+
+/* The KDF label for a cathedral shroud key. */
+#define SANCTUM_CATHEDRAL_SHROUD_KEY_KDF_LABEL	CLABEL(CATHEDRAL.SHROUD.KEY)
 
 #endif

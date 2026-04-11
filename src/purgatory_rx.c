@@ -32,14 +32,20 @@
 
 static void	purgatory_rx_drop_access(void);
 static void	purgatory_rx_recv_packets(int);
-static int	purgatory_rx_decapsulate(struct sanctum_packet *);
+static int	purgatory_rx_unshroud(struct sanctum_packet *);
 static int	purgatory_rx_packet_check(struct sanctum_packet *);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
 
+/* The local copy of the peer shroud key. */
+static struct sanctum_shroud	shroud_peer;
+
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
+
+/* The cathedral shroud key (if a cathedral is in use). */
+static u_int8_t			shroud_cathedral[SANCTUM_KEY_LENGTH];
 
 /*
  * The process responsible for receiving encrypted packets from purgatory.
@@ -60,8 +66,17 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+	    (sanctum->flags & SANCTUM_FLAG_SHROUD) &&
+	    (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE)) {
+		sanctum_shroud_key(sanctum->cathedral_secret,
+		    SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
+		    shroud_cathedral, sizeof(shroud_cathedral));
+	}
+
 	sanctum_platform_sandbox(proc);
 	sanctum_proc_started(proc);
+	nyfe_zeroize_register(&shroud_peer, sizeof(shroud_peer));
 
 	count = 1;
 	running = 1;
@@ -93,12 +108,22 @@ sanctum_purgatory_rx(struct sanctum_proc *proc)
 			fatal("poll: %s", errno_s);
 		}
 
+		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+		    (sanctum->flags & SANCTUM_FLAG_SHROUD)) {
+			if (sanctum_shroud_copy(io->srx, &shroud_peer) != -1) {
+				sanctum_log(LOG_INFO,
+				    "new shroud key installed");
+			}
+		}
+
 		if (pfd[0].revents & POLLIN)
 			purgatory_rx_recv_packets(io->crypto);
 
 		if (count == 2 && (pfd[1].revents & POLLIN))
 			purgatory_rx_recv_packets(io->nat);
 	}
+
+	nyfe_zeroize(&shroud_peer, sizeof(shroud_peer));
 
 	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
@@ -116,6 +141,7 @@ purgatory_rx_drop_access(void)
 
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
+	sanctum_shm_detach(io->stx);
 	sanctum_shm_detach(io->bishop);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->bless);
@@ -123,6 +149,7 @@ purgatory_rx_drop_access(void)
 
 	io->tx = NULL;
 	io->rx = NULL;
+	io->stx = NULL;
 	io->offer = NULL;
 	io->bless = NULL;
 	io->heaven = NULL;
@@ -159,7 +186,7 @@ purgatory_rx_recv_packets(int fd)
 
 		socklen = sizeof(pkt->addr);
 
-		if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)
+		if (sanctum->flags & SANCTUM_FLAG_SHROUD)
 			data = sanctum_packet_start(pkt);
 		else
 			data = sanctum_packet_head(pkt);
@@ -259,23 +286,20 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 
 	PRECOND(pkt != NULL);
 
-	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE) {
-		if (purgatory_rx_decapsulate(pkt) == -1)
-			return (-1);
-	}
-
 	if (sanctum_packet_crypto_checklen(pkt) == -1)
 		return (-1);
 
-	/*
-	 * In cathedral or liturgy mode we always kick it to
-	 * the relevant processes.
-	 */
-	switch (sanctum->mode) {
-	case SANCTUM_MODE_CATHEDRAL:
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
 		pkt->target = SANCTUM_PROC_CATHEDRAL;
 		return (0);
-	case SANCTUM_MODE_LITURGY:
+	}
+
+	if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+		if (purgatory_rx_unshroud(pkt) == -1)
+			return (-1);
+	}
+
+	if (sanctum->mode == SANCTUM_MODE_LITURGY) {
 		if (sanctum_packet_from_cathedral(pkt) == -1)
 			return (-1);
 		pkt->target = SANCTUM_PROC_LITURGY;
@@ -290,7 +314,6 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 	if (spi == 0)
 		return (-1);
 
-	/* If this has the key offer magic, kick it to the chapel. */
 	if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
 	    (seq == (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
 		if (sanctum->mode == SANCTUM_MODE_SHRINE)
@@ -300,10 +323,6 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 		return (0);
 	}
 
-	/*
-	 * Cathedral responses go to the chapel if we're in tunnel mode
-	 * and have a cathedral configured.
-	 */
 	if (sanctum->mode == SANCTUM_MODE_TUNNEL &&
 	    (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
 	    ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
@@ -314,9 +333,7 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 		return (0);
 	}
 
-	/* If we don't know the SPI, drop the packet. */
 	if (spi != sanctum_atomic_read(&sanctum->rx.spi)) {
-		/* If the SPI matches the pending one, skip initial AR check. */
 		if (spi == sanctum_atomic_read(&sanctum->rx_pending))
 			return (0);
 		return (-1);
@@ -339,45 +356,30 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 }
 
 /*
- * Remove the encapsulation layer on the outer packet. Note that no integrity
- * is provided or checked at this layer, it is purely for traffic analysis
- * protection.
+ * Unshroud the received packet using one of two shroud keys (cathedral
+ * or the peer key) to reveal the relevant protocol bits that have been
+ * masked away.
  *
- * We also don't bother with zeroizing the mask of kdf data structures
- * here as we do not consider them as sensitive.
+ * Note that if we are running in cathedral mode we do not do unshrouding
+ * here at all, that is handled in the cathedral proc.
  */
 static int
-purgatory_rx_decapsulate(struct sanctum_packet *pkt)
+purgatory_rx_unshroud(struct sanctum_packet *pkt)
 {
-	size_t				idx;
-	struct nyfe_kmac256		kdf;
-	struct sanctum_encap_hdr	*hdr;
-	u_int8_t			*data, mask[SANCTUM_ENCAP_MASK_LEN];
+	int		ret;
 
 	PRECOND(pkt != NULL);
-	PRECOND(sanctum->flags & SANCTUM_FLAG_ENCAPSULATE);
+	PRECOND(sanctum->flags & SANCTUM_FLAG_SHROUD);
+	VERIFY(sanctum->mode != SANCTUM_MODE_CATHEDRAL);
 
-	if (pkt->length < sizeof(*hdr))
-		return (-1);
+	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
+	    pkt->addr.sin_addr.s_addr == sanctum->cathedral.sin_addr.s_addr) {
+		ret = sanctum_packet_unshroud(pkt,
+		    shroud_cathedral, sizeof(shroud_cathedral));
+	} else {
+		ret = sanctum_packet_unshroud(pkt,
+		    shroud_peer.key, sizeof(shroud_peer.key));
+	}
 
-	hdr = sanctum_packet_start(pkt);
-	data = sanctum_packet_head(pkt);
-
-	nyfe_kmac256_init(&kdf, sanctum->tek, sizeof(sanctum->tek),
-	    SANCTUM_ENCAP_LABEL, sizeof(SANCTUM_ENCAP_LABEL) - 1);
-	nyfe_kmac256_update(&kdf, hdr, sizeof(*hdr));
-	nyfe_kmac256_final(&kdf, mask, sizeof(mask));
-
-	/*
-	 * We do not need to check pkt length here before XOR:ing
-	 * the mask onto its data. The packet buffer will have
-	 * SANCTUM_ENCAP_MASK_LEN bytes available even if no data
-	 * was actually read into it.
-	 */
-	for (idx = 0; idx < sizeof(mask); idx++)
-		data[idx] ^= mask[idx];
-
-	pkt->length -= sizeof(*hdr);
-
-	return (0);
+	return (ret);
 }

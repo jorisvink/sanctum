@@ -58,7 +58,7 @@
 #define HYMN_FMT_ADD						\
     "hymn add %" PRIx64 "-%02x-%02x tunnel %s/32 "		\
     "cathedral %s:%u kek %s identity %x:%s cosk %s natport %u "	\
-    "device %s %s user %s"
+    "device %s %s user %s shroud %s"
 
 /* The format string for up/down of a tunnel via the hymn tool. */
 #define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x"
@@ -260,7 +260,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 	int		len;
 	pid_t		pid;
 	char		*argv[32];
-	const char	*device, *user;
+	const char	*device, *user, *shroud;
 	char		buf[2048], bridge[32], ip[INET_ADDRSTRLEN];
 
 	PRECOND(cmd != NULL);
@@ -289,13 +289,18 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 		else
 			bishop_liturgy_address(ip, sizeof(ip), src, dst);
 
+		if (sanctum->flags & SANCTUM_FLAG_SHROUD)
+			shroud = "yes";
+		else
+			shroud = "no";
+
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_ADD,
 		    sanctum->cathedral_flock, src, dst, ip,
 		    sanctum->cathedral_name,
 		    be16toh(sanctum->cathedral.sin_port), sanctum->kek,
 		    sanctum->cathedral_id, sanctum->cathedral_secret,
 		    sanctum->cathedral_cosk, sanctum->cathedral_nat_port,
-		    device, bridge, user);
+		    device, bridge, user, shroud);
 	} else if (!strcmp(cmd, "up") || !strcmp(cmd, "down")) {
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_UP_DOWN,
 		    cmd, sanctum->cathedral_flock, src, dst);

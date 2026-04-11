@@ -35,9 +35,6 @@
 /* Length of the ML-KEM-1024 shared secret. */
 #define SANCTUM_MLKEM_1024_KEY_BYTES		SANCTUM_KEY_LENGTH
 
-/* Length for an encapsulation key in hex. */
-#define SANCTUM_ENCAP_HEX_LEN			(SANCTUM_KEY_LENGTH * 2)
-
 /*
  * The nonce size used during encryption, by default 96-bit
  * but can be overriden by different CIPHER selections at compile time.

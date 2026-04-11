@@ -129,12 +129,16 @@ confess_drop_access(void)
 	(void)close(io->crypto);
 
 	sanctum_shm_detach(io->tx);
+	sanctum_shm_detach(io->stx);
+	sanctum_shm_detach(io->srx);
 	sanctum_shm_detach(io->bless);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->chapel);
 	sanctum_shm_detach(io->purgatory);
 
 	io->tx = NULL;
+	io->stx = NULL;
+	io->srx = NULL;
 	io->bless = NULL;
 	io->offer = NULL;
 	io->chapel = NULL;
@@ -229,7 +233,6 @@ confess_packet_process(struct sanctum_packet *pkt)
 		return;
 	}
 
-	/* Swap to RX SA in pending. */
 	state.active.seqnr = 0;
 	state.active.bitmap = 0;
 	sanctum_atomic_write(&sanctum->last_pn, 0);
@@ -252,6 +255,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
+	u_int16_t			len;
 	u_int64_t			now;
 	struct ip			*ip;
 	struct sanctum_proto_tail	*tail;
@@ -326,7 +330,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	pkt->length -= SANCTUM_TAG_LENGTH;
 
 	tail = sanctum_packet_tail(pkt);
-	if (tail->pad != 0)
+	if (tail->reserved != 0)
 		return (-1);
 
 	now = sanctum_atomic_read(&sanctum->uptime);
@@ -342,15 +346,18 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->next != IPPROTO_IP)
 		return (-1);
 
-	/* Remove the TFC padding if enabled. */
 	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
-		ip = sanctum_packet_data(pkt);
-		pkt->length = be16toh(ip->ip_len);
-		if (pkt->length > sanctum->tun_mtu)
+		if (pkt->length < sizeof(*ip))
 			return (-1);
+
+		ip = sanctum_packet_data(pkt);
+		len = be16toh(ip->ip_len);
+		if (len > pkt->length || len > sanctum->tun_mtu)
+			return (-1);
+
+		pkt->length = len;
 	}
 
-	/* The packet checks out, it is bound for heaven. */
 	pkt->target = SANCTUM_PROC_HEAVEN_TX;
 
 	if (sanctum_ring_queue(io->heaven, pkt) == -1)

@@ -54,3 +54,10 @@ cd test
 
 ../tools/ambry/ambry cosk-pair \
     secrets/fe.sign secrets/flock-cafeba00/000000fe.pub
+
+cd ..
+
+cp test/secrets/flock-cafeba00/000000fe.pub \
+    test/secrets/flock-bbbbbb00/000000fe.pub
+cp test/secrets/flock-cafeba00/0badf00d.pub \
+    test/secrets/flock-aaaaaa00/0badf00d.pub

@@ -9,7 +9,7 @@ itself before it hands it over to confess.
 
 The purgatory-rx process does the following:
 
-* If the packet was encapsulated, decapsulate it.
+* If the packet was shrouded, unshroud it unless we are cathedral.
 * Check if the packet is long enough to at least contain the protocol
   header, tail and tag length.
 * Check if the spi is known to us.

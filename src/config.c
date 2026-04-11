@@ -52,6 +52,7 @@ static void	config_parse_descr(char *);
 static void	config_parse_runas(char *);
 static void	config_parse_accept(char *);
 static void	config_parse_bridge(char *);
+static void	config_parse_shroud(char *);
 static void	config_parse_tunnel(char *);
 static void	config_parse_secret(char *);
 static void	config_parse_control(char *);
@@ -60,7 +61,6 @@ static void	config_parse_instance(char *);
 static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
-static void	config_parse_encapsulation(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
@@ -100,6 +100,7 @@ static const struct {
 	{ "descr",			config_parse_descr },
 	{ "accept",			config_parse_accept },
 	{ "bridge",			config_parse_bridge },
+	{ "shroud",			config_parse_shroud },
 	{ "tunnel",			config_parse_tunnel },
 	{ "secret",			config_parse_secret },
 	{ "control",			config_parse_control },
@@ -108,7 +109,6 @@ static const struct {
 	{ "cathedral",			config_parse_cathedral },
 	{ "secretdir",			config_parse_secretdir },
 	{ "settings",			config_parse_settings },
-	{ "encapsulation",		config_parse_encapsulation },
 	{ "liturgy_group",		config_parse_liturgy_group },
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
@@ -257,9 +257,8 @@ sanctum_config_load(const char *file)
 	}
 
 	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
-	    (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE) &&
 	    sanctum->tun_mtu == 0)
-		fatal("tfc/encap is enabled but no mtu has been set");
+		fatal("tfc is enabled but no mtu has been set");
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 	    sanctum->mode != SANCTUM_MODE_LITURGY &&
@@ -539,6 +538,23 @@ config_parse_runas(char *runas)
 
 	if ((sanctum->runas[type] = strdup(user)) == NULL)
 		fatal("strdup");
+}
+
+/*
+ * Parse the shroud configuration option.
+ */
+static void
+config_parse_shroud(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags |= SANCTUM_FLAG_SHROUD;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags &= ~SANCTUM_FLAG_SHROUD;
+	} else {
+		fatal("shroud option '%s' invalid (yes|no)", opt);
+	}
 }
 
 /*
@@ -909,41 +925,6 @@ config_parse_settings(char *opt)
 }
 
 /*
- * Parse the encapsulation option.
- */
-static void
-config_parse_encapsulation(char *opt)
-{
-	size_t		idx, i;
-	char		hex[5], *ep;
-
-	PRECOND(opt != NULL);
-
-	if (strlen(opt) != SANCTUM_ENCAP_HEX_LEN) {
-		fatal("encapsulation key must be a %d-bit hex value",
-		    SANCTUM_KEY_LENGTH * 8);
-	}
-
-	hex[0] = '0';
-	hex[1] = 'x';
-	hex[4] = '\0';
-
-	i = 0;
-
-	for (idx = 0; idx < SANCTUM_ENCAP_HEX_LEN; idx += 2) {
-		hex[2] = opt[idx];
-		hex[3] = opt[idx + 1];
-
-		errno = 0;
-		sanctum->tek[i++] = strtoul(hex, &ep, 16);
-		if (errno != 0 || *ep != '\0')
-			fatal("hex byte '%s' invalid", hex);
-	}
-
-	sanctum->flags |= SANCTUM_FLAG_ENCAPSULATE;
-}
-
-/*
  * Parse the liturgy_discoverable option.
  */
 static void
@@ -1106,8 +1087,8 @@ config_mtu_check(void)
 	    sizeof(struct sanctum_proto_hdr) +
 	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH;
 
-	if (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)
-		overhead += sizeof(struct sanctum_encap_hdr);
+	if (sanctum->flags & SANCTUM_FLAG_SHROUD)
+		overhead += sizeof(struct sanctum_shroud_hdr);
 
 	VERIFY(SANCTUM_PACKET_DATA_LEN > overhead);
 
