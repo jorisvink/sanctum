@@ -697,7 +697,7 @@ struct sanctum_state {
 	volatile u_int64_t	heartbeat;
 
 	/* Do hole punching (by sending many heartbeats for a bit). */
-	volatile u_int64_t	holepunch;
+	volatile int		holepunch;
 
 	/* Process wakeup states. */
 	u_int32_t		wstate[SANCTUM_PROC_MAX];
