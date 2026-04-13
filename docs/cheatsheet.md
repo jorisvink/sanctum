@@ -36,6 +36,7 @@ projects directly related to sanctum.
 | Term | Description |
 | ---- | ----------- |
 | ambry | An encrypted file containing shared secrets for distribution. |
+| shroud | Shrouds the protocol meta-data from traffic analysis. |
 | cathedral | An authenticated relay and discovery service for sanctum. |
 | liturgy | A cathedral feature that helps with auto-discovery of peers. |
 | remembrance | A cathedral feature for sharing federated ip:port information. |
