@@ -134,6 +134,7 @@ static void	usage_del(void) __attribute__((noreturn));
 static void	usage_mtu(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
+static void	usage_shroud(void) __attribute__((noreturn));
 static void	usage_bridge(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
@@ -166,6 +167,7 @@ static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
 static int	hymn_route(int, char **);
+static int	hymn_shroud(int, char **);
 static int	hymn_bridge(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
@@ -248,6 +250,7 @@ static const struct {
 	{ "down",		hymn_down },
 	{ "name",		hymn_name },
 	{ "route",		hymn_route },
+	{ "shroud",		hymn_shroud },
 	{ "bridge",		hymn_bridge },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
@@ -936,6 +939,47 @@ hymn_route(int argc, char *argv[])
 
 	hymn_config_save(path, flock, &config);
 	free(net);
+
+	printf("tunnel modified, please restart it\n");
+
+	return (0);
+}
+
+static void
+usage_shroud(void)
+{
+	fprintf(stderr,
+	    "usage: hymn shroud [name | [<flock>-]<src>-<dst>] [on|off]\n");
+	exit(1);
+}
+
+static int
+hymn_shroud(int argc, char *argv[])
+{
+	struct config		config;
+	const char		*flock;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_shroud();
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_route();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	if (!strcmp(argv[1], "on"))
+		config.shroud = 1;
+	else if (!strcmp(argv[1], "off"))
+		config.shroud = 0;
+	else
+		fatal("unknown option '%s', please use on|off", argv[1]);
+
+	hymn_config_save(path, flock, &config);
 
 	printf("tunnel modified, please restart it\n");
 
