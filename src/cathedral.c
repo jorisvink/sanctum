@@ -1225,10 +1225,8 @@ cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
 static int
 cathedral_unshroud_packet(struct sanctum_packet *pkt)
 {
-	struct sanctum_proto_hdr	*hdr;
 	struct tunnel			*srv;
 	struct shroud			*shroud;
-	u_int32_t			spi, seq;
 	int				cathedral;
 
 	PRECOND(pkt != NULL);
@@ -1255,20 +1253,7 @@ cathedral_unshroud_packet(struct sanctum_packet *pkt)
 		    sizeof(shroud_cathedral)) == -1)
 			return (-1);
 
-		hdr = sanctum_packet_head(pkt);
-
-		seq = be32toh(hdr->esp.seq);
-		spi = be32toh(hdr->esp.spi);
-
-		if ((spi == (CATHEDRAL_CATACOMB_MAGIC >> 32)) &&
-		    (seq == (CATHEDRAL_CATACOMB_MAGIC & 0xffffffff)))
-			return (0);
-
-		sanctum_log(LOG_NOTICE,
-		    "unshrouded CATACOMB packet failed magic check from %s",
-		    sanctum_inet_string(&pkt->addr));
-
-		return (-1);
+		return (0);
 	}
 
 	shroud_last = shroud;
