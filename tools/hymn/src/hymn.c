@@ -325,6 +325,7 @@ usage(void)
 	fprintf(stderr, "  liturgy     - configure a liturgy\n");
 	fprintf(stderr, "  name        - sets the name for a given tunnel\n");
 	fprintf(stderr, "  status      - show a specific tunnel its info\n");
+	fprintf(stderr, "  shroud      - toggle shroud on a given tunnel\n");
 	fprintf(stderr, "  remembrance - toggle remembrance on given tunnel\n");
 	fprintf(stderr, "  restart     - restart a tunnel (down, up)\n");
 	fprintf(stderr, "  route       - modify tunnel routing rules\n");
