@@ -57,7 +57,6 @@ and how it is used.
 | SK | A session key used to provide traffic confidentiality and integrity. | Red | bless, confess |
 | CS | The cathedral secret, used to talk to a cathedral if enabled. | Traffic | chapel |
 | KEK | A key-encryption-key, used for wrapping an Ambry. | Red | chapel |
-| TEK | Traffic encapsulation key, used to prevent traffic analysis. | Traffic | purgatory-rx, purgatory-tx |
 | COSK | The cathedral offer signing key used by the client to sign offers being sent to the cathedral. | Red | chapel |
 | Ambry | A shared secret (SS) wrapped with a KEK. | Black | cathedral, chapel |
 
@@ -100,6 +99,10 @@ sanctum_base_key(key, purpose):
         label = "SANCTUM.KEY.TRAFFIC.TX.KDF"
     else if purpose == PURPOSE_KEK_UNWRAP:
         label = "SANCTUM.KEY.KEK.UNWRAP.KDF"
+    else if purpose == PURPOSE_SHROUD_PEER:
+        label = "SANCTUM.SHROUD.KEY"
+    else if purpose == PURPOSE_SHROUD_CATHEDRAL:
+        label = "SANCTUM.CATHEDRAL.SHROUD.KEY"
 
     x = len(flock_a) || flock_a || len(flock_b) || flock_b
     base_key = KMAC256(key, label, x), 256-bit
@@ -358,14 +361,74 @@ Each COSK public key on the cathedral side is tied to the same
 When federating these signatures are kept intact and checked by the
 receiving cathedrals such that no malicious cathedral can impersonate clients.
 
-## Traffic Encapsulation Key (TEK)
+## Shroud
 
-The TEK is used when traffic encapsulation is turned on. When it is active,
-a 128-bit mask is derived using the TEK and KMAC256() based on an outer
-encapsulation header.
+```
+struct sanctum_shroud_hdr {
+	u_int8_t	id[SANCTUM_SHROUD_ID_LENGTH];
+	u_int8_t	seed_id[SANCTUM_SHROUD_SEED_LENGTH];
+	u_int8_t	seed_data[SANCTUM_SHROUD_SEED_LENGTH];
+} __attribute__((packed));
+```
 
-This mask is then XOR'd onto the inner sanctum header and the outer header
-is stripped, leaving us with the original to be transported packet.
+If shroud is turned on protocol meta-data is shrouded using unique masks
+derived from a shroud key per packet. From sanctum its perspective we see
+shroud as a traffic protection feature and not a confidentiality feature.
 
-With traffic encapsulation all sanctum traffic will be indistinguishable
-from random data on the wire.
+By hiding the protocol meta-data it becomes harder to figure out what
+devices belong to which flock and who is talking to who.
+
+All instances talking to each other, including any cathedrals,
+must have shroud enabled for communication to work.
+
+A mask is derived as follows:
+
+```
+if destination == cathedral:
+	sk = sk_cathedral
+else
+	sk = sk_peer
+
+mask = KMAC256(sk, "SANCTUM.SHROUD.KDF", packet.seed_data)
+
+packet.proto_hdr = packet.proto_hdr ^ mask
+```
+
+What shroud_key is depends on if we are communicating with a cathedral
+or with a peer, as we use sanctum_base_key() with the appropriate secret.
+
+The shroud_key for the peer is derived in chapel and installed under
+the purgatory processes as it depends on the shared secret, while the
+shroud_key for cathedral communicating is derived in purgatory-rx and
+purgatory-tx once.
+
+```
+sk_peer = sanctum_base_key(shared_secret, PURPOSE_SHROUD_PEER)
+sk_cathedral = sanctum_base_key(cathedral_secret, PURPOSE_SHROUD_CATHEDRAL)
+```
+
+When talking to cathedrals, a unique per-device shroud id is calculated
+and sent in the shrouded header so that a cathedral can identify the device.
+
+When sanctum instances talk to a cathedral this unique shroud id is added.
+When cathedrals talk to a sanctum instance, the shroud id and seed is
+randomized entirely as the instances do not need it.
+
+This identity is rotated by the client every 5 minutes and is calculated
+as follows:
+
+```
+seed = PRNG(), 128-bit
+
+if flock_src < flock_dst:
+    flock_a = flock_src
+    flock_b = flock_dst
+else
+    flock_a = flock_dst
+    flock_b = flock_src
+
+base_identity = KMAC256(zeroes, "SANCTUM.SHROUD.BASE.IDENTITY",
+                        flock_a || flock_b || cs-id)
+
+shroud_identity = KMAC256(base_identity, "SANCTUM.SHROUD.IDENTITY", seed)
+```

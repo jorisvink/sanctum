@@ -94,6 +94,7 @@ struct config {
 
 	int			tap;
 	int			new;
+	int			shroud;
 	int			is_liturgy;
 	int			remembrance;
 	int			peer_cathedral;
@@ -102,7 +103,6 @@ struct config {
 	const char		*flock;
 	char			*kek;
 	char			*name;
-	char			*encap;
 	char			*bridge;
 	char			*secret;
 	char			*prefix;
@@ -132,8 +132,10 @@ static void	usage_simple(const char *) __attribute__((noreturn));
 static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
 static void	usage_mtu(void) __attribute__((noreturn));
+static void	usage_nat(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
+static void	usage_shroud(void) __attribute__((noreturn));
 static void	usage_bridge(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
@@ -162,10 +164,12 @@ static int	hymn_up(int, char **);
 static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
 static int	hymn_mtu(int, char **);
+static int	hymn_nat(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
 static int	hymn_route(int, char **);
+static int	hymn_shroud(int, char **);
 static int	hymn_bridge(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
@@ -198,7 +202,7 @@ static void	hymn_config_parse_bridge(struct config *, char *);
 static void	hymn_config_parse_tunnel(struct config *, char *);
 static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
-static void	hymn_config_parse_encapsulation(struct config *, char *);
+static void	hymn_config_parse_shroud(struct config *, char *);
 
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
@@ -243,11 +247,13 @@ static const struct {
 	{ "add",		hymn_add },
 	{ "del",		hymn_del },
 	{ "mtu",		hymn_mtu },
+	{ "nat",		hymn_nat },
 	{ "status",		hymn_status },
 	{ "list",		hymn_list },
 	{ "down",		hymn_down },
 	{ "name",		hymn_name },
 	{ "route",		hymn_route },
+	{ "shroud",		hymn_shroud },
 	{ "bridge",		hymn_bridge },
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
@@ -274,7 +280,7 @@ static const struct {
 	{ "accept",		hymn_config_parse_accept },
 	{ "tunnel",		hymn_config_parse_tunnel },
 	{ "secret",		hymn_config_parse_secret },
-	{ "encapsulation",	hymn_config_parse_encapsulation },
+	{ "shroud",		hymn_config_parse_shroud },
 	{ "cathedral",		hymn_config_parse_cathedral },
 	{ "cathedral_id",	hymn_config_parse_cathedral_id },
 	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
@@ -322,6 +328,7 @@ usage(void)
 	fprintf(stderr, "  liturgy     - configure a liturgy\n");
 	fprintf(stderr, "  name        - sets the name for a given tunnel\n");
 	fprintf(stderr, "  status      - show a specific tunnel its info\n");
+	fprintf(stderr, "  shroud      - toggle shroud on a given tunnel\n");
 	fprintf(stderr, "  remembrance - toggle remembrance on given tunnel\n");
 	fprintf(stderr, "  restart     - restart a tunnel (down, up)\n");
 	fprintf(stderr, "  route       - modify tunnel routing rules\n");
@@ -629,13 +636,15 @@ hymn_add(int argc, char *argv[])
 			if ((config.cosk_path = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
 			which |= HYMN_COSK;
-		} else if (!strcmp(argv[i], "encap")) {
-			if (config.encap != NULL)
-				fatal("duplicate encap");
-			if (strlen(argv[i + 1]) != 64)
-				fatal("encap must be a 256-bit key in hex");
-			if ((config.encap = strdup(argv[i + 1])) == NULL)
-				fatal("strdup");
+		} else if (!strcmp(argv[i], "shroud")) {
+			if (!strcmp(argv[i + 1], "yes")) {
+				config.shroud = 1;
+				config.tun_mtu = 1374;
+			} else if (!strcmp(argv[i + 1], "no")) {
+				config.shroud = 0;
+			} else {
+				fatal("shroud keyword should be yes|no");
+			}
 		} else if (!strcmp(argv[i], "device")) {
 			if (!strcmp(argv[i + 1], "tap"))
 				config.tap = 1;
@@ -877,7 +886,54 @@ hymn_mtu(int argc, char *argv[])
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x mtu changed to %s\n", flock, src, dst, argv[1]);
-	printf("tunnel modified, please restart it\n");
+
+	return (0);
+}
+
+static void
+usage_nat(void)
+{
+	fprintf(stderr,
+	    "usage: hymn nat [name | [<flock>-]<src>-<dst>] [port]\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "If given port is 0, NAT detection is turned off.\n");
+	fprintf(stderr, "The ability to create a peer-to-peer tunnel ");
+	fprintf(stderr, "depends on NAT detection working.\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr,
+	    "Without NAT detection your traffic is relayed over cathedrals.\n");
+
+	exit(1);
+}
+
+static int
+hymn_nat(int argc, char *argv[])
+{
+	u_int16_t		port;
+	struct config		config;
+	const char		*flock;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_nat();
+
+	port = hymn_number(argv[1], 10, 0, USHRT_MAX);
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_route();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	config.cathedral_nat_port = port;
+
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x nat has been turned %s\n",
+	    flock, config.src, config.dst, (port == 0) ? "off" : "on");
 
 	return (0);
 }
@@ -936,6 +992,48 @@ hymn_route(int argc, char *argv[])
 	free(net);
 
 	printf("tunnel modified, please restart it\n");
+
+	return (0);
+}
+
+static void
+usage_shroud(void)
+{
+	fprintf(stderr,
+	    "usage: hymn shroud [name | [<flock>-]<src>-<dst>] [on|off]\n");
+	exit(1);
+}
+
+static int
+hymn_shroud(int argc, char *argv[])
+{
+	struct config		config;
+	const char		*flock;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_shroud();
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_route();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	if (!strcmp(argv[1], "on"))
+		config.shroud = 1;
+	else if (!strcmp(argv[1], "off"))
+		config.shroud = 0;
+	else
+		fatal("unknown option '%s', please use on|off", argv[1]);
+
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x shroud has been turned %s\n",
+	    flock, config.src, config.dst, (config.shroud == 0) ? "off" : "on");
 
 	return (0);
 }
@@ -1322,6 +1420,7 @@ hymn_remembrance(int argc, char *argv[])
 
 	printf("%s-%02x-%02x remembrance turned %s\n",
 	    flock, src, dst, argv[1]);
+	printf("restart the tunnel for the change to take effect\n");
 
 	return (0);
 }
@@ -1865,11 +1964,18 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
 
-	if (config.is_liturgy)
-		printf("  liturgy\tyes (%04x)\n", config.group);
-
+	if (config.is_liturgy) {
+		printf("  liturgy\tyes\n");
+		printf("    group\t%04x\n", config.group);
+		printf("    prefix\t%s\n", config.prefix);
+	}
 
 	printf("  device\t%s\n", config.tap == 1 ? "tap" : "tun");
+
+	if (config.shroud)
+		printf("  shroud\tyes\n");
+	else
+		printf("  shroud\tno\n");
 
 	if (config.tap && config.bridge != NULL)
 		printf("  bridge\t%s\n", config.bridge);
@@ -1881,6 +1987,8 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  tunnel\t%s (mtu %u)\n",
 		    hymn_ip_mask_str(&config.tun), config.tun_mtu);
 	}
+
+	printf("\n");
 
 	if (config.peer_cathedral) {
 		printf("  cathedral\t%s", config.cathedral);
@@ -1897,6 +2005,12 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	printf("\n");
 
 	if (config.peer_cathedral) {
+		if (config.cathedral_nat_port) {
+			printf("    nat-port\t%u\n", config.cathedral_nat_port);
+		} else {
+			printf("    nat     \tdisabled\n");
+		}
+
 		printf("    flock-src\t%" PRIx64 "\n", config.cathedral_flock);
 
 		if (config.cathedral_flock_dst != 0 &&
@@ -2051,7 +2165,10 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		hymn_config_write(fd, "spi 0x%02x\n", cfg->src);
 		hymn_config_write(fd, "instance %.*s-liturgy\n", len, flock);
 	} else {
-		hymn_config_write(fd, "spi %02x%02x\n", cfg->src, cfg->dst);
+		if (cfg->peer_cathedral) {
+			hymn_config_write(fd,
+			    "spi %02x%02x\n", cfg->src, cfg->dst);
+		}
 		hymn_config_write(fd, "instance %.*s-%02x-%02x\n",
 		    len, flock, cfg->src, cfg->dst);
 	}
@@ -2078,8 +2195,8 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 			hymn_config_write(fd, "liturgy_discoverable yes\n");
 	}
 
-	if (cfg->encap != NULL)
-		hymn_config_write(fd, "encapsulation %s\n", cfg->encap);
+	if (cfg->shroud)
+		hymn_config_write(fd, "shroud yes\n");
 
 	if (cfg->kek != NULL)
 		hymn_config_write(fd, "kek %s\n", cfg->kek);
@@ -2351,13 +2468,15 @@ hymn_config_parse_secret(struct config *cfg, char *secret)
 }
 
 static void
-hymn_config_parse_encapsulation(struct config *cfg, char *encap)
+hymn_config_parse_shroud(struct config *cfg, char *opt)
 {
-	if (cfg->encap != NULL)
-		fatal("duplicate encapsulation");
-
-	if ((cfg->encap = strdup(encap)) == NULL)
-		fatal("strdup");
+	if (!strcmp(opt, "yes")) {
+		cfg->shroud = 1;
+	} else if (!strcmp(opt, "no")) {
+		cfg->shroud = 0;
+	} else {
+		fatal("invalid shroud option '%s'", opt);
+	}
 }
 
 static void

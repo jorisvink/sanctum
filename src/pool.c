@@ -48,7 +48,7 @@ sanctum_pool_init(size_t elm, size_t len)
 	total = (sizeof(*pool) + (POOL_ALIGN - 1)) & ~(POOL_ALIGN - 1);
 	total = total + (len * elm);
 
-	pool = sanctum_alloc_shared(total, NULL);
+	pool = sanctum_alloc_shared(total);
 
 	memset(pool, 0, sizeof(*pool));
 	pool->len = len;

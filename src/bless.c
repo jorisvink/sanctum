@@ -135,6 +135,7 @@ sanctum_bless(struct sanctum_proc *proc)
 	nyfe_zeroize(&state, sizeof(state));
 	nyfe_zeroize(io->tx, sizeof(*io->tx));
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
@@ -151,12 +152,16 @@ bless_drop_access(void)
 	(void)close(io->crypto);
 
 	sanctum_shm_detach(io->rx);
+	sanctum_shm_detach(io->stx);
+	sanctum_shm_detach(io->srx);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->heaven);
 	sanctum_shm_detach(io->chapel);
 	sanctum_shm_detach(io->confess);
 
 	io->rx = NULL;
+	io->srx = NULL;
+	io->stx = NULL;
 	io->offer = NULL;
 	io->heaven = NULL;
 	io->chapel = NULL;
@@ -261,7 +266,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	hdr->flock.src = htobe64(sanctum->cathedral_flock);
 	hdr->flock.dst = htobe64(sanctum->cathedral_flock_dst);
 
-	tail->pad = 0;
+	tail->reserved = 0;
 	tail->next = pkt->next;
 	pkt->length += sizeof(*tail);
 

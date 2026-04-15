@@ -92,6 +92,8 @@ static void	chapel_session_decapsulate(struct sanctum_offer *);
 static void	chapel_session_key_derive(struct sanctum_offer *, u_int8_t);
 static void	chapel_session_encapsulate(struct sanctum_offer *, u_int64_t);
 
+static void	chapel_shroud_derive(void);
+
 static void	chapel_cathedral_notify(u_int64_t);
 static void	chapel_cathedral_send_info(u_int64_t);
 static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
@@ -190,9 +192,12 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
 
-	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
-	    sanctum->cathedral_remembrance != NULL)
-		sanctum_cathedrals_remembrance();
+	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
+		if (sanctum->cathedral_remembrance != NULL)
+			sanctum_cathedrals_remembrance();
+	} else if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+		chapel_shroud_derive();
+	}
 
 	sanctum_proc_started(proc);
 
@@ -287,6 +292,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 		}
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
@@ -772,6 +778,9 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 		ambry_switch = 1;
 		ambry_received = now;
+
+		if (sanctum->flags & SANCTUM_FLAG_SHROUD)
+			chapel_shroud_derive();
 
 		chapel_offer_create(now, "ambry generation switch");
 	}
@@ -1347,6 +1356,33 @@ chapel_session_key_derive(struct sanctum_offer *op, u_int8_t dir)
 
 	nyfe_zeroize(okm, sizeof(okm));
 	nyfe_zeroize(&kex, sizeof(kex));
+}
+
+/*
+ * Derive new shroud keys and install them into the purgatory procs.
+ */
+static void
+chapel_shroud_derive(void)
+{
+	u_int8_t	key[SANCTUM_KEY_LENGTH];
+
+	PRECOND(sanctum->flags & SANCTUM_FLAG_SHROUD);
+
+	nyfe_zeroize_register(key, sizeof(key));
+
+	sanctum_shroud_key(sanctum->secret,
+	    SANCTUM_KDF_PURPOSE_SHROUD_PEER, key, sizeof(key));
+
+	sanctum_shroud_install(io->stx, key, sizeof(key));
+	sanctum_shroud_install(io->srx, key, sizeof(key));
+
+	/*
+	 * We can only wake up purgatory-tx, the rx one is blocking
+	 * on poll() and not on a futex.
+	 */
+	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+
+	nyfe_zeroize(key, sizeof(key));
 }
 
 /*

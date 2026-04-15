@@ -119,13 +119,14 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 		}
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
 }
 
 /*
- * Drop access to queues that chapel does not need.
+ * Drop access to queues that pilgrim does not need.
  */
 static void
 pilgrim_drop_access(void)

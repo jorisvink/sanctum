@@ -230,6 +230,72 @@ sanctum_sa_clear(struct sanctum_sa *sa)
 }
 
 /*
+ * Install a shroud key into the given sanctum shroud data structure.
+ * This should only be called by the chapel process.
+ */
+void
+sanctum_shroud_install(struct sanctum_shroud *shroud, u_int8_t *key, size_t len)
+{
+	struct sanctum_proc	*proc;
+
+	PRECOND(shroud != NULL);
+	PRECOND(key != NULL);
+	PRECOND(len == SANCTUM_KEY_LENGTH);
+
+	proc = sanctum_process();
+	VERIFY(proc->type == SANCTUM_PROC_CHAPEL);
+
+	while (sanctum_atomic_read(&shroud->state) != SANCTUM_KEY_EMPTY)
+		sanctum_cpu_pause();
+
+	if (!sanctum_atomic_cas_simple(&shroud->state,
+	    SANCTUM_KEY_EMPTY, SANCTUM_KEY_GENERATING))
+		fatal("failed to swap shroud state to generating");
+
+	nyfe_memcpy(shroud->key, key, len);
+
+	if (!sanctum_atomic_cas_simple(&shroud->state,
+	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_PENDING))
+		fatal("failed to swap key state to pending");
+}
+
+/*
+ * Copy the shroud data from src to dst, erasing the key in src once
+ * the copy has occurred. This should only be called from the purgatory-rx
+ * or purgatory-tx processes.
+ */
+int
+sanctum_shroud_copy(struct sanctum_shroud *src, struct sanctum_shroud *dst)
+{
+	struct sanctum_proc	*proc;
+
+	PRECOND(src != NULL);
+	PRECOND(dst != NULL);
+
+	proc = sanctum_process();
+	VERIFY(proc->type == SANCTUM_PROC_PURGATORY_RX ||
+	    proc->type == SANCTUM_PROC_PURGATORY_TX);
+
+	if (sanctum_atomic_read(&src->state) != SANCTUM_KEY_PENDING)
+		return (-1);
+
+	if (!sanctum_atomic_cas_simple(&src->state,
+	    SANCTUM_KEY_PENDING, SANCTUM_KEY_INSTALLING))
+		fatal("failed to swap shroud state from pending to installing");
+
+	dst->valid = 1;
+
+	nyfe_memcpy(dst->key, src->key, sizeof(src->key));
+	sanctum_mem_zero(src->key, sizeof(src->key));
+
+	if (!sanctum_atomic_cas_simple(&src->state,
+	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
+		fatal("failed to swap shroud state from installing to empty");
+
+	return (0);
+}
+
+/*
  * Reset interface statistics for the given struct.
  */
 void
@@ -299,7 +365,7 @@ sanctum_unix_socket(struct sanctum_sun *cfg)
  * so that once the process exits the shared memory goes away.
  */
 void *
-sanctum_alloc_shared(size_t len, int *key)
+sanctum_alloc_shared(size_t len)
 {
 	int		tmp;
 	void		*ptr;
@@ -313,9 +379,6 @@ sanctum_alloc_shared(size_t len, int *key)
 
 	if (shmctl(tmp, IPC_RMID, NULL) == -1)
 		fatal("%s: shmctl: %s", __func__, errno_s);
-
-	if (key != NULL)
-		*key = tmp;
 
 	return (ptr);
 }
@@ -502,6 +565,9 @@ sanctum_base_key(const char *path, u_int64_t flock_src, u_int64_t flock_dst,
 	case SANCTUM_KDF_PURPOSE_CATHEDRAL_OFFER:
 		label = SANCTUM_CATHEDRAL_OFFER_KDF_LABEL;
 		break;
+	case SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL:
+		label = SANCTUM_CATHEDRAL_SHROUD_KEY_KDF_LABEL;
+		break;
 	case SANCTUM_KDF_PURPOSE_TRAFFIC_RX:
 		label = SANCTUM_KEY_TRAFFIC_RX_KDF_LABEL;
 		break;
@@ -510,6 +576,9 @@ sanctum_base_key(const char *path, u_int64_t flock_src, u_int64_t flock_dst,
 		break;
 	case SANCTUM_KDF_PURPOSE_KEK_UNWRAP:
 		label = SANCTUM_KEY_KEK_UNWRAP_KDF_LABEL;
+		break;
+	case SANCTUM_KDF_PURPOSE_SHROUD_PEER:
+		label = SANCTUM_SHROUD_KEY_KDF_LABEL;
 		break;
 	default:
 		fatal("unknown purpose %u", purpose);
@@ -855,11 +924,11 @@ sanctum_offer_verify(const char *path, struct sanctum_offer *op)
 }
 
 /*
- * Provide TFC for the offer when both tfc and encap are enabled, this hides
+ * Provide TFC for the offer when tfc is enabled, this hides
  * the fact that this is an offer on the wire.
  *
- * We have to include the ipsec header, tail and the cipher overhead
- * so that the offer is indistinguishable from traffic.
+ * The configuration check will have made sure our tun_mtu is
+ * sane and not <= sizeof(offer).
  *
  * The remaining bytes in the packet are filled with random data.
  */
@@ -872,8 +941,7 @@ sanctum_offer_tfc(struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 	PRECOND(pkt->length == sizeof(struct sanctum_offer));
 
-	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
-	    (sanctum->flags & SANCTUM_FLAG_ENCAPSULATE)) {
+	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
 		offset = pkt->length;
 		pkt->length = sanctum->tun_mtu +
 		    sizeof(struct sanctum_proto_hdr) +
@@ -997,6 +1065,106 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 		sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
 		    sanctum->cathedral_remembrance, errno_s);
 	}
+}
+
+/*
+ * Calculate a shroud key using the given secret and other information.
+ */
+void
+sanctum_shroud_key(const char *path, int purpose, u_int8_t *out, size_t len)
+{
+	u_int64_t	flock_src, flock_dst;
+
+	PRECOND(path != NULL);
+	PRECOND(purpose == SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL ||
+	    purpose == SANCTUM_KDF_PURPOSE_SHROUD_PEER);
+	PRECOND(out != NULL);
+	PRECOND(len == SANCTUM_KEY_LENGTH);
+	VERIFY(sanctum->mode != SANCTUM_MODE_CATHEDRAL);
+
+	flock_src = sanctum->cathedral_flock;
+	flock_dst = sanctum->cathedral_flock_dst;
+
+	if (purpose == SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL) {
+		flock_src &= ~SANCTUM_FLOCK_DOMAIN_MASK;
+		flock_dst &= ~SANCTUM_FLOCK_DOMAIN_MASK;
+	}
+
+	sanctum_base_key(path, flock_src, flock_dst, purpose, out, len);
+}
+
+/*
+ * Calculate a base shroud identity based on the given parameters.
+ */
+void
+sanctum_shroud_identity_base(u_int64_t flock_src, u_int64_t flock_dst,
+    u_int32_t id, u_int8_t *p, size_t len)
+{
+	struct nyfe_kmac256	kmac;
+	u_int8_t		in_len;
+	u_int64_t		flock_a, flock_b;
+	char			zeroes[SANCTUM_KEY_LENGTH];
+
+	PRECOND(p != NULL);
+	PRECOND(len == SANCTUM_SHROUD_ID_LENGTH);
+
+	nyfe_mem_zero(zeroes, sizeof(zeroes));
+	nyfe_zeroize_register(&kmac, sizeof(kmac));
+
+	flock_src &= ~SANCTUM_FLOCK_DOMAIN_MASK;
+	flock_dst &= ~SANCTUM_FLOCK_DOMAIN_MASK;
+
+	if (flock_src < flock_dst) {
+		flock_a = htobe64(flock_src);
+		flock_b = htobe64(flock_dst);
+	} else {
+		flock_a = htobe64(flock_dst);
+		flock_b = htobe64(flock_src);
+	}
+
+	nyfe_kmac256_init(&kmac, zeroes, sizeof(zeroes),
+	    SANCTUM_SHROUD_IDENTITY_BASE_KDF_LABEL,
+	    sizeof(SANCTUM_SHROUD_IDENTITY_BASE_KDF_LABEL) - 1);
+
+	id = htobe32(id);
+
+	in_len = 8;
+	nyfe_kmac256_update(&kmac, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kmac, &flock_a, sizeof(flock_a));
+	nyfe_kmac256_update(&kmac, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kmac, &flock_b, sizeof(flock_b));
+
+	in_len = 4;
+	nyfe_kmac256_update(&kmac, &in_len, sizeof(in_len));
+	nyfe_kmac256_update(&kmac, &id, sizeof(id));
+
+	nyfe_kmac256_final(&kmac, p, len);
+	nyfe_zeroize(&kmac, sizeof(kmac));
+}
+
+/*
+ * Derive a shroud identity from the given base ID and seed.
+ */
+void
+sanctum_shroud_identity(const u_int8_t *base, size_t blen,
+    const u_int8_t *seed, size_t slen, u_int8_t *p, size_t len)
+{
+	struct nyfe_kmac256	kmac;
+
+	PRECOND(base != NULL);
+	PRECOND(blen == SANCTUM_SHROUD_ID_LENGTH);
+	PRECOND(seed != NULL);
+	PRECOND(slen == SANCTUM_SHROUD_SEED_LENGTH);
+	PRECOND(p != NULL);
+	PRECOND(len == SANCTUM_SHROUD_ID_LENGTH);
+
+	nyfe_zeroize_register(&kmac, sizeof(kmac));
+
+	nyfe_kmac256_init(&kmac, base, blen, SANCTUM_SHROUD_IDENTITY_KDF_LABEL,
+	    sizeof(SANCTUM_SHROUD_IDENTITY_KDF_LABEL) - 1);
+	nyfe_kmac256_update(&kmac, seed, slen);
+	nyfe_kmac256_final(&kmac, p, len);
+	nyfe_zeroize(&kmac, sizeof(kmac));
 }
 
 /*

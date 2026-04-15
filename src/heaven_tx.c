@@ -80,6 +80,7 @@ sanctum_heaven_tx(struct sanctum_proc *proc)
 			heaven_tx_send_packet(io->clear, pkt);
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
@@ -96,6 +97,8 @@ heaven_tx_drop_access(void)
 
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
+	sanctum_shm_detach(io->stx);
+	sanctum_shm_detach(io->srx);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->chapel);
 	sanctum_shm_detach(io->confess);
@@ -103,6 +106,8 @@ heaven_tx_drop_access(void)
 
 	io->tx = NULL;
 	io->rx = NULL;
+	io->stx = NULL;
+	io->srx = NULL;
 	io->offer = NULL;
 	io->chapel = NULL;
 	io->confess = NULL;

@@ -113,6 +113,12 @@ extern const char	*sanctum_build_date;
 #error "unsupported architecture"
 #endif
 
+/* The length of the shroud id. */
+#define SANCTUM_SHROUD_ID_LENGTH	16
+
+/* The length of the seed sent with the shrouded header. */
+#define SANCTUM_SHROUD_SEED_LENGTH	16
+
 /* ESP next_proto value for a heartbeat. */
 #define SANCTUM_PACKET_HEARTBEAT	0xfc
 
@@ -136,6 +142,8 @@ extern const char	*sanctum_build_date;
 #define SANCTUM_KDF_PURPOSE_TRAFFIC_TX		3
 #define SANCTUM_KDF_PURPOSE_KEK_UNWRAP		4
 #define SANCTUM_KDF_PURPOSE_CATHEDRAL_OFFER	5
+#define SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL	6
+#define SANCTUM_KDF_PURPOSE_SHROUD_PEER		7
 
 /* The half-time window in which offers are valid. */
 #define SANCTUM_OFFER_VALID		10
@@ -158,6 +166,11 @@ extern const char	*sanctum_build_date;
 /* Number of seconds after which we consider a cathedral timed out. */
 #define SANCTUM_CATHEDRAL_TIMEOUT	45
 
+/* The number of domains per flock. */
+#define SANCTUM_FLOCK_DOMAIN_BITS	8
+#define SANCTUM_FLOCK_DOMAINS		(1 << SANCTUM_FLOCK_DOMAIN_BITS)
+#define SANCTUM_FLOCK_DOMAIN_MASK	(SANCTUM_FLOCK_DOMAINS - 1)
+
 /*
  * Packets used when doing key offering or cathedral forward registration.
  *
@@ -173,7 +186,6 @@ extern const char	*sanctum_build_date;
  *	6) A key exchange offering (between peers)
  *	7) A p2p info offer (between cathedrals only).
  */
-
 #define SANCTUM_OFFER_TYPE_KEY		1
 #define SANCTUM_OFFER_TYPE_AMBRY	2
 #define SANCTUM_OFFER_TYPE_INFO		3
@@ -351,6 +363,16 @@ struct sanctum_proc {
 #define SANCTUM_ARWIN_SIZE	64
 
 /*
+ * The shroud data structure used by chapel to install the shroud
+ * peer key in the purgatory processes.
+ */
+struct sanctum_shroud {
+	volatile int	state;
+	int		valid;
+	u_int8_t	key[SANCTUM_KEY_LENGTH];
+};
+
+/*
  * Used to pass all the queues to the clear (heaven) and crypto (purgatory).
  * Each process is responsible for removing the queues they
  * do not need themselves.
@@ -362,6 +384,8 @@ struct sanctum_proc_io {
 
 	struct sanctum_key	*tx;
 	struct sanctum_key	*rx;
+	struct sanctum_shroud	*stx;
+	struct sanctum_shroud	*srx;
 
 	struct sanctum_ring	*offer;
 	struct sanctum_ring	*bless;
@@ -417,37 +441,34 @@ struct sanctum_proto_hdr {
 	} flock;
 } __attribute__((packed));
 
-/* ESP trailer, added to the plaintext before encrypted. */
+/* Sanctum protocol trailer, added to the plaintext before encrypted. */
 struct sanctum_proto_tail {
-	u_int8_t		pad;
+	u_int8_t		reserved;
 	u_int8_t		next;
 } __attribute__((packed));
 
 /*
- * The encapsulation header consisting of a random 16-byte seed.
- * This seed is used for mask generation which in turn is used to
- * encapsulate or decapsulate the sanctum_proto_hdr.
+ * The shroud header is used for masking away meta-data from packets.
+ * It consists of the rolling identifier for our peer and a 16-byte
+ * seed used for the mask generation.
  */
-struct sanctum_encap_hdr {
-	u_int8_t			seed[16];
+struct sanctum_shroud_hdr {
+	u_int8_t		id[SANCTUM_SHROUD_ID_LENGTH];
+	u_int8_t		seed_id[SANCTUM_SHROUD_SEED_LENGTH];
+	u_int8_t		seed_data[SANCTUM_SHROUD_SEED_LENGTH];
 } __attribute__((packed));
 
 /*
- * The length of the mask we XOR onto the packet if encapsulation is enabled.
- * The 20 bytes stems from the sanctum_offer_hdr having 4 bytes more than
- * a normal ESP header + packet number. So this is essentially
- * sizeof(struct sanctum_offer_hdr) - SANCTUM_KEY_OFFER_SALT_LEN.
+ * The length of the mask we XOR onto the packet if shroud is enabled.
+ * We shroud the complete protocol meta-data for offers and normal traffic.
  */
-#define SANCTUM_ENCAP_MASK_LEN		\
+#define SANCTUM_SHROUD_MASK_LEN		\
     (sizeof(struct sanctum_offer_hdr) - SANCTUM_KEY_OFFER_SALT_LEN)
 
-/* Preseed is used for when outer encapsulation is enabled. */
-#define SANCTUM_PACKET_ENCAP_LEN	sizeof(struct sanctum_encap_hdr)
+/* A packet header starts after our potential shrouded data. */
+#define SANCTUM_PACKET_HEAD_OFFSET	sizeof(struct sanctum_shroud_hdr)
 
-/* The header starts after our potential encapsulation. */
-#define SANCTUM_PACKET_HEAD_OFFSET	SANCTUM_PACKET_ENCAP_LEN
-
-/* The data starts after the header. */
+/* The packet data starts after the header. */
 #define SANCTUM_PACKET_DATA_OFFSET	\
     (SANCTUM_PACKET_HEAD_OFFSET + sizeof(struct sanctum_proto_hdr))
 
@@ -465,7 +486,7 @@ struct sanctum_encap_hdr {
  * made it large enough to hold the head room, packet data and
  * any tail that is going to be added to it.
  */
-#define SANCTUM_PACKET_MAX_LEN		(SANCTUM_PACKET_DATA_LEN + 64)
+#define SANCTUM_PACKET_MAX_LEN		(SANCTUM_PACKET_DATA_LEN + 128)
 
 /* The minimum size we can read from an interface. */
 #define SANCTUM_PACKET_MIN_LEN		12
@@ -524,8 +545,8 @@ struct sanctum_ether {
 /* Set if a peer was configured manually in the configuration. */
 #define SANCTUM_FLAG_PEER_CONFIGURED	(1 << 4)
 
-/* If purgatory is encapsulating / decapsulating for traffic protection. */
-#define SANCTUM_FLAG_ENCAPSULATE	(1 << 5)
+/* If shroud is active. */
+#define SANCTUM_FLAG_SHROUD		(1 << 5)
 
 /* If we should create a tap device instead of a tun device. */
 #define SANCTUM_FLAG_USE_TAP		(1 << 6)
@@ -662,9 +683,6 @@ struct sanctum_state {
 	/* The sanctum instance description. */
 	char			descr[32];	/* XXX */
 
-	/* The traffic encapsulation key, if set. */
-	u_int8_t		tek[SANCTUM_KEY_LENGTH];
-
 	/* Tx and Rx statistics. */
 	struct sanctum_ifstat	tx;
 	struct sanctum_ifstat	rx;
@@ -679,7 +697,7 @@ struct sanctum_state {
 	volatile u_int64_t	heartbeat;
 
 	/* Do hole punching (by sending many heartbeats for a bit). */
-	volatile u_int64_t	holepunch;
+	volatile int		holepunch;
 
 	/* Process wakeup states. */
 	u_int32_t		wstate[SANCTUM_PROC_MAX];
@@ -698,6 +716,7 @@ extern const char		*sanctum_signature;
 /* src/config.c */
 void	sanctum_config_init(void);
 void	sanctum_config_routes(void);
+void	sanctum_config_release(void);
 void	sanctum_config_load(const char *);
 int	sanctum_config_routable(in_addr_t);
 
@@ -731,6 +750,10 @@ void	sanctum_packet_release(struct sanctum_packet *);
 int	sanctum_packet_from_cathedral(struct sanctum_packet *);
 int	sanctum_packet_crypto_checklen(struct sanctum_packet *);
 
+void	sanctum_packet_shroud(struct sanctum_packet *, const u_int8_t *,
+	    size_t, const u_int8_t *, size_t, const u_int8_t *, size_t);
+int	sanctum_packet_unshroud(struct sanctum_packet *, const void *, size_t);
+
 void	*sanctum_packet_info(struct sanctum_packet *);
 void	*sanctum_packet_data(struct sanctum_packet *);
 void	*sanctum_packet_tail(struct sanctum_packet *);
@@ -763,8 +786,8 @@ void	sanctum_log(int, const char *, ...)
 	    __attribute__((format (printf, 2, 3)));
 void	sanctum_logv(int, const char *, va_list);
 void	sanctum_shm_detach(void *);
+void	*sanctum_alloc_shared(size_t);
 void	sanctum_mem_zero(void *, size_t);
-void	*sanctum_alloc_shared(size_t, int *);
 void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
@@ -775,6 +798,9 @@ void	sanctum_stat_clear(struct sanctum_ifstat *);
 char	*sanctum_config_read(FILE *, char *, size_t);
 int	sanctum_traffic_kdf(struct sanctum_kex *, u_int8_t *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
+void	sanctum_shroud_install(struct sanctum_shroud *, u_int8_t *, size_t);
+int	sanctum_shroud_copy(struct sanctum_shroud *,
+	    struct sanctum_shroud *);
 int	sanctum_key_erase(const char *, struct sanctum_key *,
 	    struct sanctum_sa *, struct sanctum_sa *);
 int	sanctum_offer_kdf(const char *, const char *,
@@ -788,6 +814,13 @@ void	sanctum_offer_encrypt(struct sanctum_key *, struct sanctum_offer *);
 void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
 int	sanctum_offer_decrypt(struct sanctum_key *,
 	    struct sanctum_offer *, int);
+
+void	sanctum_shroud_key(const char *, int, u_int8_t *, size_t);
+void	sanctum_shroud_identity_base(u_int64_t, u_int64_t, u_int32_t,
+	    u_int8_t *, size_t);
+void	sanctum_shroud_identity(const u_int8_t *, size_t,
+	    const u_int8_t *, size_t, u_int8_t *, size_t);
+
 void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
 	    u_int32_t, const void *, size_t);
 int	sanctum_base_key(const char *, u_int64_t, u_int64_t,

@@ -40,10 +40,10 @@ Specify the name of the instance.
 .BR secret " " <path>
 Path to the shared secret file for tunnels or cathedral federation.
 .TP
-.BR encapsulation " " <hex>
-Set the key used for encapsulation. If used, this value must be set
-on all instances that are part of the same setup. When turned on this
-obfuscates all traffic on the wire and makes it look like random data.
+.BR shroud " " <yes|no>
+Enables or disables shroud. Shroud will mask away all protocol relevant
+meta data such that an observer of traffic has a much harder time to
+perform traffic analysis.
 .TP
 .BR run " " <process> " as " <user>
 Run the specified process as a specified user.

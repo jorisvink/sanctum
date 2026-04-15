@@ -32,11 +32,6 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
-/* The number of domains per flock. */
-#define CATHEDRAL_FLOCK_DOMAIN_BITS	8
-#define CATHEDRAL_FLOCK_DOMAINS		(1 << CATHEDRAL_FLOCK_DOMAIN_BITS)
-#define CATHEDRAL_FLOCK_DOMAIN_MASK	(CATHEDRAL_FLOCK_DOMAINS - 1)
-
 /* The number of seconds in between allowed federation for offers. */
 #define CATHEDRAL_FEDERATE_NEXT		(1 * 1000)
 
@@ -125,18 +120,39 @@ struct tunnel {
 	u_int64_t		last_drain;
 	u_int32_t		drain_per_ms;
 
+	/* The shroud for this tunnel */
+	struct shroud		*shroud;
+
 	LIST_ENTRY(tunnel)	list;
 };
 
 /*
- * A mapping of a secret key id that is used by an endpoint to send us
- * updates and the spis they are allowed to send updates for.
+ * A mapping of accepted device-ids can be used by an endpoint
+ * to send us updates regarding certain flocks and ids.
  */
 struct allow {
 	u_int32_t		id;
 	u_int32_t		bw;
 	u_int8_t		spi;
 	LIST_ENTRY(allow)	list;
+};
+
+/*
+ * A shroud identity and matching key.
+ */
+struct shroud {
+	int			retain;
+
+	u_int64_t		flock;
+	u_int32_t		identity;
+
+	u_int8_t		key[SANCTUM_KEY_LENGTH];
+	u_int8_t		base[SANCTUM_SHROUD_ID_LENGTH];
+
+	u_int8_t		seed[SANCTUM_SHROUD_SEED_LENGTH];
+	u_int8_t		cached[SANCTUM_SHROUD_ID_LENGTH];
+
+	LIST_ENTRY(shroud)	list;
 };
 
 /*
@@ -244,6 +260,12 @@ static void		cathedral_ambry_cache(const char *, struct ambries *);
 static struct ambry	*cathedral_ambry_find(struct ambries *,
 			    u_int64_t, u_int16_t);
 
+static struct shroud	*cathedral_shroud_find(struct sanctum_packet *);
+static void		cathedral_shroud_packet(struct sanctum_packet *,
+			    struct shroud *);
+static int		cathedral_unshroud_packet(struct sanctum_packet *);
+static void		cathedral_shroud_alloc(u_int64_t, u_int64_t, u_int32_t);
+
 static void	cathedral_peerstat_inc(struct peerstat *, int);
 static void	cathedral_peerstat_dec(struct peerstat *, int);
 
@@ -316,6 +338,9 @@ static LIST_HEAD(, flockent)	flocks;
 /* The list of configured allowed xflocks. */
 static LIST_HEAD(, xflock)	xflocks;
 
+/* List of shrouds. */
+static LIST_HEAD(, shroud)	shrouds;
+
 /* The last modified time of the settings file. */
 static time_t			settings_last_mtime = -1;
 
@@ -326,6 +351,20 @@ static struct peerstat		liturgies;
 /* Packet counters. */
 static struct ifstats		offers;
 static struct ifstats		traffic;
+
+/*
+ * The last shroud used for unshrouding a packet.
+ *
+ * This is set to NULL each time we process a single packet and is populated
+ * when we unshroud a packet so we can use it again to shroud it once the
+ * processing of the packet is done if need be, avoiding a second lookup.
+ *
+ * Not the prettiest, but the best solution.
+ */
+static struct shroud		*shroud_last = NULL;
+
+/* The inter-cathedral shroud key. */
+static u_int8_t			shroud_cathedral[SANCTUM_KEY_LENGTH];
 
 /*
  * Cathedral - The place packets all meet and get exchanged.
@@ -360,6 +399,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 
 	LIST_INIT(&flocks);
 	LIST_INIT(&xflocks);
+	LIST_INIT(&shrouds);
 	LIST_INIT(&federations);
 
 	sanctum_platform_sandbox(proc);
@@ -370,6 +410,10 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	next_expire = 0;
 	next_status = 0;
 	next_settings = 0;
+
+	sanctum_base_key(sanctum->secret, CATHEDRAL_CATACOMB_MAGIC,
+	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
+	    shroud_cathedral, sizeof(shroud_cathedral));
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -403,10 +447,13 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			cathedral_status_log();
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel)))
+		while ((pkt = sanctum_ring_dequeue(io->chapel))) {
 			cathedral_packet_handle(pkt, now);
+			shroud_last = NULL;
+		}
 	}
 
+	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
 	exit(0);
@@ -429,6 +476,13 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	u_int32_t			seq, spi;
 
 	PRECOND(pkt != NULL);
+
+	if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+		if (cathedral_unshroud_packet(pkt) == -1) {
+			sanctum_packet_release(pkt);
+			return;
+		}
+	}
 
 	hdr = sanctum_packet_head(pkt);
 	seq = be32toh(hdr->esp.seq);
@@ -561,6 +615,8 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = sin->sin_port;
 	pkt->addr.sin_addr.s_addr = sin->sin_addr.s_addr;
+
+	cathedral_shroud_packet(pkt, shroud_last);
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
@@ -777,7 +833,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	VERIFY(op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
 
 	flock_dst = be64toh(op->hdr.flock_dst);
-	flock_dst &= ~(CATHEDRAL_FLOCK_DOMAIN_MASK);
+	flock_dst &= ~SANCTUM_FLOCK_DOMAIN_MASK;
 
 	if ((catacomb == 0 && flock_dst != 0) ||
 	    (catacomb && flock_dst != flock->id)) {
@@ -1016,6 +1072,8 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 		pkt->addr.sin_port = tunnel->port;
 		pkt->addr.sin_addr.s_addr = tunnel->ip;
 
+		cathedral_shroud_packet(pkt, NULL);
+
 		if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 			sanctum_log(LOG_NOTICE,
 			    "no CATACOMB update possible, failed to queue");
@@ -1024,6 +1082,183 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 			sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 		}
 	}
+}
+
+/*
+ * Allocate a new shroud entry by precalculating the shroud base ID
+ * and the cathedral shroud key.
+ */
+static void
+cathedral_shroud_alloc(u_int64_t flock_src, u_int64_t flock_dst, u_int32_t id)
+{
+	struct shroud		*shroud;
+	char			path[1024];
+
+	LIST_FOREACH(shroud, &shrouds, list) {
+		if (shroud->flock == flock_src && shroud->identity == id) {
+			shroud->retain = 1;
+			return;
+		}
+	}
+
+	if ((shroud = calloc(1, sizeof(*shroud))) == NULL)
+		fatal("calloc: failed to allocate shroud entry");
+
+	shroud->retain = 1;
+	shroud->identity = id;
+	shroud->flock = flock_src;
+
+	cathedral_secret_path(path, sizeof(path), flock_src, id);
+
+	sanctum_base_key(path, flock_src, flock_dst,
+	    SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
+	    shroud->key, sizeof(shroud->key));
+
+	sanctum_shroud_identity_base(flock_src, flock_dst,
+	    id, shroud->base, sizeof(shroud->base));
+
+	LIST_INSERT_HEAD(&shrouds, shroud, list);
+
+	sanctum_log(LOG_INFO, "shroud %" PRIx64 "-%08x created", flock_src, id);
+}
+
+/*
+ * Attempt to find a match for the given shroud ID and return it
+ * to the caller.
+ */
+static struct shroud *
+cathedral_shroud_find(struct sanctum_packet *pkt)
+{
+	struct sanctum_shroud_hdr	*hdr;
+	struct shroud			*shroud;
+	u_int8_t			identity[SANCTUM_SHROUD_ID_LENGTH];
+
+	PRECOND(pkt != NULL);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
+
+	hdr = sanctum_packet_start(pkt);
+
+	LIST_FOREACH(shroud, &shrouds, list) {
+		if (!memcmp(shroud->cached, hdr->id, SANCTUM_SHROUD_ID_LENGTH))
+			break;
+	}
+
+	if (shroud != NULL)
+		return (shroud);
+
+	/*
+	 * No match was found, we use the seed_id in the header to
+	 * attempt to find a match amongst all accepted clients.
+	 */
+	LIST_FOREACH(shroud, &shrouds, list) {
+		sanctum_shroud_identity(shroud->base, sizeof(shroud->base),
+		    hdr->seed_id, sizeof(hdr->seed_id),
+		    identity, sizeof(identity));
+
+		if (!memcmp(hdr->id, identity, SANCTUM_SHROUD_ID_LENGTH))
+			break;
+	}
+
+	if (shroud == NULL)
+		return (NULL);
+
+	nyfe_memcpy(shroud->cached, identity, SANCTUM_SHROUD_ID_LENGTH);
+	nyfe_memcpy(shroud->seed, hdr->seed_id, SANCTUM_SHROUD_SEED_LENGTH);
+
+	return (shroud);
+}
+
+/*
+ * Apply the given shroud to the specified packet.
+ *
+ * If we are sending the packet to another cathedral we use the
+ * cathedral shroud with randomized id and seed, otherwise we use
+ * the given shroud with a randomized id and seed.
+ *
+ * The randomized id and seed are to remove any link between incoming
+ * shrouded packets and outgoing shrouded packets.
+ *
+ * Because of this do not call this until after the pkt its dst address is set.
+ */
+static void
+cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
+{
+	struct tunnel		*srv;
+	int			cathedral;
+	u_int8_t		id[SANCTUM_SHROUD_ID_LENGTH];
+	u_int8_t		seed[SANCTUM_SHROUD_SEED_LENGTH];
+
+	PRECOND(pkt != NULL);
+
+	if (!(sanctum->flags & SANCTUM_FLAG_SHROUD))
+		return;
+
+	cathedral = 0;
+
+	LIST_FOREACH(srv, &federations, list) {
+		if (srv->ip == pkt->addr.sin_addr.s_addr &&
+		    srv->port == pkt->addr.sin_port) {
+			cathedral = 1;
+			break;
+		}
+	}
+
+	sanctum_random_bytes(id, sizeof(id));
+	sanctum_random_bytes(seed, sizeof(seed));
+
+	if (cathedral) {
+		sanctum_packet_shroud(pkt, id, sizeof(id), seed, sizeof(seed),
+		    shroud_cathedral, sizeof(shroud_cathedral));
+	} else {
+		VERIFY(shroud != NULL);
+		sanctum_packet_shroud(pkt, id, sizeof(id), seed, sizeof(seed),
+		    shroud->key, sizeof(shroud->key));
+	}
+}
+
+/*
+ * Attempts to unshroud a packet by looking up the correct device based
+ * on the id that has been given in the packet. If we do not find a match
+ * we simply use our internal cathedral shroud key in case it was a CATACOMB
+ * message from another cathedral.
+ */
+static int
+cathedral_unshroud_packet(struct sanctum_packet *pkt)
+{
+	struct tunnel			*srv;
+	struct shroud			*shroud;
+	int				cathedral;
+
+	PRECOND(pkt != NULL);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
+
+	if ((shroud = cathedral_shroud_find(pkt)) == NULL) {
+		cathedral = 0;
+
+		LIST_FOREACH(srv, &federations, list) {
+			if (srv->ip == pkt->addr.sin_addr.s_addr &&
+			    srv->port == pkt->addr.sin_port) {
+				cathedral = 1;
+				break;
+			}
+		}
+
+		if (cathedral == 0) {
+			sanctum_log(LOG_NOTICE,
+			    "received unknown shroud identity");
+			return (-1);
+		}
+
+		if (sanctum_packet_unshroud(pkt, shroud_cathedral,
+		    sizeof(shroud_cathedral)) == -1)
+			return (-1);
+
+		return (0);
+	}
+
+	shroud_last = shroud;
+
+	return (sanctum_packet_unshroud(pkt, shroud->key, sizeof(shroud->key)));
 }
 
 /*
@@ -1102,8 +1337,9 @@ cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
 	pkt->addr.sin_addr.s_addr = tunnel->ip;
-
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	cathedral_shroud_packet(pkt, tunnel->shroud);
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
@@ -1184,8 +1420,9 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
 	pkt->addr.sin_addr.s_addr = tunnel->ip;
-
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	cathedral_shroud_packet(pkt, tunnel->shroud);
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
@@ -1216,12 +1453,12 @@ cathedral_forward_allowed(u_int64_t flock_src, u_int64_t flock_dst,
 	if (out_dst != NULL)
 		*out_dst = NULL;
 
-	if ((flock_src & CATHEDRAL_FLOCK_DOMAIN_MASK) !=
-	    (flock_dst & CATHEDRAL_FLOCK_DOMAIN_MASK)) {
+	if ((flock_src & SANCTUM_FLOCK_DOMAIN_MASK) !=
+	    (flock_dst & SANCTUM_FLOCK_DOMAIN_MASK)) {
 		sanctum_log(LOG_NOTICE,
 		    "source and destination flock domains differ (%02x, %02x)",
-		    (u_int8_t)(flock_src & CATHEDRAL_FLOCK_DOMAIN_MASK),
-		    (u_int8_t)(flock_dst & CATHEDRAL_FLOCK_DOMAIN_MASK));
+		    (u_int8_t)(flock_src & SANCTUM_FLOCK_DOMAIN_MASK),
+		    (u_int8_t)(flock_dst & SANCTUM_FLOCK_DOMAIN_MASK));
 		return (-1);
 	}
 
@@ -1272,6 +1509,7 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	u_int32_t		bw;
 	u_int16_t		tid;
 	struct tunnel		*tun;
+	struct shroud		*shroud;
 
 	PRECOND(flock != NULL);
 	PRECOND(dst != NULL);
@@ -1295,6 +1533,22 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 		return (NULL);
 	}
 
+	if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+		LIST_FOREACH(shroud, &shrouds, list) {
+			if (shroud->flock == flock->id &&
+			    shroud->identity == id)
+				break;
+		}
+
+		if (shroud == NULL) {
+			sanctum_log(LOG_INFO, "%s has no shroud",
+			    cathedral_tunnel_name(flock, dst, info->tunnel));
+			return (NULL);
+		}
+	} else {
+		shroud = NULL;
+	}
+
 	if ((tun = calloc(1, sizeof(*tun))) == NULL)
 		fatal("calloc failed");
 
@@ -1302,6 +1556,7 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	tun->src = flock->id | flock->domain->id;
 
 	tun->update = now;
+	tun->shroud = shroud;
 	tun->id = info->tunnel;
 	tun->federated = catacomb;
 	tun->instance = info->instance;
@@ -1731,8 +1986,8 @@ cathedral_flock_lookup(u_int64_t id)
 	struct flockent		*flock;
 	u_int8_t		domain;
 
-	domain = id & CATHEDRAL_FLOCK_DOMAIN_MASK;
-	id &= ~CATHEDRAL_FLOCK_DOMAIN_MASK;
+	domain = id & SANCTUM_FLOCK_DOMAIN_MASK;
+	id &= ~SANCTUM_FLOCK_DOMAIN_MASK;
 
 	LIST_FOREACH(flock, &flocks, list) {
 		if (flock->id == id) {
@@ -1804,8 +2059,8 @@ cathedral_xflock_lookup(u_int64_t flock_a, u_int64_t flock_b)
 
 	xfl = NULL;
 
-	flock_a = flock_a & ~CATHEDRAL_FLOCK_DOMAIN_MASK;
-	flock_b = flock_b & ~CATHEDRAL_FLOCK_DOMAIN_MASK;
+	flock_a = flock_a & ~SANCTUM_FLOCK_DOMAIN_MASK;
+	flock_b = flock_b & ~SANCTUM_FLOCK_DOMAIN_MASK;
 
 	LIST_FOREACH(xfl, &xflocks, list) {
 		if ((xfl->flock_a == flock_a && xfl->flock_b == flock_b) ||
@@ -1853,7 +2108,7 @@ cathedral_ambry_find(struct ambries *ambries, u_int64_t src, u_int16_t tunnel)
 
 	PRECOND(ambries != NULL);
 
-	src = src & ~CATHEDRAL_FLOCK_DOMAIN_MASK;
+	src = src & ~SANCTUM_FLOCK_DOMAIN_MASK;
 
 	if (ambries->flock_a != src && ambries->flock_b != src) {
 		sanctum_log(LOG_NOTICE,
@@ -2043,8 +2298,10 @@ cathedral_settings_reload(void)
 	struct stat		st;
 	FILE			*fp;
 	struct tunnel		*entry;
+	struct flockdom		*domain;
 	struct xflock		*xfl, *xnext;
 	struct flockent		*flock, *fnext;
+	struct shroud		*shroud, *snext;
 	char			buf[256], *kw, *option;
 
 	if (sanctum->settings == NULL)
@@ -2073,14 +2330,18 @@ cathedral_settings_reload(void)
 	LIST_FOREACH(xfl, &xflocks, list)
 		xfl->retain = 0;
 
+	LIST_FOREACH(shroud, &shrouds, list)
+		shroud->retain = 0;
+
 	while ((entry = LIST_FIRST(&federations)) != NULL) {
 		LIST_REMOVE(entry, list);
 		free(entry);
 	}
 
+	LIST_INIT(&federations);
+
 	flock = NULL;
 	federation_count = 0;
-	LIST_INIT(&federations);
 
 	while ((kw = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
 		if (strlen(kw ) == 0)
@@ -2162,6 +2423,32 @@ cathedral_settings_reload(void)
 		free(flock);
 	}
 
+	for (shroud = LIST_FIRST(&shrouds); shroud != NULL; shroud = snext) {
+		snext = LIST_NEXT(shroud, list);
+
+		if (shroud->retain) {
+			sanctum_log(LOG_INFO,
+			    "shroud %" PRIx64 "-%08x retained",
+			    shroud->flock, shroud->identity);
+			continue;
+		}
+
+		sanctum_log(LOG_INFO, "shroud %" PRIx64 "-%08x is gone",
+		    shroud->flock, shroud->identity);
+
+		LIST_FOREACH(flock, &flocks, list) {
+			LIST_FOREACH(domain, &flock->domains, list) {
+				LIST_FOREACH(entry, &domain->tunnels, list) {
+					if (entry->shroud == shroud)
+						fatal("lingering shroud entry");
+				}
+			}
+		}
+
+		LIST_REMOVE(shroud, list);
+		free(shroud);
+	}
+
 	sanctum_log(LOG_INFO, "settings reloaded");
 
 	settings_last_mtime = st.st_mtime;
@@ -2224,6 +2511,8 @@ static void
 cathedral_settings_xflock(const char *option)
 {
 	struct xflock		*xfl;
+	struct allow		*allow;
+	struct flockent		*fa, *fb;
 	char			path[1024];
 	u_int64_t		flock_a, flock_b;
 
@@ -2235,13 +2524,13 @@ cathedral_settings_xflock(const char *option)
 		return;
 	}
 
-	if (cathedral_flock_lookup(flock_a) == NULL) {
+	if ((fa = cathedral_flock_lookup(flock_a)) == NULL) {
 		sanctum_log(LOG_NOTICE,
 		    "xflock flock %" PRIx64 " does not exist", flock_a);
 		return;
 	}
 
-	if (cathedral_flock_lookup(flock_b) == NULL) {
+	if ((fb = cathedral_flock_lookup(flock_b)) == NULL) {
 		sanctum_log(LOG_NOTICE,
 		    "xflock flock %" PRIx64 " does not exist", flock_b);
 		return;
@@ -2261,6 +2550,12 @@ cathedral_settings_xflock(const char *option)
 
 		LIST_INSERT_HEAD(&xflocks, xfl, list);
 	}
+
+	LIST_FOREACH(allow, &fa->allows, list)
+		cathedral_shroud_alloc(flock_a, flock_b, allow->id);
+
+	LIST_FOREACH(allow, &fb->allows, list)
+		cathedral_shroud_alloc(flock_b, flock_a, allow->id);
 
 	xfl->retain = 1;
 	cathedral_ambry_cache(path, &xfl->ambries);
@@ -2289,7 +2584,7 @@ cathedral_settings_flock(const char *option, struct flockent **out)
 		return;
 	}
 
-	id = id & ~(CATHEDRAL_FLOCK_DOMAIN_MASK);
+	id = id & ~SANCTUM_FLOCK_DOMAIN_MASK;
 	if ((flock = cathedral_flock_lookup(id)) != NULL) {
 		flock->retain = 1;
 		cathedral_flock_allows_clear(flock);
@@ -2315,13 +2610,14 @@ cathedral_settings_flock(const char *option, struct flockent **out)
 
 /*
  * Adds a new allow for a key ID and tunnel SPI.
+ * If shroud is enabled we add an entry for it.
  */
 static void
 cathedral_settings_allow(const char *option, struct flockent *flock)
 {
-	u_int8_t	spi;
-	u_int32_t	id, bw;
-	struct allow	*allow;
+	u_int8_t		spi;
+	u_int32_t		id, bw;
+	struct allow		*allow;
 
 	PRECOND(option != NULL);
 
@@ -2342,6 +2638,9 @@ cathedral_settings_allow(const char *option, struct flockent *flock)
 	allow->bw = bw;
 	allow->id = id;
 	allow->spi = spi;
+
+	if (sanctum->flags & SANCTUM_FLAG_SHROUD)
+		cathedral_shroud_alloc(flock->id, flock->id, id);
 
 	LIST_INSERT_HEAD(&flock->allows, allow, list);
 }

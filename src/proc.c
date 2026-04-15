@@ -119,6 +119,15 @@ sanctum_proc_start(void)
 	io.purgatory = sanctum_ring_alloc(1024);
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
+	    (sanctum->flags & SANCTUM_FLAG_SHROUD)) {
+		io.stx = sanctum_alloc_shared(sizeof(*io.stx));
+		io.srx = sanctum_alloc_shared(sizeof(*io.srx));
+	} else {
+		io.stx = NULL;
+		io.srx = NULL;
+	}
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 	    sanctum->mode != SANCTUM_MODE_LITURGY) {
 		io.clear = sanctum_platform_tundev_create();
 		io.offer = sanctum_ring_alloc(64);
@@ -126,8 +135,8 @@ sanctum_proc_start(void)
 		io.bless = sanctum_ring_alloc(1024);
 		io.heaven = sanctum_ring_alloc(1024);
 		io.confess = sanctum_ring_alloc(1024);
-		io.tx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
-		io.rx = sanctum_alloc_shared(sizeof(struct sanctum_key), NULL);
+		io.tx = sanctum_alloc_shared(sizeof(*io.tx));
+		io.rx = sanctum_alloc_shared(sizeof(*io.rx));
 	} else {
 		io.clear = -1;
 		io.tx = NULL;
