@@ -886,7 +886,6 @@ hymn_mtu(int argc, char *argv[])
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x mtu changed to %s\n", flock, src, dst, argv[1]);
-	printf("tunnel modified, please restart it\n");
 
 	return (0);
 }
@@ -933,7 +932,8 @@ hymn_nat(int argc, char *argv[])
 
 	hymn_config_save(path, flock, &config);
 
-	printf("tunnel modified, please restart it\n");
+	printf("%s-%02x-%02x nat has been turned %s\n",
+	    flock, config.src, config.dst, (port == 0) ? "off" : "on");
 
 	return (0);
 }
@@ -1032,7 +1032,8 @@ hymn_shroud(int argc, char *argv[])
 
 	hymn_config_save(path, flock, &config);
 
-	printf("tunnel modified, please restart it\n");
+	printf("%s-%02x-%02x shroud has been turned %s\n",
+	    flock, config.src, config.dst, (config.shroud == 0) ? "off" : "on");
 
 	return (0);
 }
