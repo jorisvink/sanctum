@@ -132,6 +132,7 @@ static void	usage_simple(const char *) __attribute__((noreturn));
 static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
 static void	usage_mtu(void) __attribute__((noreturn));
+static void	usage_nat(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_shroud(void) __attribute__((noreturn));
@@ -163,6 +164,7 @@ static int	hymn_up(int, char **);
 static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
 static int	hymn_mtu(int, char **);
+static int	hymn_nat(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
@@ -245,6 +247,7 @@ static const struct {
 	{ "add",		hymn_add },
 	{ "del",		hymn_del },
 	{ "mtu",		hymn_mtu },
+	{ "nat",		hymn_nat },
 	{ "status",		hymn_status },
 	{ "list",		hymn_list },
 	{ "down",		hymn_down },
@@ -883,6 +886,53 @@ hymn_mtu(int argc, char *argv[])
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x mtu changed to %s\n", flock, src, dst, argv[1]);
+	printf("tunnel modified, please restart it\n");
+
+	return (0);
+}
+
+static void
+usage_nat(void)
+{
+	fprintf(stderr,
+	    "usage: hymn nat [name | [<flock>-]<src>-<dst>] [port]\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "If given port is 0, NAT detection is turned off.\n");
+	fprintf(stderr, "The ability to create a peer-to-peer tunnel ");
+	fprintf(stderr, "depends on NAT detection working.\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr,
+	    "Without NAT detection your traffic is relayed over cathedrals.\n");
+
+	exit(1);
+}
+
+static int
+hymn_nat(int argc, char *argv[])
+{
+	u_int16_t		port;
+	struct config		config;
+	const char		*flock;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_nat();
+
+	port = hymn_number(argv[1], 10, 1024, USHRT_MAX);
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_route();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	config.cathedral_nat_port = port;
+
+	hymn_config_save(path, flock, &config);
+
 	printf("tunnel modified, please restart it\n");
 
 	return (0);
@@ -1937,6 +1987,8 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		    hymn_ip_mask_str(&config.tun), config.tun_mtu);
 	}
 
+	printf("\n");
+
 	if (config.peer_cathedral) {
 		printf("  cathedral\t%s", config.cathedral);
 	} else {
@@ -1952,6 +2004,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	printf("\n");
 
 	if (config.peer_cathedral) {
+		printf("    nat-port\t%u\n", config.cathedral_nat_port);
 		printf("    flock-src\t%" PRIx64 "\n", config.cathedral_flock);
 
 		if (config.cathedral_flock_dst != 0 &&
