@@ -918,7 +918,7 @@ hymn_nat(int argc, char *argv[])
 	if (argc != 2)
 		usage_nat();
 
-	port = hymn_number(argv[1], 10, 1024, USHRT_MAX);
+	port = hymn_number(argv[1], 10, 0, USHRT_MAX);
 
 	hymn_config_init(&config);
 
@@ -2004,7 +2004,12 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	printf("\n");
 
 	if (config.peer_cathedral) {
-		printf("    nat-port\t%u\n", config.cathedral_nat_port);
+		if (config.cathedral_nat_port) {
+			printf("    nat-port\t%u\n", config.cathedral_nat_port);
+		} else {
+			printf("    nat     \tdisabled\n");
+		}
+
 		printf("    flock-src\t%" PRIx64 "\n", config.cathedral_flock);
 
 		if (config.cathedral_flock_dst != 0 &&
