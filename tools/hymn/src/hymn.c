@@ -495,6 +495,15 @@ hymn_liturgy(int argc, char *argv[])
 			if ((config.cosk_path = strdup(argv[i + 1])) == NULL)
 				fatal("strdup");
 			which |= HYMN_COSK;
+		} else if (!strcmp(argv[i], "shroud")) {
+			if (!strcmp(argv[i + 1], "yes")) {
+				config.shroud = 1;
+				config.tun_mtu = 1374;
+			} else if (!strcmp(argv[i + 1], "no")) {
+				config.shroud = 0;
+			} else {
+				fatal("shroud keyword should be yes|no");
+			}
 		} else if (!strcmp(argv[i], "device")) {
 			if (!strcmp(argv[i + 1], "tap"))
 				config.tap = 1;
@@ -1868,7 +1877,7 @@ hymn_tunnel_up(const char *flock, u_int8_t src, u_int8_t dst)
 	}
 
 	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-		fatal("sanctum failed to daemonize");
+		fatal("sanctum failed to daemonize (check syslog)");
 
 	printf("waiting for %s-%02x-%02x to go up ... ", flock, src, dst);
 	fflush(stdout);
