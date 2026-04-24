@@ -135,6 +135,7 @@ install-man:
 	install -m 444 share/man/man5/sanctum.conf.5 $(DESTDIR)$(MAN_DIR)/man5
 
 install-examples:
+	mkdir -p $(DESTDIR)/etc
 	install -m 644 share/example.conf $(DESTDIR)/etc/sanctum.conf
 
 install-darwin-sb:
