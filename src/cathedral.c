@@ -302,9 +302,9 @@ static void	cathedral_settings_flock(const char *, struct flockent **);
 static void	cathedral_ambry_send(struct flockent *, struct flockent *,
 		    struct sanctum_info_offer *, struct sockaddr_in *,
 		    u_int32_t);
-static void	cathedral_info_send(struct flockent *, struct flockent *,
-		    struct sanctum_info_offer *, struct sockaddr_in *,
-		    u_int32_t);
+static void	cathedral_info_send(struct tunnel *, struct flockent *,
+		    struct flockent *, struct sanctum_info_offer *,
+		    struct sockaddr_in *, u_int32_t);
 static void	cathedral_liturgy_send(struct flockent *,
 		    struct liturgy *, struct sockaddr_in *, u_int32_t);
 static void	cathedral_p2pinfo_send(struct flockent *,
@@ -731,8 +731,10 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		sanctum_log(LOG_INFO, "%s peer restart detected",
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
 	} else if (catacomb == 0 && nat == 0) {
-		if (tun->peerinfo)
-			cathedral_info_send(flock, dst, info, &pkt->addr, id);
+		if (tun->peerinfo) {
+			cathedral_info_send(tun,
+			    flock, dst, info, &pkt->addr, id);
+		}
 
 		if (now >= tun->update &&
 		    (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
@@ -1705,8 +1707,9 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
  * connection towards each other, skipping the cathedral for traffic.
  */
 static void
-cathedral_info_send(struct flockent *flock, struct flockent *dst,
-    struct sanctum_info_offer *info, struct sockaddr_in *sin, u_int32_t id)
+cathedral_info_send(struct tunnel *tun, struct flockent *flock,
+    struct flockent *dst, struct sanctum_info_offer *info,
+    struct sockaddr_in *sin, u_int32_t id)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
@@ -1714,6 +1717,7 @@ cathedral_info_send(struct flockent *flock, struct flockent *dst,
 	u_int16_t			tunnel;
 	char				secret[1024];
 
+	PRECOND(tun != NULL);
 	PRECOND(flock != NULL);
 	PRECOND(info != NULL);
 	PRECOND(sin != NULL);
@@ -1734,8 +1738,8 @@ cathedral_info_send(struct flockent *flock, struct flockent *dst,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_INFO);
 
 	info = &op->data.offer.info;
-	info->local_port = sin->sin_port;
-	info->local_ip = sin->sin_addr.s_addr;
+	info->local_port = tun->ip;
+	info->local_ip = tun->port;
 
 	/*
 	 * Sanctum does not share any internal ip addresses with the cathedral
@@ -1747,13 +1751,17 @@ cathedral_info_send(struct flockent *flock, struct flockent *dst,
 	 * relay their traffic, otherwise their fw/gw will be unhappy when
 	 * they start sending traffic to its external ip from an internal
 	 * interface, which is usually going to be the case.
+	 *
+	 * We however indicate to the peers that they share the same
+	 * external ipv4 address. This way they can act upon it and
+	 * start local discovery.
 	 */
-	if (peer->peerinfo && peer->p2p_ip != sin->sin_addr.s_addr) {
+	if (peer->peerinfo && tun->p2p_ip != peer->p2p_ip) {
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {
-		if (peer->p2p_cooldown == 0 &&
-		    peer->p2p_ip == sin->sin_addr.s_addr)
+		if (tun->p2p_cooldown == 0 && peer->p2p_cooldown == 0 &&
+		    tun->p2p_ip == peer->p2p_ip)
 			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
 
 		info->peer_port = sanctum->local.sin_port;
