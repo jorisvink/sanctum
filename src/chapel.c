@@ -137,7 +137,7 @@ static u_int64_t		cathedral_next = 0;
 
 /* Current offer TTL and next send intervals. */
 static u_int64_t		offer_ttl = 15;
-static u_int64_t		offer_next_send = 3;
+static u_int64_t		offer_next_send = 1;
 
 /* Randomly generated local ID. */
 static u_int64_t		local_id = 0;
@@ -355,7 +355,7 @@ chapel_peer_check(u_int64_t now)
 	}
 
 	offer_ttl = 15;
-	offer_next_send = 3;
+	offer_next_send = 1;
 
 	chapel_erase_rx();
 	chapel_erase_tx();
@@ -1034,7 +1034,7 @@ chapel_offer_clear(void)
 
 	offer_ttl = 15;
 	offer_next = 0;
-	offer_next_send = 3;
+	offer_next_send = 1;
 
 	nyfe_zeroize(offer, sizeof(*offer));
 	free(offer);
