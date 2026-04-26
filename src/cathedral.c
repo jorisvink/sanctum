@@ -1751,6 +1751,9 @@ cathedral_info_send(struct flockent *flock, struct flockent *dst,
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {
+		if (peer->p2p_ip == sin->sin_addr.s_addr)
+			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
+
 		info->peer_port = sanctum->local.sin_port;
 		info->peer_ip = sanctum->local.sin_addr.s_addr;
 	}
