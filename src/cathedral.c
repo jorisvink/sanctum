@@ -759,6 +759,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			tun->peerinfo = 0;
 		} else if (now >= tun->p2p_cooldown) {
 			tun->peerinfo = 1;
+			tun->p2p_cooldown = 0;
 			tun->p2p_port = pkt->addr.sin_port;
 			tun->p2p_ip = pkt->addr.sin_addr.s_addr;
 		}
@@ -1751,7 +1752,8 @@ cathedral_info_send(struct flockent *flock, struct flockent *dst,
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {
-		if (peer->p2p_ip == sin->sin_addr.s_addr)
+		if (peer->p2p_cooldown == 0 &&
+		    peer->p2p_ip == sin->sin_addr.s_addr)
 			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
 
 		info->peer_port = sanctum->local.sin_port;
