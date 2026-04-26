@@ -304,7 +304,7 @@ static void	cathedral_ambry_send(struct flockent *, struct flockent *,
 		    u_int32_t);
 static void	cathedral_info_send(struct tunnel *, struct flockent *,
 		    struct flockent *, struct sanctum_info_offer *,
-		    struct sockaddr_in *, u_int32_t);
+		    struct sockaddr_in *, u_int32_t, u_int64_t);
 static void	cathedral_liturgy_send(struct flockent *,
 		    struct liturgy *, struct sockaddr_in *, u_int32_t);
 static void	cathedral_p2pinfo_send(struct flockent *,
@@ -732,8 +732,8 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
 	} else if (catacomb == 0 && nat == 0) {
 		if (tun->peerinfo) {
-			cathedral_info_send(tun,
-			    flock, dst, info, &pkt->addr, id);
+			cathedral_info_send(tun, flock, dst, info,
+			    &pkt->addr, id, now);
 		}
 
 		if (now >= tun->update &&
@@ -761,7 +761,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			tun->peerinfo = 0;
 		} else if (now >= tun->p2p_cooldown) {
 			tun->peerinfo = 1;
-			tun->p2p_cooldown = 0;
 			tun->p2p_port = pkt->addr.sin_port;
 			tun->p2p_ip = pkt->addr.sin_addr.s_addr;
 		}
@@ -1709,13 +1708,14 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 static void
 cathedral_info_send(struct tunnel *tun, struct flockent *flock,
     struct flockent *dst, struct sanctum_info_offer *info,
-    struct sockaddr_in *sin, u_int32_t id)
+    struct sockaddr_in *sin, u_int32_t id, u_int64_t now)
 {
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	struct tunnel			*peer;
 	u_int16_t			tunnel;
 	char				secret[1024];
+	int				p2p_cooldown;
 
 	PRECOND(tun != NULL);
 	PRECOND(flock != NULL);
@@ -1741,6 +1741,11 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 	info->local_port = tun->ip;
 	info->local_ip = tun->port;
 
+	if (now >= tun->p2p_cooldown && now >= peer->p2p_cooldown)
+		p2p_cooldown = 0;
+	else
+		p2p_cooldown = 1;
+
 	/*
 	 * Sanctum does not share any internal ip addresses with the cathedral
 	 * and thus the cathedral cannot determine if they would be able to
@@ -1760,8 +1765,7 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {
-		if (tun->p2p_cooldown == 0 && peer->p2p_cooldown == 0 &&
-		    tun->p2p_ip == peer->p2p_ip)
+		if (p2p_cooldown == 0 && tun->p2p_ip == peer->p2p_ip)
 			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
 
 		info->peer_port = sanctum->local.sin_port;
