@@ -731,10 +731,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		sanctum_log(LOG_INFO, "%s peer restart detected",
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
 	} else if (catacomb == 0 && nat == 0) {
-		if (tun->peerinfo) {
-			cathedral_info_send(tun, flock, dst, info,
-			    &pkt->addr, id, now);
-		}
+		cathedral_info_send(tun, flock, dst, info, &pkt->addr, id, now);
 
 		if (now >= tun->update &&
 		    (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)) {
@@ -1761,7 +1758,7 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 	 * external ipv4 address. This way they can act upon it and
 	 * start local discovery.
 	 */
-	if (peer->peerinfo && tun->p2p_ip != peer->p2p_ip) {
+	if (tun->peerinfo && peer->peerinfo && tun->p2p_ip != peer->p2p_ip) {
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {
