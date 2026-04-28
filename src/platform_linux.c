@@ -287,7 +287,7 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 {
 	int		val;
 
-	PRECOND(fd > 0);
+	PRECOND(fd >= 0);
 	PRECOND(on == 0 || on == 1);
 
 	if (on)
