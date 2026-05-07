@@ -33,10 +33,10 @@
 #include "libnyfe.h"
 
 /* The number of seconds in between allowed federation for offers. */
-#define CATHEDRAL_FEDERATE_NEXT		(1 * 1000)
+#define CATHEDRAL_FEDERATE_NEXT		(3 * 1000)
 
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
-#define CATHEDRAL_TUNNEL_MAX_AGE	(30 * 1000)
+#define CATHEDRAL_TUNNEL_MAX_AGE	(120 * 1000)
 
 /* The interval at which we check for expired tunnel and liturgy entries. */
 #define CATHEDRAL_TUNNEL_EXPIRE_NEXT	(10 * 1000)
