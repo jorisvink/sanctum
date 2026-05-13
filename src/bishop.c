@@ -583,21 +583,20 @@ bishop_liturgy_address(char *ip, size_t len, u_int8_t a, u_int8_t b)
 static void
 bishop_control_init(void)
 {
-	struct sockaddr_un	sun;
+	int			len;
+	struct sanctum_sun	cfg;
 
 	PRECOND(cfd == -1);
 
-	if ((cfd = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
-		fatal("socket: %s", errno_s);
+	cfg.uid = 0;
+	cfg.gid = 0;
 
-	bishop_unix_socket(&sun, HYMN_SOCKET_PATH_FMT,
+	len = snprintf(cfg.path, sizeof(cfg.path), HYMN_SOCKET_PATH_FMT,
 	    sanctum->cathedral_flock, sanctum->tun_spi & 0xff);
+	if (len == -1 || (size_t)len >= sizeof(cfg.path))
+		fatal("bishop client socket path too long");
 
-	if (unlink(sun.sun_path) && errno != ENOENT)
-		fatal("unlink(%s): %s", sun.sun_path, errno_s);
-
-	if (bind(cfd, (struct sockaddr *)&sun, sizeof(sun)) == -1)
-		fatal("bind(%s): %s", sun.sun_path, errno_s);
+	cfd = sanctum_unix_socket(&cfg);
 }
 
 /*
