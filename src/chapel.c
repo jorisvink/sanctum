@@ -296,8 +296,14 @@ sanctum_chapel(struct sanctum_proc *proc)
 		}
 	}
 
+	if (offer != NULL)
+		chapel_offer_clear();
+
 	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
+
+	nyfe_zeroize_warn();
+	nyfe_zeroize_all();
 
 	exit(0);
 }

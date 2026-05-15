@@ -196,6 +196,9 @@ main(int argc, char *argv[])
 		sleep(1);
 	}
 
+	nyfe_zeroize_warn();
+	nyfe_zeroize_all();
+
 	sanctum_proc_shutdown();
 	sanctum_pidfile_unlink();
 
@@ -301,7 +304,17 @@ signal_hdlr(int sig)
 static void
 signal_memfault(int sig)
 {
+	/*
+	 * We are about to be killed due to a segmentation fault,
+	 * try to zeroize all allocated sensitive assets.
+	 *
+	 * nyfe_zeroize_all() calls free() which isn't reentrant or
+	 * async-signal-safe but we are single threaded, no other code
+	 * is going to be running at this point or after this call due
+	 * to the abort().
+	 */
 	nyfe_zeroize_all();
+
 	abort();
 }
 

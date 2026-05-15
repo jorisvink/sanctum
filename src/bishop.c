@@ -191,6 +191,9 @@ sanctum_bishop(struct sanctum_proc *proc)
 		    sun.sun_path, errno_s);
 	}
 
+	nyfe_zeroize_warn();
+	nyfe_zeroize_all();
+
 	exit(0);
 }
 
