@@ -65,10 +65,9 @@ and how it is used.
 All keys are located in one of the key processes like chapel, cathedral,
 shrine or pilgrim and are not available from any of the other processes.
 
-The exception is the TEK (Traffic Encapsulation Key) as this key is only
-used to prevent traffic analysis. This key is available in purgatory-rx
-and purgatory-tx, but does not need to be explicitly wiped from other
-processes due to its nature.
+The exception are the shroud keys and shroud identities, these are
+available in purgatory-tx and purgatory-rx and are not seen as cryptographic
+material as they only provide traffic analysis protection.
 
 ## Base key derivation
 

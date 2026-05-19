@@ -259,6 +259,12 @@ struct sanctum_p2p_info_offer {
 /* Set in an info offer if peer wants remembrance. */
 #define SANCTUM_INFO_FLAG_REMEMBRANCE		(1 << 0)
 
+/*
+ * Set in an info offer from a cathedral if it sees the same external ipv4
+ * address for both peers related to the same tunnel.
+ */
+#define SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4	(1 << 1)
+
 struct sanctum_info_offer {
 	u_int32_t		flags;
 
@@ -476,9 +482,9 @@ struct sanctum_shroud_hdr {
  * Maximum packet sizes we can receive from the interfaces.
  */
 #if defined(SANCTUM_JUMBO_FRAMES)
-#define SANCTUM_PACKET_DATA_LEN		9000
+#define SANCTUM_PACKET_DATA_LEN		9216
 #else
-#define SANCTUM_PACKET_DATA_LEN		1500
+#define SANCTUM_PACKET_DATA_LEN		1522
 #endif
 
 /*

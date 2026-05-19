@@ -100,7 +100,7 @@ sanctum_logv(int prio, const char *fmt, va_list args)
  * one from the packet.
  *
  * If we're using a cathedral, do not allow a swap back to the cathedral
- * until a the required time has passed.
+ * until the required time has passed.
  *
  * This MUST ONLY be called AFTER integrity has been verified.
  */

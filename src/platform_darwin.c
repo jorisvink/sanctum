@@ -278,7 +278,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	size_t		flen;
 	const char	*params[16];
 	int		fd, len, idx;
-	char		*profile, *errmsg, path[1024];
+	char		*profile, *errmsg, path[1024], spath[1024];
 
 	PRECOND(proc != NULL);
 
@@ -304,9 +304,9 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	}
 
 	if (sanctum->secret != NULL) {
-		len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
-		if (len == -1 || (size_t)len >= sizeof(path))
-			fatal("failed to construct new path");
+		len = snprintf(spath, sizeof(spath), "%s.new", sanctum->secret);
+		if (len == -1 || (size_t)len >= sizeof(spath))
+			fatal("failed to construct new secret path");
 	}
 
 	/*
@@ -321,7 +321,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		params[idx++] = "KEY_PATH";
 		params[idx++] = sanctum->secret;
 		params[idx++] = "KEY_PATH_NEW";
-		params[idx++] = path;
+		params[idx++] = spath;
 	}
 
 	if (sanctum->cathedral_cosk != NULL) {

@@ -154,6 +154,9 @@ static u_int64_t		ambry_received = 0;
 /* The active ambry generation, initially 0. */
 static u_int32_t		ambry_generation = 0;
 
+/* The number of exchanges that timed out. */
+static u_int32_t		exchanges_timed_out = 0;
+
 /*
  * Chapel - The keying process.
  *
@@ -260,6 +263,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 		    (now - ambry_received) >= AMBRY_RENEGOTIATION_LIMIT) {
 			offer_force = 0;
 			ambry_switch = 0;
+			exchanges_timed_out++;
 
 			sanctum_log(LOG_NOTICE, "unable to renegotiate with "
 			    "peer %" PRIu64 " seconds after ambry swap, "
@@ -292,8 +296,14 @@ sanctum_chapel(struct sanctum_proc *proc)
 		}
 	}
 
+	if (offer != NULL)
+		chapel_offer_clear();
+
 	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
+
+	nyfe_zeroize_warn();
+	nyfe_zeroize_all();
 
 	exit(0);
 }
@@ -809,6 +819,14 @@ chapel_offer_check(u_int64_t now)
 	if (now < offer_next)
 		return;
 
+	if (exchanges_timed_out >= 4) {
+		sanctum_log(LOG_NOTICE,
+		    "peer might be down, waiting a bit before next exchange");
+		offer_next = now + 60;
+		exchanges_timed_out = 0;
+		return;
+	}
+
 	offer_now = 0;
 	reason = NULL;
 
@@ -932,6 +950,7 @@ chapel_offer_send(u_int64_t now)
 
 	if (offer->ttl == 0) {
 		chapel_offer_clear();
+		exchanges_timed_out++;
 
 		/* Try again on an ambry swap after 10 seconds. */
 		if (ambry_switch) {
@@ -1272,6 +1291,7 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 	 * the same ambry and can thus clear the ambry_switch flag.
 	 */
 	ambry_switch = 0;
+	exchanges_timed_out = 0;
 }
 
 /*

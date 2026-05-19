@@ -47,7 +47,8 @@ projects directly related to sanctum.
 | ---- | ----------- |
 | libkyrka | A library implementation of the sanctum protocol. |
 | confessions | A cli tool for voice chat over the sanctum protocol. |
-| litany | A qt6 application for text chat over the sanctum protocol. |
+| gospel | A weechat plugin for text communication. |
+| tier6 | Building a global ethernet network over the sanctum protocol. |
 
 ## Other
 

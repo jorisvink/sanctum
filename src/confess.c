@@ -115,6 +115,9 @@ sanctum_confess(struct sanctum_proc *proc)
 	sanctum_config_release();
 	sanctum_log(LOG_NOTICE, "exiting");
 
+	nyfe_zeroize_warn();
+	nyfe_zeroize_all();
+
 	exit(0);
 }
 
@@ -222,8 +225,10 @@ confess_packet_process(struct sanctum_packet *pkt)
 	flock_dst = be64toh(hdr->flock.dst);
 
 	if (flock_src != sanctum->cathedral_flock_dst ||
-	    flock_dst != sanctum->cathedral_flock)
+	    flock_dst != sanctum->cathedral_flock) {
+		sanctum_packet_release(pkt);
 		return;
+	}
 
 	if (confess_with_slot(&state.active, pkt) != -1)
 		return;

@@ -28,11 +28,11 @@ struct sanctum_ifstat {
 	volatile u_int64_t	bytes;
 };
 
-/* ctl requests, some go to keying, some go to status. */
+/* All supported control requests. */
 #define SANCTUM_CTL_STATUS		1
 
 /*
- * A request to the status process for sanctum.
+ * A request to the control process for sanctum.
  */
 struct sanctum_ctl {
 	u_int8_t	cmd;

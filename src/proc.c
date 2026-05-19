@@ -163,17 +163,18 @@ sanctum_proc_start(void)
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 	    sanctum->mode != SANCTUM_MODE_LITURGY) {
-		sanctum_proc_create(SANCTUM_PROC_BLESS, sanctum_bless, &io);
-		sanctum_proc_create(SANCTUM_PROC_CONFESS, sanctum_confess, &io);
-
 		if (sanctum->mode != SANCTUM_MODE_SHRINE) {
 			sanctum_proc_create(SANCTUM_PROC_HEAVEN_RX,
 			    sanctum_heaven_rx, &io);
+			sanctum_proc_create(SANCTUM_PROC_BLESS,
+			    sanctum_bless, &io);
 		}
 
 		if (sanctum->mode != SANCTUM_MODE_PILGRIM) {
 			sanctum_proc_create(SANCTUM_PROC_HEAVEN_TX,
 			    sanctum_heaven_tx, &io);
+			sanctum_proc_create(SANCTUM_PROC_CONFESS,
+			    sanctum_confess, &io);
 		}
 	}
 
