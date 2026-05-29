@@ -339,30 +339,29 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		return (-1);
 
 	now = sanctum_atomic_read(&sanctum->uptime);
-	sanctum_atomic_write(&sanctum->heartbeat, now);
+	sanctum_atomic_write(&sanctum->grace, now);
 
-	if (tail->next == SANCTUM_PACKET_HEARTBEAT) {
-		sanctum_packet_release(pkt);
-		sanctum_atomic_add(&sanctum->rx.pkt, 1);
-		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
-		return (0);
-	}
+	switch (tail->next) {
+	case SANCTUM_PACKET_IP:
+		if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
+			if (pkt->length < sizeof(*ip))
+				return (-1);
 
-	if (tail->next != IPPROTO_IP)
+			ip = sanctum_packet_data(pkt);
+			len = be16toh(ip->ip_len);
+			if (len > pkt->length || len > sanctum->tun_mtu)
+				return (-1);
+
+			pkt->length = len;
+		}
+		break;
+	case SANCTUM_PACKET_GRACE:
+		break;
+	default:
 		return (-1);
-
-	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
-		if (pkt->length < sizeof(*ip))
-			return (-1);
-
-		ip = sanctum_packet_data(pkt);
-		len = be16toh(ip->ip_len);
-		if (len > pkt->length || len > sanctum->tun_mtu)
-			return (-1);
-
-		pkt->length = len;
 	}
 
+	pkt->type = tail->next;
 	pkt->target = SANCTUM_PROC_HEAVEN_TX;
 
 	if (sanctum_ring_queue(io->heaven, pkt) == -1)

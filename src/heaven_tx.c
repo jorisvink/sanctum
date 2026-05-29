@@ -129,6 +129,18 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
 	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
+	if (pkt->type == SANCTUM_PACKET_GRACE) {
+		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
+		sanctum_atomic_add(&sanctum->rx.pkt, 1);
+		sanctum_packet_release(pkt);
+		return;
+	}
+
+	if (pkt->type != SANCTUM_PACKET_IP) {
+		sanctum_packet_release(pkt);
+		return;
+	}
+
 	if (sanctum->flags & SANCTUM_FLAG_USE_TAP) {
 		if (heaven_tx_l2_sinner(pkt) == -1) {
 			sanctum_packet_release(pkt);

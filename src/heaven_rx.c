@@ -30,6 +30,7 @@
 
 static void	heaven_rx_drop_access(void);
 static void	heaven_rx_recv_packets(int);
+static void	heaven_rx_grace_generate(void);
 
 /* Temporary packet for when the packet pool is empty. */
 static struct sanctum_packet	tpkt;
@@ -37,9 +38,20 @@ static struct sanctum_packet	tpkt;
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 
+/* If we should wakeup SANCTUM_PROC_BLESS. */
+static int		bless_wakeup = 0;
+
+/* Local timekeeping for graces. */
+static u_int64_t	now = 0;
+static u_int64_t	grace_next = 0;
+static u_int64_t	grace_reset = 0;
+static u_int64_t	grace_interval = SANCTUM_GRACE_INTERVAL;
+
 /*
  * The process responsible for receiving packets on the heaven side
  * and enqueuing them for encryption via bless.
+ *
+ * We also generate grace traffic from here when required.
  */
 void
 sanctum_heaven_rx(struct sanctum_proc *proc)
@@ -66,6 +78,8 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 	pfd.events = POLLIN;
 
 	running = 1;
+	now = sanctum_atomic_read(&sanctum->uptime);
+	grace_next = now + grace_interval;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -77,13 +91,34 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 			}
 		}
 
-		if (poll(&pfd, 1, -1) == -1) {
+		now = sanctum_atomic_read(&sanctum->uptime);
+
+		if (poll(&pfd, 1, grace_next - now) == -1) {
 			if (errno == EINTR)
 				continue;
 			fatal("poll: %s", errno_s);
 		}
 
+		now = sanctum_atomic_read(&sanctum->uptime);
+
+		if (sanctum_atomic_cas_simple(&sanctum->holepunch, 1, 0)) {
+			grace_next = now;
+			grace_interval = 1;
+			grace_reset = now + SANCTUM_GRACE_INTERVAL;
+		} else if (grace_reset != 0 && now >= grace_reset) {
+			grace_reset = 0;
+			grace_interval = SANCTUM_GRACE_INTERVAL;
+		}
+
+		if (grace_next != 0 && now >= grace_next)
+			heaven_rx_grace_generate();
+
 		heaven_rx_recv_packets(io->clear);
+
+		if (bless_wakeup) {
+			bless_wakeup = 0;
+			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+		}
 	}
 
 	sanctum_config_release();
@@ -132,12 +167,9 @@ heaven_rx_recv_packets(int fd)
 {
 	ssize_t				ret;
 	struct sanctum_packet		*pkt;
-	int				wakeup;
 
 	PRECOND(fd >= 0);
 	PRECOND(sanctum->mode != SANCTUM_MODE_SHRINE);
-
-	wakeup = 0;
 
 	for (;;) {
 		if ((pkt = sanctum_packet_get()) == NULL)
@@ -168,14 +200,36 @@ heaven_rx_recv_packets(int fd)
 			continue;
 
 		pkt->length = ret;
+		pkt->type = SANCTUM_PACKET_IP;
 		pkt->target = SANCTUM_PROC_BLESS;
 
 		if (sanctum_ring_queue(io->bless, pkt) == -1)
 			sanctum_packet_release(pkt);
 		else
-			wakeup = 1;
+			bless_wakeup = 1;
 	}
+}
 
-	if (wakeup)
-		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+/*
+ * Generate a grace packet that is to be sent to our peer.
+ * This ends up on the receiving side its heaven-tx process.
+ */
+static void
+heaven_rx_grace_generate(void)
+{
+	struct sanctum_packet		*pkt;
+
+	if ((pkt = sanctum_packet_get()) == NULL)
+		return;
+
+	pkt->length = 0;
+	pkt->target = SANCTUM_PROC_BLESS;
+	pkt->next = SANCTUM_PACKET_GRACE;
+
+	if (sanctum_ring_queue(io->bless, pkt) == -1)
+		sanctum_packet_release(pkt);
+	else
+		bless_wakeup = 1;
+
+	grace_next = now + grace_interval;
 }

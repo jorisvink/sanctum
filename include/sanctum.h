@@ -119,11 +119,14 @@ extern const char	*sanctum_build_date;
 /* The length of the seed sent with the shrouded header. */
 #define SANCTUM_SHROUD_SEED_LENGTH	16
 
-/* ESP next_proto value for a heartbeat. */
-#define SANCTUM_PACKET_HEARTBEAT	0xfc
+/* The protocol tail value for an ip packet. */
+#define SANCTUM_PACKET_IP		0x00
 
-/* The number of seconds between heartbeats. */
-#define SANCTUM_HEARTBEAT_INTERVAL	15
+/* The protocol tail value for a grace packet. */
+#define SANCTUM_PACKET_GRACE		0xfc
+
+/* The number of seconds between graces. */
+#define SANCTUM_GRACE_INTERVAL		15
 
 /* Maximum number of packets that can be sent under an SA. */
 #define SANCTUM_SA_PACKET_SOFT		(1ULL << 33)
@@ -506,7 +509,8 @@ struct sanctum_packet {
 	struct sockaddr_in	addr;
 	u_int8_t		next;
 	size_t			length;
-	u_int32_t		target;
+	u_int16_t		target;
+	u_int16_t		type;
 	u_int8_t		buf[SANCTUM_PACKET_MAX_LEN];
 };
 
@@ -701,10 +705,10 @@ struct sanctum_state {
 	/* RX SA pending. */
 	volatile u_int32_t	rx_pending;
 
-	/* The last heartbeat received from the peer. */
-	volatile u_int64_t	heartbeat;
+	/* The last time we received a grace from our peer. */
+	volatile u_int64_t	grace;
 
-	/* Do hole punching (by sending many heartbeats for a bit). */
+	/* Do hole punching (by sending many graces for a bit). */
 	volatile int		holepunch;
 
 	/* Process wakeup states. */

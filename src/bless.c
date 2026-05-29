@@ -25,12 +25,7 @@
 
 #include "sanctum.h"
 
-/* After installing a new TX key, we pulse heartbeats for this duration. */
-#define BLESS_KEY_HEARTBEAT_INTERVAL	1
-#define BLESS_KEY_HEARTBEAT_DURATION	5
-
 static void	bless_drop_access(void);
-static void	bless_packet_heartbeat(void);
 static void	bless_packet_process(struct sanctum_packet *);
 
 /* The shared queues. */
@@ -39,11 +34,8 @@ static struct sanctum_proc_io	*io = NULL;
 /* The local state for TX. */
 static struct sanctum_sa	state;
 
-/* Local timekeeping for heartbeats. */
+/* The current time. */
 static u_int64_t	now = 0;
-static u_int64_t	heartbeat_next = 0;
-static u_int64_t	heartbeat_reset = 0;
-static u_int64_t	heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
 
 /* If we should wakeup SANCTUM_PROC_PURGATORY_TX. */
 static int		tx_wakeup = 0;
@@ -76,8 +68,6 @@ sanctum_bless(struct sanctum_proc *proc)
 	sanctum_proc_started(proc);
 
 	running = 1;
-	now = sanctum_atomic_read(&sanctum->uptime);
-	heartbeat_next = now + heartbeat_interval;
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -89,29 +79,17 @@ sanctum_bless(struct sanctum_proc *proc)
 			}
 		}
 
-		now = sanctum_atomic_read(&sanctum->uptime);
-
 		if (sanctum_ring_pending(io->bless) == 0)
-			sanctum_proc_suspend(heartbeat_next - now);
+			sanctum_proc_suspend(-1);
 
 		now = sanctum_atomic_read(&sanctum->uptime);
-
-		if (sanctum_atomic_cas_simple(&sanctum->holepunch, 1, 0)) {
-			heartbeat_next = now;
-			heartbeat_interval = 1;
-			heartbeat_reset = now + SANCTUM_HEARTBEAT_INTERVAL;
-		} else if (heartbeat_reset != 0 && now >= heartbeat_reset) {
-			heartbeat_reset = 0;
-			heartbeat_interval = SANCTUM_HEARTBEAT_INTERVAL;
-		}
 
 		if (sanctum_key_erase("TX", io->tx, &state, NULL) != -1)
 			sanctum_stat_clear(&sanctum->tx);
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
-			heartbeat_interval = BLESS_KEY_HEARTBEAT_INTERVAL;
-			heartbeat_next = now + BLESS_KEY_HEARTBEAT_INTERVAL;
-			heartbeat_reset = now + BLESS_KEY_HEARTBEAT_DURATION;
+			sanctum_atomic_write(&sanctum->holepunch, 1);
+			sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_RX);
 			sanctum_atomic_write(&sanctum->tx.pkt, 0);
 			sanctum_atomic_write(&sanctum->tx.bytes, 0);
 			sanctum_atomic_write(&sanctum->tx.age, now);
@@ -120,9 +98,6 @@ sanctum_bless(struct sanctum_proc *proc)
 
 		while ((pkt = sanctum_ring_dequeue(io->bless)))
 			bless_packet_process(pkt);
-
-		if (heartbeat_next != 0 && now >= heartbeat_next)
-			bless_packet_heartbeat();
 
 		if (tx_wakeup) {
 			tx_wakeup = 0;
@@ -172,28 +147,6 @@ bless_drop_access(void)
 }
 
 /*
- * Generate a heartbeat packet.
- */
-static void
-bless_packet_heartbeat(void)
-{
-	struct sanctum_packet		*pkt;
-
-	if (state.cipher == NULL)
-		return;
-
-	if ((pkt = sanctum_packet_get()) == NULL)
-		return;
-
-	pkt->length = 0;
-	pkt->target = SANCTUM_PROC_BLESS;
-	pkt->next = SANCTUM_PACKET_HEARTBEAT;
-
-	bless_packet_process(pkt);
-	heartbeat_next = now + heartbeat_interval;
-}
-
-/*
  * Encrypt a single packet under the current TX key.
  */
 static void
@@ -212,9 +165,8 @@ bless_packet_process(struct sanctum_packet *pkt)
 		sanctum_stat_clear(&sanctum->tx);
 
 	if (sanctum_key_install(io->tx, &state) != -1) {
-		heartbeat_interval = BLESS_KEY_HEARTBEAT_INTERVAL;
-		heartbeat_next = now + BLESS_KEY_HEARTBEAT_INTERVAL;
-		heartbeat_reset = now + BLESS_KEY_HEARTBEAT_DURATION;
+		sanctum_atomic_write(&sanctum->holepunch, 1);
+		sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_RX);
 		sanctum_atomic_write(&sanctum->tx.pkt, 0);
 		sanctum_atomic_write(&sanctum->tx.bytes, 0);
 		sanctum_atomic_write(&sanctum->tx.age, now);

@@ -163,7 +163,7 @@ static u_int32_t		exchanges_timed_out = 0;
  * This process is responsible sending key offers to our peer, if
  * it is known, as long as we have not seen any RX traffic from it.
  *
- * It will track heartbeat timeouts for the peer and submit registration
+ * It will track grace timeouts for the peer and submit registration
  * offers to a configured cathedral.
  */
 void
@@ -336,15 +336,15 @@ chapel_drop_access(void)
 static void
 chapel_peer_check(u_int64_t now)
 {
-	u_int64_t	hbeat;
+	u_int64_t	grace;
 
 	if (sanctum_atomic_read(&sanctum->rx.spi) == 0)
 		return;
 
-	if ((hbeat = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
+	if ((grace = sanctum_atomic_read(&sanctum->grace)) == 0)
 		return;
 
-	if ((now - hbeat) < SANCTUM_HEARTBEAT_INTERVAL * 8)
+	if ((now - grace) < SANCTUM_GRACE_INTERVAL * 8)
 		return;
 
 	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
@@ -373,7 +373,7 @@ chapel_peer_check(u_int64_t now)
 	if (offer != NULL)
 		chapel_offer_clear();
 
-	sanctum_atomic_write(&sanctum->heartbeat, 0);
+	sanctum_atomic_write(&sanctum->grace, 0);
 }
 
 /*
@@ -565,8 +565,9 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
  * We received a p2p information packet from the cathedral. This contains
  * connection information about ourselves and our peer.
  *
- * On the first swap to the peer its public ip:port we will ask bless
- * to start heartbeating faster so the hole punching will have effect.
+ * On the first swap to the peer its public ip:port we will ask the
+ * heavens to start sending graces down faster so the hole punching
+ * will have effect.
  */
 static void
 chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
@@ -594,7 +595,7 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 		    (old_ip != info->peer_ip || old_port != info->peer_port) &&
 		    info->peer_ip != sanctum->cathedral.sin_addr.s_addr) {
 			sanctum_atomic_write(&sanctum->holepunch, 1);
-			sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
+			sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_RX);
 		}
 	}
 }
@@ -800,7 +801,7 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
  * Check if a new offer needs to be sent.
  *
  * In order to send a new offer, we must have the peer address and the peer
- * its heartbeats must have stopped, or we reached some form of limit.
+ * its graces must have stopped, or we reached some form of limit.
  *
  * If we have no keys at all, we always send an offer.
  */
@@ -809,7 +810,7 @@ chapel_offer_check(u_int64_t now)
 {
 	const char	*reason;
 	int		offer_now;
-	u_int64_t	pkt, age, hbeat;
+	u_int64_t	pkt, age, grace;
 
 	PRECOND(offer == NULL);
 
@@ -837,11 +838,11 @@ chapel_offer_check(u_int64_t now)
 	} else if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
 		age = sanctum_atomic_read(&sanctum->rx.age);
 		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
-		hbeat = sanctum_atomic_read(&sanctum->heartbeat);
+		grace = sanctum_atomic_read(&sanctum->grace);
 
-		if ((now - hbeat) >= SANCTUM_HEARTBEAT_INTERVAL * 2) {
+		if ((now - grace) >= SANCTUM_GRACE_INTERVAL * 2) {
 			offer_now = 1;
-			reason = "heartbeat timeout";
+			reason = "grace timeout";
 		} else if (pkt >= SANCTUM_SA_PACKET_SOFT) {
 			offer_now = 1;
 			reason = "SA packet limit";
@@ -852,7 +853,7 @@ chapel_offer_check(u_int64_t now)
 	} else {
 		offer_now = 1;
 		reason = "no keys";
-		sanctum_atomic_write(&sanctum->heartbeat, now);
+		sanctum_atomic_write(&sanctum->grace, now);
 	}
 
 	if (offer_now == 0)
