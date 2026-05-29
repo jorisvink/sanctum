@@ -15,6 +15,8 @@ INSTALL_DIR=$(PREFIX)/bin
 SHARE_DIR=$(PREFIX)/share/sanctum
 DARWIN_SB_PATH?=$(SHARE_DIR)/sb
 
+BUILD_DATE?=`date +"%Y-%m-%d"`
+
 include $(TOPDIR)/mk/defaults.mk
 
 CFLAGS+=-std=c99 -pedantic -Wall -Werror -Wstrict-prototypes
@@ -107,7 +109,7 @@ $(VERSION).c: force
 		exit 1; \
 	fi
 	@printf "const char *sanctum_build_date = \"%s\";\n" \
-	    `date +"%Y-%m-%d"` >> $(VERSION)_gen;
+	    $(BUILD_DATE) >> $(VERSION)_gen;
 	@if [ -f $(VERSION).c ]; then \
 		cmp -s $(VERSION)_gen $(VERSION).c; \
 		if [ $$? -ne 0 ]; then \

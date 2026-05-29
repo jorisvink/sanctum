@@ -103,7 +103,7 @@ sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 		fatal("mbedtls_gcm_update_ad: %s", cipher_strerror(ret));
 
 	if ((ret = mbedtls_gcm_update(&ctx->gcm, cipher->pt,
-	    cipher->data_len, cipher->pt, cipher->data_len, &data_len)) != 0)
+	    cipher->data_len, cipher->ct, cipher->data_len, &data_len)) != 0)
 		fatal("mbedtls_gcm_update: %s", cipher_strerror(ret));
 
 	VERIFY(data_len == cipher->data_len);
@@ -146,7 +146,7 @@ sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 	    cipher->aad, cipher->aad_len)) != 0)
 		fatal("mbedtls_gcm_update_ad: %s", cipher_strerror(ret));
 
-	if ((ret = mbedtls_gcm_update(&ctx->gcm, cipher->pt,
+	if ((ret = mbedtls_gcm_update(&ctx->gcm, cipher->ct,
 	    cipher->data_len, cipher->pt, cipher->data_len, &data_len)) != 0)
 		fatal("mbedtls_gcm_update: %s", cipher_strerror(ret));
 
@@ -177,6 +177,8 @@ sanctum_cipher_cleanup(void *arg)
 	cipher = arg;
 
 	mbedtls_gcm_free(&cipher->gcm);
+	nyfe_zeroize(cipher, sizeof(*cipher));
+
 	free(cipher);
 }
 

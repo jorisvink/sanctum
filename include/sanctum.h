@@ -429,8 +429,8 @@ struct sanctum_pool {
 };
 
 /*
- * An encrypted packet its header, includes the "ESP" header, the
- * 64-bit packet number used as part of the nonce later and
+ * An encrypted packet its header, includes the fake "ESP" header,
+ * the 64-bit packet number used as part of the nonce later and
  * potential flock src/dst numbers.
  */
 struct sanctum_proto_hdr {
@@ -467,9 +467,11 @@ struct sanctum_shroud_hdr {
 /*
  * The length of the mask we XOR onto the packet if shroud is enabled.
  * We shroud the complete protocol meta-data for offers and normal traffic.
+ *
+ * Note that sanctum_proto_hdr is larger than struct sanctum_offer_hdr - salt
+ * and thus we use the protocol header as the base.
  */
-#define SANCTUM_SHROUD_MASK_LEN		\
-    (sizeof(struct sanctum_offer_hdr) - SANCTUM_KEY_OFFER_SALT_LEN)
+#define SANCTUM_SHROUD_MASK_LEN		(sizeof(struct sanctum_proto_hdr))
 
 /* A packet header starts after our potential shrouded data. */
 #define SANCTUM_PACKET_HEAD_OFFSET	sizeof(struct sanctum_shroud_hdr)
