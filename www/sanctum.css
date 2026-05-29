@@ -76,3 +76,7 @@ pre {
 small {
     color: gray;
 }
+
+.release-entry {
+    margin-left: 25px;
+}

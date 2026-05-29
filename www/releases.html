@@ -70,59 +70,56 @@ Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
 
 <h3>1.1.2</h3>
 
-<p>
-    <ul style="list-style: none">
-    <li><a href="/releases/sanctum-1.1.2.tgz">sanctum-1.1.2.tgz (3.1MB)</a><br>
-    <small>sha256: d4b730626f317ddd8b74019e62b7720a7360228e332bf498124e161c46eedfbf</small>
+<div class="release-entry">
+    <p>
+        <a href="/releases/sanctum-1.1.2.tgz">sanctum-1.1.2.tgz (3.1MB)</a><br>
+        <small>sha256: d4b730626f317ddd8b74019e62b7720a7360228e332bf498124e161c46eedfbf</small>
+    </p>
+
+    <h4>Highlights</h4>
+
+    <ul>
+    <li>Small mbedtls-aes-gcm fixes.</li>
+    <li>Adjust shroud mask to cover sanctum_proto_hdr.</li>
     </ul>
-
-<h4>Highlights</h4>
-
-<ul>
-<li>Small mbedtls-aes-gcm fixes.</li>
-<li>Adjust shroud mask to cover sanctum_proto_hdr.</li>
-</ul>
-
-</p>
+</div>
 
 <h3>1.1.1</h3>
 
-<p>
-    <ul style="list-style: none">
-    <li><a href="/releases/sanctum-1.1.1.tgz">sanctum-1.1.1.tgz (3.1MB)</a><br>
-    <small>sha256: f35d1721a7301df0491114c5548d0b2175d93fa877cbb93210e7324041e46d7d</small>
+<div class="release-entry">
+    <p>
+        <a href="/releases/sanctum-1.1.1.tgz">sanctum-1.1.1.tgz (3.1MB)</a><br>
+        <small>sha256: f35d1721a7301df0491114c5548d0b2175d93fa877cbb93210e7324041e46d7d</small>
+        </p>
+
+    <h4>Highlights</h4>
+
+    <ul>
+    <li>More paranoia when procs exit, explicitly call nyfe_zeroize_all() and warn on linger sensitive assets.</li>
+    <li>Hold back key exchanges for a minute if a peer does not answer, reduces packets on the wire a bit when the peer is not online.</li>
+    <li>Fixed a missing sanctum_packet_release() in an error path in confess.</li>
+    <li>Cathedrals can now signal to peers if they are behind the same external ip, paving the way for local discovery later.</li>
+    <li>Cathedrals now only forget tunnels are 120 seconds, instead of 45.</li>
+    <li>Cathedrals now only allow offers to be federated each 3 seconds, instead of 1.</li>
     </ul>
-
-<h4>Highlights</h4>
-
-<ul>
-<li>More paranoia when procs exit, explicitly call nyfe_zeroize_all() and warn on linger sensitive assets.</li>
-<li>Hold back key exchanges for a minute if a peer does not answer, reduces packets on the wire a bit when the peer is not online.</li>
-<li>Fixed a missing sanctum_packet_release() in an error path in confess.</li>
-<li>Cathedrals can now signal to peers if they are behind the same external ip, paving the way for local discovery later.</li>
-<li>Cathedrals now only forget tunnels are 120 seconds, instead of 45.</li>
-<li>Cathedrals now only allow offers to be federated each 3 seconds, instead of 1.</li>
-</ul>
-
-</p>
+</div>
 
 <h3>1.1.0</h3>
 
-<p>
-    <ul style="list-style: none">
-    <li><a href="/releases/sanctum-1.1.0.tgz">sanctum-1.1.0.tgz (3.1MB)</a><br>
-    <small>sha256: 17ccba4f8d495f65beff5bfdfd8ebaaaba75ec0283874d8b17fc3ada9fd8b3e6</small>
+<div class="release-entry">
+    <p>
+        <a href="/releases/sanctum-1.1.0.tgz">sanctum-1.1.0.tgz (3.1MB)</a><br>
+        <small>sha256: 17ccba4f8d495f65beff5bfdfd8ebaaaba75ec0283874d8b17fc3ada9fd8b3e6</small>
+    </p>
+
+    <h4>Highlights</h4>
+
+    <ul>
+    <li>New shroud functionality, replacing encapsulation. A shroud will mask
+    away protocol meta-data with unique per-client traffic protection keys making
+    traffic analysis much harder.</li>
     </ul>
-
-<h4>Highlights</h4>
-
-<ul>
-<li>New shroud functionality, replacing encapsulation. A shroud will mask
-away protocol meta-data with unique per-client traffic protection keys making
-traffic analysis much harder.</li>
-</ul>
-
-</p>
+</div>
 
 <h3>Packages</h3>
 <p>
