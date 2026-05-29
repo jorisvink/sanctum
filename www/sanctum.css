@@ -80,3 +80,17 @@ small {
 .release-entry {
     margin-left: 25px;
 }
+
+.errata-entry {
+    margin-left: 25px;
+}
+
+.errata-id {
+    color: #20b700;
+    display: inline-block;
+    font-weight: bold;
+}
+
+.errata-reason {
+    margin-top: 0px;
+}
