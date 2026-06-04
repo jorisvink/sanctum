@@ -319,7 +319,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	if (sa->pending) {
 		sa->pending = 0;
-		sanctum_atomic_write(&sanctum->rx.pkt, 0);
+		sanctum_atomic_write(&sanctum->rx.pkt, 1);
 		sanctum_atomic_write(&sanctum->rx.bytes, 0);
 		sanctum_atomic_write(&sanctum->rx.age, sa->age);
 		sanctum_atomic_write(&sanctum->rx.spi, sa->spi);
