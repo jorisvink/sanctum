@@ -67,6 +67,9 @@ int	__ulock_wake(uint32_t operation, void *addr, uint64_t wake_value);
 int	sandbox_init_with_parameters(const char *profile,
 	    uint64_t flags, const char *const parameters[], char **errorbuf);
 
+/* The device we are using. */
+static char		*device = NULL;
+
 /*
  * Setup the required platform bits and bobs.
  */
@@ -139,6 +142,9 @@ sanctum_platform_tundev_create(void)
 		sanctum_platform_tundev_route(&sanctum->tun_ip,
 		    &sanctum->tun_mask);
 	}
+
+	if ((device = strdup(ifname)) == NULL)
+		fatal("strdup failed");
 
 	return (fd);
 }
@@ -265,6 +271,31 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 		fatal("failed to write entire message");
 
 	(void)close(s);
+}
+
+/*
+ * Set the MTU for our tunnel device.
+ */
+void
+sanctum_platform_tundev_mtu(u_int16_t mtu)
+{
+	int			fd;
+	struct ifreq		ifr;
+
+	PRECOND(mtu >= SANCTUM_MTU_SIZE_MIN && mtu <= sanctum->tun_mtu);
+
+	if (strlcpy(ifr.ifr_name, device, sizeof(ifr.ifr_name)) >=
+	    sizeof(ifr.ifr_name))
+		fatal("ifc '%s' too long", device);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	ifr.ifr_mtu = mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	(void)close(fd);
 }
 
 /*

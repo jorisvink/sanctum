@@ -89,7 +89,6 @@ sanctum_bless(struct sanctum_proc *proc)
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
 			sanctum_atomic_write(&sanctum->holepunch, 1);
-			sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_RX);
 			sanctum_atomic_write(&sanctum->tx.pkt, 0);
 			sanctum_atomic_write(&sanctum->tx.bytes, 0);
 			sanctum_atomic_write(&sanctum->tx.age, now);
@@ -166,7 +165,6 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	if (sanctum_key_install(io->tx, &state) != -1) {
 		sanctum_atomic_write(&sanctum->holepunch, 1);
-		sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_RX);
 		sanctum_atomic_write(&sanctum->tx.pkt, 0);
 		sanctum_atomic_write(&sanctum->tx.bytes, 0);
 		sanctum_atomic_write(&sanctum->tx.age, now);

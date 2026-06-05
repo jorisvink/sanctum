@@ -256,9 +256,12 @@ sanctum_config_load(const char *file)
 		break;
 	}
 
-	if ((sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) &&
-	    sanctum->tun_mtu == 0)
-		fatal("tfc is enabled but no mtu has been set");
+	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
+		if (sanctum->tun_mtu == 0)
+			fatal("tfc is enabled but no mtu has been set");
+		if (sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY)
+			fatal("tfc is enabled but mtu discovery is active");
+	}
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 	    sanctum->mode != SANCTUM_MODE_LITURGY &&
@@ -564,17 +567,26 @@ static void
 config_parse_tunnel(char *opt)
 {
 	u_int16_t	mtu;
-	char		ip[INET_ADDRSTRLEN + 3];
+	char		ip[INET_ADDRSTRLEN + 3], str[6];
 
 	PRECOND(opt != NULL);
 
-	if (sscanf(opt, "%18s %hu", ip, &mtu) != 2)
-		fatal("tunnel <ip/mask> <mtu>");
+	if (sscanf(opt, "%18s %hu", ip, &mtu) != 2) {
+		if (sscanf(opt, "%18s %5s", ip, str) != 2)
+			fatal("tunnel <ip/mask> <mtu>");
 
-	if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
-		fatal("mtu (%u) invalid", mtu);
+		if (strcmp(str, "auto"))
+			fatal("tunnel <ip/mask> auto");
 
-	sanctum->tun_mtu = mtu;
+		sanctum->tun_mtu = 0;
+		sanctum->mtu_size = 0;
+	} else {
+		if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+			fatal("mtu (%u) invalid", mtu);
+
+		sanctum->tun_mtu = mtu;
+		sanctum->mtu_size = mtu;
+	}
 
 	config_parse_ip_mask(ip, &sanctum->tun_ip, &sanctum->tun_mask);
 }
@@ -1092,9 +1104,22 @@ config_mtu_check(void)
 
 	VERIFY(SANCTUM_PACKET_DATA_LEN > overhead);
 
-	if (sanctum->tun_mtu > SANCTUM_PACKET_DATA_LEN - overhead) {
+	if (sanctum->tun_mtu == 0) {
+		if (sanctum->mode != SANCTUM_MODE_TUNNEL)
+			fatal("auto mtu can only be used in tunnel mode");
+
+		sanctum->flags |= SANCTUM_FLAG_MTU_DISCOVERY;
+		sanctum->tun_mtu = SANCTUM_MTU_SIZE_MAX - overhead;
+	}
+
+	if (sanctum->tun_mtu < sizeof(struct sanctum_offer)) {
+		fatal("tunnel mtu may not be less than %zu",
+		    sizeof(struct sanctum_offer));
+	}
+
+	if (sanctum->tun_mtu > SANCTUM_MTU_SIZE_MAX - overhead) {
 		fatal("mtu misconfigured, %d cannot be set (%zu max)",
-		    sanctum->tun_mtu, SANCTUM_PACKET_DATA_LEN - overhead);
+		    sanctum->tun_mtu, SANCTUM_MTU_SIZE_MAX - overhead);
 	}
 }
 

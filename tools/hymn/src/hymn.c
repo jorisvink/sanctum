@@ -498,7 +498,6 @@ hymn_liturgy(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "shroud")) {
 			if (!strcmp(argv[i + 1], "yes")) {
 				config.shroud = 1;
-				config.tun_mtu = 1374;
 			} else if (!strcmp(argv[i + 1], "no")) {
 				config.shroud = 0;
 			} else {
@@ -648,7 +647,6 @@ hymn_add(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "shroud")) {
 			if (!strcmp(argv[i + 1], "yes")) {
 				config.shroud = 1;
-				config.tun_mtu = 1374;
 			} else if (!strcmp(argv[i + 1], "no")) {
 				config.shroud = 0;
 			} else {
@@ -1690,8 +1688,6 @@ hymn_config_init(struct config *cfg)
 	memset(cfg, 0, sizeof(*cfg));
 
 	LIST_INIT(&cfg->routes);
-
-	cfg->tun_mtu = 1422;
 }
 
 static int
@@ -1993,8 +1989,17 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  local\t\t%s\n", hymn_ip_port_str(&config.local));
 
 	if (config.is_liturgy == 0) {
-		printf("  tunnel\t%s (mtu %u)\n",
-		    hymn_ip_mask_str(&config.tun), config.tun_mtu);
+		printf("  tunnel\t%s\n", hymn_ip_mask_str(&config.tun));
+		printf("  mtu\t\t");
+
+		if (config.tun_mtu == 0) {
+			printf("auto (");
+			if (status == NULL)
+				printf("%u", resp.mtu);
+			printf(")\n");
+		} else {
+			printf("%u\n", config.tun_mtu);
+		}
 	}
 
 	printf("\n");
@@ -2192,8 +2197,13 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	}
 
 	if (cfg->is_liturgy == 0) {
-		hymn_config_write(fd, "tunnel %s %u\n",
-		    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
+		if (cfg->tun_mtu == 0) {
+			hymn_config_write(fd, "tunnel %s auto\n",
+			    hymn_ip_mask_str(&cfg->tun));
+		} else {
+			hymn_config_write(fd, "tunnel %s %u\n",
+			    hymn_ip_mask_str(&cfg->tun), cfg->tun_mtu);
+		}
 	} else {
 		hymn_config_write(fd, "liturgy_prefix %s\n", cfg->prefix);
 		hymn_config_write(fd, "liturgy_group 0x%04x\n", cfg->group);
@@ -2610,11 +2620,15 @@ hymn_config_set_name(struct config *cfg, const char *name)
 static void
 hymn_config_set_mtu(struct config *cfg, const char *mtu)
 {
-	if (sscanf(mtu, "%hu", &cfg->tun_mtu) != 1)
-		fatal("invalid mtu '%s'", mtu);
+	if (strcmp(mtu, "auto")) {
+		if (sscanf(mtu, "%hu", &cfg->tun_mtu) != 1)
+			fatal("invalid mtu '%s'", mtu);
 
-	if (cfg->tun_mtu > 9200 || cfg->tun_mtu < 576)
-		fatal("invalid mtu '%s'", mtu);
+		if (cfg->tun_mtu > 9200 || cfg->tun_mtu < 576)
+			fatal("invalid mtu '%s'", mtu);
+	} else {
+		cfg->tun_mtu = 0;
+	}
 }
 
 static void

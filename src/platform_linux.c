@@ -451,6 +451,32 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 }
 
 /*
+ * Set the MTU for our tunnel device.
+ */
+void
+sanctum_platform_tundev_mtu(u_int16_t mtu)
+{
+	struct ifreq		ifr;
+	int			fd, len;
+
+	PRECOND(mtu >= SANCTUM_MTU_SIZE_MIN && mtu <= sanctum->tun_mtu);
+
+	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name),
+	    "%s", sanctum->instance);
+	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+		fatal("sanctum.clr interface name too large");
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	ifr.ifr_mtu = mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	(void)close(fd);
+}
+
+/*
  * Suspend the calling process using the synchronization addr.
  * If we were already told to be awake, we simply return and do not block.
  */

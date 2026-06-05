@@ -178,7 +178,7 @@ pilgrim_offer_check(u_int64_t now)
 	} else {
 		offer_now = 1;
 		reason = "no keys";
-		sanctum_atomic_write(&sanctum->grace, now);
+		sanctum_atomic_write(&sanctum->heartbeat, now);
 	}
 
 	if (offer_now == 0)

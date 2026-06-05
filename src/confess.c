@@ -339,7 +339,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		return (-1);
 
 	now = sanctum_atomic_read(&sanctum->uptime);
-	sanctum_atomic_write(&sanctum->grace, now);
+	sanctum_atomic_write(&sanctum->heartbeat, now);
 
 	switch (tail->next) {
 	case SANCTUM_PACKET_IP:
