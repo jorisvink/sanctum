@@ -1993,10 +1993,10 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  mtu\t\t");
 
 		if (config.tun_mtu == 0) {
-			printf("auto (");
+			printf("auto");
 			if (status == NULL)
-				printf("%u", resp.mtu);
-			printf(")\n");
+				printf(" (%u)", resp.mtu);
+			printf("\n");
 		} else {
 			printf("%u\n", config.tun_mtu);
 		}
