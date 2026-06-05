@@ -108,7 +108,7 @@ sanctum_platform_tundev_create(void)
 
 	sanctum_log(LOG_INFO, "using %s device '%s'", type, path);
 
-	if ((device = strdup(path)) == NULL)
+	if ((device = strdup(&path[PATH_SKIP])) == NULL)
 		fatal("strdup failed");
 
 	return (fd);
