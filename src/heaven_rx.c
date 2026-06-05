@@ -325,13 +325,11 @@ heaven_rx_grace_mtu(void)
 	if (sanctum->mode != SANCTUM_MODE_TUNNEL)
 		return;
 
-	if (!(sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY))
-		return;
-
 	if (sanctum_atomic_read(&sanctum->tx.spi) == 0)
 		return;
 
-	if (mtu_probes.next != 0 && now >= mtu_probes.next) {
+	if ((sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY) &&
+	    mtu_probes.next != 0 && now >= mtu_probes.next) {
 		mtu = sanctum_atomic_read(&sanctum->mtu_value);
 
 		if (mtu == sanctum->tun_mtu) {
