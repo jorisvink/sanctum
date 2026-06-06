@@ -16,7 +16,11 @@ struct sanctum_grace {
 } __attribute__((packed));
 ```
 
-Where **type** is one of the following:
+The handling of these happen in the **heaven-rx** and **heaven-tx** processes
+as these are considered the "red" side of the daemon and only red side can
+communicate with the encryption or decryption processes.
+
+The following type of graces currently exist:
 
 | Name | Description | Value |
 | --- | ----------- | ---- |
