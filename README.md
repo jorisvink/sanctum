@@ -199,8 +199,11 @@ secret /etc/sanctum/laptop_secret.key
 run control as joris
 control /tmp/sanctum-control joris
 
-# The tunnel configuration
-tunnel 1.0.0.1/30 1422
+# The tunnel configuration, using auto MTU discovery
+tunnel 1.0.0.1/30 auto
+
+# Or a fixed MTU
+#tunnel 1.0.0.1/30 1422
 
 # Add additional routes over the tunnel
 route 2.0.0.0/24
