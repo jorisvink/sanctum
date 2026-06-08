@@ -759,7 +759,7 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	PRECOND(ambry != NULL);
 
 	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
-	if (len == -1 || (size_t)len >= sizeof(path))
+	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("failed to create tmp secret path");
 
 	if (unlink(path) == -1 && errno != ENOENT) {

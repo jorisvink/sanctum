@@ -277,7 +277,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 		if (sanctum->bridge != NULL) {
 			len = snprintf(bridge, sizeof(bridge),
 			    "bridge %s", sanctum->bridge);
-			if (len == -1 || (size_t)len >= sizeof(bridge))
+			if (len < 0 || (size_t)len >= sizeof(bridge))
 				fatal("failed to create bridge name");
 		}
 	} else {
@@ -315,7 +315,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 		fatal("unknown hymn command '%s'", cmd);
 	}
 
-	if (len == -1 || (size_t)len >= sizeof(buf))
+	if (len < 0 || (size_t)len >= sizeof(buf))
 		fatal("failed to format %s string", cmd);
 
 	if ((pid = fork()) == -1)
@@ -419,7 +419,7 @@ bishop_instance_exists(u_int8_t src, u_int8_t dst)
 
 	len = snprintf(path, sizeof(path), "%s/%" PRIx64 "-%02x-%02x.conf",
 	    HYMN_BASE_PATH, sanctum->cathedral_flock, src, dst);
-	if (len == -1 || (size_t)len >= sizeof(path))
+	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("snprintf on instance config path");
 
 	if (access(path, R_OK) != -1)
@@ -440,7 +440,7 @@ bishop_instance_running(u_int8_t src, u_int8_t dst)
 
 	len = snprintf(path, sizeof(path), "%s/%" PRIx64 "-%02x-%02x.pid",
 	    HYMN_RUN_PATH, sanctum->cathedral_flock, src, dst);
-	if (len == -1 || (size_t)len >= sizeof(path))
+	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("snprintf on instance pid path");
 
 	if (access(path, R_OK) != -1)
@@ -596,7 +596,7 @@ bishop_control_init(void)
 
 	len = snprintf(cfg.path, sizeof(cfg.path), HYMN_SOCKET_PATH_FMT,
 	    sanctum->cathedral_flock, sanctum->tun_spi & 0xff);
-	if (len == -1 || (size_t)len >= sizeof(cfg.path))
+	if (len < 0 || (size_t)len >= sizeof(cfg.path))
 		fatal("bishop client socket path too long");
 
 	cfd = sanctum_unix_socket(&cfg);
@@ -620,7 +620,7 @@ bishop_unix_socket(struct sockaddr_un *sun, const char *fmt, ...)
 	va_start(args, fmt);
 
 	len = vsnprintf(sun->sun_path, sizeof(sun->sun_path), fmt, args);
-	if (len == -1 || (size_t)len >= sizeof(sun->sun_path))
+	if (len < 0 || (size_t)len >= sizeof(sun->sun_path))
 		fatal("socket path '%s' too large", fmt);
 
 	va_end(args);

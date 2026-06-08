@@ -132,7 +132,7 @@ sanctum_platform_tundev_create(void)
 		fatal("fcntl: %s", errno_s);
 
 	len = snprintf(ifname, sizeof(ifname), "utun%u", idx - 1);
-	if (len == -1 || (size_t)len >= sizeof(ifname))
+	if (len < 0 || (size_t)len >= sizeof(ifname))
 		fatal("snprintf on utun%u failed", idx - 1);
 
 	darwin_configure_tundev(ifname);
@@ -336,7 +336,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 
 	if (sanctum->secret != NULL) {
 		len = snprintf(spath, sizeof(spath), "%s.new", sanctum->secret);
-		if (len == -1 || (size_t)len >= sizeof(spath))
+		if (len < 0 || (size_t)len >= sizeof(spath))
 			fatal("failed to construct new secret path");
 	}
 
@@ -375,7 +375,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	/* Open the profile from disk. */
 	len = snprintf(path, sizeof(path), "%s/%s.sb",
 	    APPLE_SB_PATH, proc->name);
-	if (len == -1 || (size_t)len >= sizeof(path))
+	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("failed to create path to sandbox profile");
 
 	if ((fd = sanctum_file_open(path, &st)) == -1)

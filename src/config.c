@@ -504,7 +504,7 @@ config_parse_descr(char *opt)
 	}
 
 	len = snprintf(sanctum->descr, sizeof(sanctum->descr), "%s", opt);
-	if (len == -1 || (size_t)len >= sizeof(sanctum->descr))
+	if (len < 0 || (size_t)len >= sizeof(sanctum->descr))
 		fatal("description '%s' too long", opt);
 }
 
@@ -713,7 +713,7 @@ config_parse_instance(char *opt)
 	}
 
 	len = snprintf(sanctum->instance, sizeof(sanctum->instance), "%s", opt);
-	if (len == -1 || (size_t)len >= sizeof(sanctum->instance))
+	if (len < 0 || (size_t)len >= sizeof(sanctum->instance))
 		fatal("instance name '%s' too long", opt);
 }
 
@@ -1015,7 +1015,7 @@ config_unix_set(struct sanctum_sun *sun, const char *path, const char *owner)
 		fatal("user '%s' does not exist", owner);
 
 	len = snprintf(sun->path, sizeof(sun->path), "%s", path);
-	if (len == -1 || (size_t)len >= sizeof(sun->path))
+	if (len < 0 || (size_t)len >= sizeof(sun->path))
 		fatal("path '%s' too long", path);
 
 	sun->uid = pw->pw_uid;

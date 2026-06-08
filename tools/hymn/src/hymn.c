@@ -711,7 +711,7 @@ hymn_add(int argc, char *argv[])
 		    "%s/%" PRIx64 "-%" PRIx64 "-%02x-%02x.secret",
 		    HYMN_BASE_PATH, config.cathedral_flock,
 		    config.cathedral_flock_dst, config.src, config.dst);
-		if (len == -1 || (size_t)len >= sizeof(secret))
+		if (len < 0 || (size_t)len >= sizeof(secret))
 			fatal("snprintf on tunnel secret path");
 
 		if ((config.secret = strdup(secret)) == NULL)
@@ -1513,7 +1513,7 @@ hymn_unlink(const char *fmt, ...)
 	len = vsnprintf(path, sizeof(path), fmt, args);
 	va_end(args);
 
-	if (len == -1 || (size_t)len >= sizeof(path))
+	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("format too long for path");
 
 	if (unlink(path) == -1)
@@ -1654,7 +1654,7 @@ hymn_pid_path(char *buf, size_t buflen, const char *flock,
 
 	len = snprintf(buf, buflen, "%s/%s-%02x-%02x.pid",
 	    HYMN_RUN_PATH, flock, src, dst);
-	if (len == -1 || (size_t)len >= buflen)
+	if (len < 0 || (size_t)len >= buflen)
 		fatal("snprintf on tunnel pid path");
 }
 
@@ -1666,7 +1666,7 @@ hymn_control_path(char *buf, size_t buflen, const char *flock,
 
 	len = snprintf(buf, buflen, "/tmp/%s-%02x-%02x.control",
 	    flock, src, dst);
-	if (len == -1 || (size_t)len >= buflen)
+	if (len < 0 || (size_t)len >= buflen)
 		fatal("snprintf on tunnel control path");
 }
 
@@ -1678,7 +1678,7 @@ hymn_conf_path(char *buf, size_t buflen,
 
 	len = snprintf(buf, buflen, "%s/%s-%02x-%02x.conf",
 	    HYMN_BASE_PATH, flock, src, dst);
-	if (len == -1 || (size_t)len >= buflen)
+	if (len < 0 || (size_t)len >= buflen)
 		fatal("snprintf on tunnel config path");
 }
 
@@ -2079,7 +2079,7 @@ hymn_config_write(int fd, const char *fmt, ...)
 	len = vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	if (len == -1 || (size_t)len >= sizeof(buf))
+	if (len < 0 || (size_t)len >= sizeof(buf))
 		fatal("%s: fmt too large", __func__);
 
 	for (;;) {
@@ -2158,7 +2158,7 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	}
 
 	len = snprintf(tmp, sizeof(tmp), "%s.new", path);
-	if (len == -1 || (size_t)len >= sizeof(tmp))
+	if (len < 0 || (size_t)len >= sizeof(tmp))
 		fatal("snprintf: failed on tmp path");
 
 	if ((fd = open(tmp, O_CREAT | O_TRUNC | O_WRONLY, 0700)) == -1)
@@ -2640,7 +2640,7 @@ hymn_unix_socket(struct sockaddr_un *sun, const char *path)
 	sun->sun_family = AF_UNIX;
 
 	len = snprintf(sun->sun_path, sizeof(sun->sun_path), "%s", path);
-	if (len == -1 || (size_t)len >= sizeof(sun->sun_path))
+	if (len < 0 || (size_t)len >= sizeof(sun->sun_path))
 		fatal("failed to create path to '%s'", path);
 }
 

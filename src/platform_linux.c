@@ -218,7 +218,7 @@ sanctum_platform_tundev_create(void)
 
 	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name),
 	    "%s", sanctum->instance);
-	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+	if (len < 0 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("sanctum.clr interface name too large");
 
 	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
@@ -463,7 +463,7 @@ sanctum_platform_tundev_mtu(u_int16_t mtu)
 
 	len = snprintf(ifr.ifr_name, sizeof(ifr.ifr_name),
 	    "%s", sanctum->instance);
-	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+	if (len < 0 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("sanctum.clr interface name too large");
 
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
@@ -608,7 +608,7 @@ linux_configure_bridge(void)
 
 	len = snprintf(ifr.ifr_name,
 	    sizeof(ifr.ifr_name), "%s", sanctum->bridge);
-	if (len == -1 || (size_t)len >= sizeof(ifr.ifr_name))
+	if (len < 0 || (size_t)len >= sizeof(ifr.ifr_name))
 		fatal("bridge name '%s' to long", sanctum->bridge);
 
 	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)

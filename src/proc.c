@@ -442,7 +442,7 @@ sanctum_proc_title(const char *name)
 		    "sanctum [%s]", name);
 	}
 
-	if (len == -1 || (size_t)len >= proc_title_max)
+	if (len < 0 || (size_t)len >= proc_title_max)
 		fatal("proctitle 'sanctum-%s' too large", name);
 
 	memset(proc_argv[0] + len, 0, proc_title_max - len);

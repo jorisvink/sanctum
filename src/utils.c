@@ -328,7 +328,7 @@ sanctum_unix_socket(struct sanctum_sun *cfg)
 	sun.sun_family = AF_UNIX;
 
 	len = snprintf(sun.sun_path, sizeof(sun.sun_path), "%s", cfg->path);
-	if (len == -1 || (size_t)len >= sizeof(sun.sun_path))
+	if (len < 0 || (size_t)len >= sizeof(sun.sun_path))
 		fatal("path '%s' didnt fit into sun.sun_path", cfg->path);
 
 	if (unlink(sun.sun_path) == -1 && errno != ENOENT)
@@ -480,7 +480,7 @@ sanctum_inet_string(struct sockaddr_in *sin)
 
 	len = snprintf(buf, sizeof(buf), "%s:%u",
 	    inet_ntoa(sin->sin_addr), be16toh(sin->sin_port));
-	if (len == -1 || (size_t)len >= sizeof(buf))
+	if (len < 0 || (size_t)len >= sizeof(buf))
 		fatal("snprintf on inet addr failed");
 
 	return (buf);

@@ -76,7 +76,7 @@ sanctum_platform_tundev_create(void)
 
 	for (idx = 0; idx < 256; idx++) {
 		len = snprintf(path, sizeof(path), "/dev/%s%d", type, idx);
-		if (len == -1 || (size_t)len >= sizeof(path))
+		if (len < 0 || (size_t)len >= sizeof(path))
 			fatal("/dev/%s%d too long", type, idx);
 
 		if ((fd = open(path, O_RDWR)) != -1)
@@ -379,7 +379,7 @@ openbsd_configure_tundev(const char *dev)
 		len = snprintf(descr, sizeof(descr), "%s", sanctum->instance);
 	}
 
-	if (len == -1 || (size_t)len >= sizeof(descr))
+	if (len < 0 || (size_t)len >= sizeof(descr))
 		fatal("the description name is too long");
 
 	ifr.ifr_data = descr;
