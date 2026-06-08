@@ -26,7 +26,7 @@ The following type of graces currently exist:
 | --- | ----------- | ---- |
 | SANCTUM_GRACE_TYPE_HEARTBEAT | A heartbeat sent between two peers to indicate that the peer is still alive. It contains no futher payload. | 1 |
 | SANCTUM_GRACE_TYPE_MTU_PROBE | A probe sent from one peer to another with a certain size, in order to help discover the optimal MTU for the path. | 2 |
-| SANCTUM_GRACE_TYPE_MTU_ACK | An ack sent after receiving a probe, indicating to our peer that we succesfully received it. | 3 | 
+| SANCTUM_GRACE_TYPE_MTU_ACK | An ack sent after receiving a probe, indicating to our peer that we succesfully received it. | 3 |
 
 ## Heartbeats
 
