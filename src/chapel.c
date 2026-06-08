@@ -594,10 +594,8 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 
 		if (info->peer_ip != info->local_ip &&
 		    (old_ip != info->peer_ip || old_port != info->peer_port) &&
-		    info->peer_ip != sanctum->cathedral.sin_addr.s_addr) {
+		    info->peer_ip != sanctum->cathedral.sin_addr.s_addr)
 			sanctum_atomic_write(&sanctum->holepunch, 1);
-			sanctum_proc_wakeup(SANCTUM_PROC_HEAVEN_RX);
-		}
 	}
 }
 
