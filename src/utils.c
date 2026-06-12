@@ -879,10 +879,15 @@ sanctum_offer_verify(const char *path, struct sanctum_offer *op)
 	u_int8_t	pk[SANCTUM_ED25519_SIGN_PUBLIC_LENGTH];
 
 	PRECOND(path != NULL);
-	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
-	    op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
-
 	VERIFY(sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+
+	if (op->data.type != SANCTUM_OFFER_TYPE_INFO &&
+	    op->data.type != SANCTUM_OFFER_TYPE_LITURGY) {
+		sanctum_log(LOG_NOTICE,
+		    "a peer sent an invalid signed offer of type 0x%02x",
+		    op->data.type);
+		return (-1);
+	}
 
 	if ((fd = sanctum_file_open(path, NULL)) == -1)
 		return (-1);
