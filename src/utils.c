@@ -200,7 +200,7 @@ sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 		sanctum_cipher_cleanup(sa->cipher);
 
 	sa->cipher = sanctum_cipher_setup(key);
-	sanctum_mem_zero(key->key, sizeof(key->key));
+	nyfe_mem_zero(key->key, sizeof(key->key));
 
 	sa->seqnr = 1;
 	sa->pending = 1;
@@ -226,7 +226,7 @@ sanctum_sa_clear(struct sanctum_sa *sa)
 	if (sa->cipher != NULL)
 		sanctum_cipher_cleanup(sa->cipher);
 
-	sanctum_mem_zero(sa, sizeof(*sa));
+	nyfe_mem_zero(sa, sizeof(*sa));
 }
 
 /*
@@ -286,7 +286,7 @@ sanctum_shroud_copy(struct sanctum_shroud *src, struct sanctum_shroud *dst)
 	dst->valid = 1;
 
 	nyfe_memcpy(dst->key, src->key, sizeof(src->key));
-	sanctum_mem_zero(src->key, sizeof(src->key));
+	nyfe_mem_zero(src->key, sizeof(src->key));
 
 	if (!sanctum_atomic_cas_simple(&src->state,
 	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
@@ -394,27 +394,6 @@ sanctum_shm_detach(void *ptr)
 
 	if (shmdt(ptr) == -1)
 		fatal("failed to detach from %p (%s)", ptr, errno_s);
-}
-
-/*
- * Poor mans memset() that isn't optimized away on the platforms I use it on.
- *
- * If you build this on something and don't test that it actually clears the
- * contents of the data, thats on you. You probably want to do some binary
- * verification.
- */
-void
-sanctum_mem_zero(void *ptr, size_t len)
-{
-	volatile char	*p;
-
-	PRECOND(ptr != NULL);
-	PRECOND(len > 0);
-
-	p = (volatile char *)ptr;
-
-	while (len-- > 0)
-		*(p)++ = 0x00;
 }
 
 /*

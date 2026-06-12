@@ -159,7 +159,7 @@ confess_clear_state(void)
 	sanctum_stat_clear(&sanctum->rx);
 	sanctum_atomic_write(&sanctum->rx_pending, 0);
 
-	sanctum_mem_zero(&state, sizeof(state));
+	nyfe_mem_zero(&state, sizeof(state));
 }
 
 /*
@@ -176,7 +176,7 @@ confess_key_management(void)
 	    &state.active, &state.pending) != -1) {
 		sanctum_stat_clear(&sanctum->rx);
 		sanctum_atomic_write(&sanctum->rx_pending, 0);
-		sanctum_mem_zero(&state, sizeof(state));
+		nyfe_mem_zero(&state, sizeof(state));
 	}
 
 	if (state.active.cipher == NULL) {
@@ -251,7 +251,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 	state.active.cipher = state.pending.cipher;
 	state.active.pending = state.pending.pending;
 
-	sanctum_mem_zero(&state.pending, sizeof(state.pending));
+	nyfe_mem_zero(&state.pending, sizeof(state.pending));
 }
 
 /*

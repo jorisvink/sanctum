@@ -266,7 +266,7 @@ pilgrim_offer_clear(void)
 {
 	PRECOND(offer != NULL);
 
-	sanctum_mem_zero(offer, sizeof(*offer));
+	nyfe_mem_zero(offer, sizeof(*offer));
 	free(offer);
 	offer = NULL;
 }

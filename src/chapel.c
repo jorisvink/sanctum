@@ -1422,7 +1422,7 @@ chapel_erase(struct sanctum_key *key, u_int32_t spi)
 
 	sanctum_atomic_write(&key->salt, 0);
 	sanctum_atomic_write(&key->spi, spi);
-	sanctum_mem_zero(key->key, sizeof(key->key));
+	nyfe_mem_zero(key->key, sizeof(key->key));
 
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_GENERATING, SANCTUM_KEY_ERASE))
