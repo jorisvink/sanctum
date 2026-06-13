@@ -5,6 +5,9 @@ After=network.target
 
 [Service]
 Type=exec
+Restart=always
+RestartSec=10
+KillSignal=SIGQUIT
 Environment=CONF_DIR="/etc/sanctum"
 ExecStart=sanctum -c "${CONF_DIR}/%i.conf"
 
