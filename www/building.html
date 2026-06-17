@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+<title>Sanctum || Building</title>
+<link rel="stylesheet" href="/sanctum.css">
+</head>
+
+<body>
+
+<div class="nav">
+    <div class="logo">
+        <a href="/"><img src="/sanctorum_transparent.png" alt="logo"></a>
+    </div>
+
+    <div class="menu">
+        <h3>Introduction</h3>
+        <a href="/">About</a>
+        <br>
+        <a href="/topologies.html">Topologies</a>
+        <h3>Releases</h3>
+        <a href="/releases.html">Getting Sanctum</a>
+        <br>
+        <a href="/building.html">Building Sanctum</a>
+        <br>
+        <h3>Security</h3>
+        <a href="/errata.html">Errata</a>
+        <br>
+        <a href="/crypto.html">Cryptography</a>
+        <br>
+        <a href="/privsep.html">Privilege Separation</a>
+        <h3>Resources</h3>
+        <a href="/guide.html">Setup Guide</a>
+        <br>
+        <a href="/liturgy.html">Liturgy Guide</a>
+        <br>
+        <a href="/cathedral.html">Cathedral Guide</a>
+        <h3>Community</h3>
+        <a href="https://reliquary.se">The Reliquary</a>
+        <br>
+        <a href="https://conclave.se">The Conclave</a>
+        <br>
+        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
+        <br>
+        <br>
+        <small>Made in Sweden</small>
+    </div>
+</div>
+
+<div class="content">
+    <div class="release">
+    Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
+    </div>
+
+    <div class="sep"></div>
+
+    <h2>Building</h2>
+
+    <p>
+        Sanctum builds out of the box on several different operating systems.
+    </p>
+
+    <ul>
+    <li>MacOS 13 or higher</li>
+    <li>Linux 5.x or higher</li>
+    <li>OpenBSD 6.8 or higher</li>
+    </ul>
+
+    <p>
+        A default build requires at least pkg-config and libsodium.
+        Note that on OpenBSD you will need to have gmake installed.
+    </p>
+
+    <p>
+        Building instructions:
+<pre>
+$ git clone https://github.com/jorisvink/sanctum
+$ cd sanctum
+$ make
+# make install
+</pre>
+
+    <h2>Customizing the build</h2>
+
+    <p>
+        Sanctum can be built with different cryptographic libraries,
+        allowing you to build your own backend for each individual component.
+    </p>
+
+    <p>
+        Components can be mixed so that you for example build with
+        one component for encryption but another one for x25519.
+    </p>
+
+    <p>
+        Even the KDF labels can be customized.
+    </p>
+
+    <p>
+        If you want to introduce your own backends please take
+        a look at the <strong>mk/&lt;component&gt;</strong> paths and how the
+        existing backends their <strong>.mk</strong> files are constructed.
+    </p>
+
+    <h3>KDF labels</h3>
+
+    <p>
+        All of the labels for the KDF that Sanctum uses (KMAC256) are
+        prefixed with "SANCTUM.". This can be overriden to provide
+        domain separation between applications or tunnels at compile
+        time by specifying SANCTUM_KDF_PREFIX as a define under CFLAGS.
+    </p>
+
+    <p>
+        You may also choose to override the KDF labels specific to cathedral
+        communication if you wish by setting SANCTUM_CATHEDRAL_KDF_PREFIX
+        in the same manner.
+    </p>
+
+    <pre>$ CFLAGS=-DSANCTUM_KDF_PREFIX='\"MY_PREFIX.\"' make</pre>
+    <pre>$ CFLAGS=-DSANCTUM_KDF_PREFIX='\"MY_PREFIX.\"' \ -DSANCTUM_CATHEDRAL_KDF_PREFIX='\"CUSTOM_CATHEDRAL.\"' make</pre>
+
+    <h3>Encryption</h3>
+
+    <p>
+        For the encryption Sanctum comes with backends for the
+        following libraries:
+    </p>
+
+    <ul>
+    <li>nyfe-agelas</li>
+    <li>libsodium-aegis</li>
+    <li>libsodium-aes-gcm (<strong>default</strong>)</li>
+    <li>mbedtls-aes-gcm (required mbedtls 3.x)</li>
+    </ul>
+
+    <p>
+        These can be selected by setting the <strong>CIPHER</strong>
+        environment variable at compile time.
+    </p>
+
+    <pre>$ CIPHER=mbedtls-aes-gcm make</pre>
+
+    <h3>Classical ECDH</h3>
+
+    <p>
+        For the classical key exchange part of the hybrid key negotiation
+        Sanctum comes with backends for the following libraries:
+    </p>
+
+    <ul>
+    <li>libsodium-x25519 (<strong>default</strong>)</li>
+    <li>mbedtls-x25519 (requires mbedtls 3.x)</li>
+    </ul>
+
+    <p>
+        These can be selected by setting the <strong>ASYMMETRY</strong>
+        environment variable at compile time.
+    </p>
+
+    <pre>$ ASYMMETRY=mbedtls-x25519 make</pre>
+
+    <h3>PQ-secure KEM</h3>
+
+    <p>
+        For the PQ-secure key exchange part of the hybrid key negotiation
+        Sanctum comes with backends for the following libraries:
+    </p>
+
+    <ul>
+    <li>mlkem1024-ref (pqcrystals its reference implementation)</li>
+    </ul>
+
+    <p>
+        These can be selected by setting the <strong>KEM</strong> environment
+        variable at compile time.
+    </p>
+
+    <pre>$ KEM=custom-kem-backend make</pre>
+
+    <h3>Random</h3>
+
+    <p>
+        For providing cryptographically strong random numbers
+        Sanctum comes with backends for the following:
+    </p>
+
+    <ul>
+    <li>nyfe-random</li>
+    </ul>
+
+    <p>
+        These can be selected by setting the <strong>PRNG</strong>
+        environment variable at compile time.
+    </p>
+
+    <pre>$ PRNG=custom-random-backend make</pre>
+
+    <h3>Signature</h3>
+
+    <p>
+        For signing and signature verification Sanctum comes
+        with backends for the following libraries:
+    </p>
+
+    <ul>
+    <li>libsodium-ed25519</li>
+    </ul>
+
+    <p>
+        These can be selected by setting the <strong>SIGNATURE</strong>
+        environment variable at compile time.
+    </p>
+
+    <pre>$ SIGNATURE=custom-signature-backend make</pre>
+
+</div>
+
+</body>
+</html>
