@@ -94,3 +94,17 @@ small {
 .errata-reason {
     margin-top: 0px;
 }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+td, th {
+    border: 1px solid #daa520;
+    text-align: left;
+    padding: 8px;
+}
+
+tr:nth-child(even) {
+}

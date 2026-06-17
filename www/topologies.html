@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-<title>Sanctum errata</title>
+<title>Sanctum || Features</title>
 <link rel="stylesheet" href="/sanctum.css">
 </head>
 
@@ -47,41 +47,44 @@
 </div>
 
 <div class="content">
+    <div class="release">
+    Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
+    </div>
 
-<div class="release">
-Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
-</div>
+    <div class="sep"></div>
 
-<div class="sep"></div>
+    <h2>Topologies</h2>
 
-<h2>Errata</h2>
-
-<h3>Reporting</h3>
-
-<p class="content">
-    Please report security bugs to &lt;priests snabel-a sanctorum punkt se&gt;
-</p>
-
-<h3>2026</h3>
-
-<ul style="padding-left: 25px">
-<li>
-    <div class="errata-id">001: RELIABILITY FIX: 2026-05-29</div>
-    <p class="errata-reason">
-        The shroud mask did not cover the entire sanctum_proto_hdr leaving
-        up to 4 bytes unshrouded.
-        <br>
-        <a href="/releases.html">Download the latest release to fix this issue.</a>
+    <p>
+        Sanctum out of the box, supports multiple traditional and more
+        novel modern topologies.
     </p>
-</li>
-</ul>
 
-<h3>2025</h3>
+    <h2>Traditional topologies</h2>
 
-<ul style="padding-left: 25px">
-    <li>None.</li>
-</ul>
+    <ul>
+        <li>Site-to-site tunnels, classic VPN.</li>
+        <li>Client-to-site tunnels, classic roadwarrior.</li>
+    </ul>
 
+    <h2>Novel topologies</h2>
+    <ul>
+        <li>Peer autodiscovery and full mesh mode.</li>
+        <li>Automatic hub-spoke, even with multiple hubs.</li>
+        <li>Unidirectional tunnels, in case of diodes in the path.</li>
+        <li>
+            Device-to-Device tunnels, P2P and E2EE even behind
+            NAT and firewalls.
+        </li>
+    </ul>
+
+    <h2>Roaming</h2>
+
+    <p>
+        Roaming just works in sanctum, tunnels update their peer endpoints
+        automatically.
+    </p>
+        
 </div>
 
 </body>

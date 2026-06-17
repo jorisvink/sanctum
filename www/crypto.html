@@ -18,6 +18,7 @@
         <h3>Introduction</h3>
         <a href="/">About</a>
         <br>
+        <a href="/topologies.html">Topologies</a>
         <h3>Releases</h3>
         <a href="/releases.html">Getting Sanctum</a>
         <br>
@@ -25,6 +26,8 @@
         <a href="/errata.html">Errata</a>
         <br>
         <a href="/crypto.html">Cryptography</a>
+        <br>
+        <a href="/privsep.html">Privilege Separation</a>
         <h3>Resources</h3>
         <a href="/guide.html">Setup Guide</a>
         <br>
@@ -55,15 +58,19 @@
     <p>
         Sanctum is post-quantum secure due to its unique approach to
         deriving session keys based on a shared symmetrical secret in
-        combination with a hybridized asymmetrical exchange. It combines
-        both classic ECDH (x25519) and the PQ-secure NIST standardized
-        ML-KEM-1024.
+        combination with a hybridized asymmetrical exchange. The asymmetical
+        exchange combines both classic ECDH (x25519) and the PQ-secure
+        NIST standardized ML-KEM-1024.
+    </p>
+
+    <p>
+        All three inputs are all used to derive strong session keys.
     </p>
 
     <p>
         Traffic is by default encrypted under AES256-GCM with unique keys in
         both RX and TX directions using a 96-bit nonce consisting of a 32-bit
-        salt and a 64-bit packet counter (see rfc4106).
+        salt and a 64-bit packet counter.
     </p>
 
     <p>
