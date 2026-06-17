@@ -26,8 +26,9 @@ A community driven sanctum cathedral network can be found at
 
 ## Talks
 
-<a href="https://conclave.se/sect-2025.pdf" target="_blank">SEC-T 2025</a>
-<a href="https://conclave.se/sect-2024.pdf" target="_blank">SEC-T 2024</a>
+[SEC-T 2025](https://conclave.se/sect-2025.pdf)
+
+[SEC-T 2024](https://conclave.se/sect-2024.pdf)
 
 ## Building
 
