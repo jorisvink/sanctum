@@ -37,6 +37,13 @@ Please send your git patches to priests@sanctorum.se.
 See [share/example.conf](share/example.conf) for a simple
 example configuration.
 
+For more hands on examples, see through the different guides:
+
+* [Manual setup guide](https://sanctorum.se/guide.html) 
+* [Hymn based setup guide](https://sanctorum.se/guide.html#hymn) 
+* [Liturgy guide](https://sanctorum.se/liturgy.html)
+* [Cathedral guide](https://sanctorum.se/cathedral.html)
+
 ## Talks
 
 [SEC-T 2025](https://conclave.se/sect-2025.pdf)
