@@ -13,7 +13,7 @@ that talk to the internet or handle non-cryptography related things.
 
 Sanctum allows you to create different topologies, from traditional
 site-to-site L2/L3 tunnels, to more niche topologies such as
-one-way tunnels or mesh vpn between devices behind NAT using
+one-way tunnels or secure links between devices behind NAT using
 hole-punching and Sanctum's cathedrals for peer discovery.
 
 Cathedral networks can be used to implement more secure replacements
