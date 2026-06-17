@@ -39,8 +39,8 @@ example configuration.
 
 For more hands on examples, see through the different guides:
 
-* [Manual setup guide](https://sanctorum.se/guide.html) 
-* [Hymn based setup guide](https://sanctorum.se/guide.html#hymn) 
+* [Manual setup guide](https://sanctorum.se/guide.html)
+* [Hymn based setup guide](https://sanctorum.se/guide.html#hymn)
 * [Liturgy guide](https://sanctorum.se/liturgy.html)
 * [Cathedral guide](https://sanctorum.se/cathedral.html)
 
