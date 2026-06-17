@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-<title>Sanctum || Features</title>
+<title>Sanctum || Topologies</title>
 <link rel="stylesheet" href="/sanctum.css">
 </head>
 
@@ -56,27 +56,73 @@
     <h2>Topologies</h2>
 
     <p>
-        Sanctum out of the box, supports multiple traditional and more
-        novel modern topologies.
+        Sanctum out of the box, supports different modes that can be used to
+        build different types of topologies.
     </p>
 
-    <h2>Traditional topologies</h2>
+    <h2>Modes</h2>
 
     <ul>
-        <li>Site-to-site tunnels, classic VPN.</li>
-        <li>Client-to-site tunnels, classic roadwarrior.</li>
+        <li>Tunnel mode (classic site-to-site, or roadwarrior setup).</li>
+        <li>Pilgrim-shrine mode (one-way tunnels, in case of diodes).</li>
+        <li>Liturgy mode (auto discovery of peers and tunnel management).</li>
+        <li>Cathedral mode (relay, discovery and key distribution).</li>
     </ul>
 
-    <h2>Novel topologies</h2>
-    <ul>
-        <li>Peer autodiscovery and full mesh mode.</li>
-        <li>Automatic hub-spoke, even with multiple hubs.</li>
-        <li>Unidirectional tunnels, in case of diodes in the path.</li>
-        <li>
-            Device-to-Device tunnels, P2P and E2EE even behind
-            NAT and firewalls.
-        </li>
-    </ul>
+    <h2>Tunnel mode</h2>
+
+    <p>
+        This mode supports the classic site-to-site and client-to-site
+        setups. Sanctum is configured with the IP address of its peer
+        (if known) and its local address.
+    </p>
+
+    <p>
+        This mode is also used when configuring sanctum as a cathedral
+        client. In this case a cathedral endpoint is configured instead
+        of an IP address for our peer. The discovery of our peer and
+        the establishment of a P2P E2EE tunnel happens automatically.
+    </p>
+
+    <h2>Pilgrim-shrine mode</h2>
+
+    <p>
+        Use this mode when you have a diode in your network path that
+        enforces unidirectional traffic. The pilgrim mode is the sender
+        while the shrine is the receiver. Because of how the privilege
+        seperation works in sanctum, no return traffic is possible. This
+        is a great choice for implementing sofware diodes.
+    </p>
+
+    <h2>Liturgy mode</h2>
+
+    <p>
+        Liturgy mode allows sanctum to use cathedrals to autodiscover multiple
+        peers belonging to the same flock. When peers are discovered a
+        tunnel is automatically established to them, if the peers go offline
+        the tunnel goes offline automatically.
+    </p>
+
+    <p>
+        Because it uses cathedrals, both peers may live behind NAT or
+        firewalls. The cathedrals will help in establishing a P2P connection
+        between the two peers if possible, otherwise traffic is relayed
+        over a cathedral.
+    </p>
+
+    <p>
+        <strong>Note:</strong> cathedrals can never read any traffic, they
+        are only able to relay traffic.
+    </p>
+
+    <h2>Cathedral mode</h2>
+
+    <p>
+        In this mode sanctum only acts as a cathedral. A cathedral is a
+        peer discovery, traffic relay and key distribution point. Cathedrals
+        can federate with each other to create a resilient network that
+        becomes hard to take down.
+    </p>
 
     <h2>Roaming</h2>
 
