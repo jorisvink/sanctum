@@ -24,12 +24,6 @@ like Tailscale or Zerotier.
 A community driven sanctum cathedral network can be found at
 [The Reliquary](https://reliquary.se).
 
-## Talks
-
-[SEC-T 2025](https://conclave.se/sect-2025.pdf)
-
-[SEC-T 2024](https://conclave.se/sect-2024.pdf)
-
 ## Building
 
 See [docs/building.md](docs/building.md) for building instructions.
@@ -42,6 +36,12 @@ Please send your git patches to priests@sanctorum.se.
 
 See [share/example.conf](share/example.conf) for a simple
 example configuration.
+
+## Talks
+
+[SEC-T 2025](https://conclave.se/sect-2025.pdf)
+
+[SEC-T 2024](https://conclave.se/sect-2024.pdf)
 
 ## Library
 
