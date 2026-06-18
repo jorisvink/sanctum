@@ -37,7 +37,7 @@ Please send your git patches to priests@sanctorum.se.
 See [share/example.conf](share/example.conf) for a simple
 example configuration.
 
-For more hands on examples, see through the different guides:
+For more hands on examples, see the different guides below:
 
 * [Manual setup guide](https://sanctorum.se/guide.html)
 * [Hymn based setup guide](https://sanctorum.se/guide.html#hymn)
