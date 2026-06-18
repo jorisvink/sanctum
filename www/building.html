@@ -78,7 +78,9 @@
 
     <p>
         <strong>Caveat:</strong> libsodium on aarch64 platforms for most distros
-        it not built correctly and aes-gcm support is disabled due to this.
+	it not built correctly and aes-gcm support in libsodium is disabled due
+	to this. See the <a href="#encryption">encryption</a> section for other
+	options and how to enable them.
     </p>
 
     <p>
@@ -130,7 +132,7 @@ $ make
     <pre>$ CFLAGS=-DSANCTUM_KDF_PREFIX='\"MY_PREFIX.\"' make</pre>
     <pre>$ CFLAGS=-DSANCTUM_KDF_PREFIX='\"MY_PREFIX.\"' \ -DSANCTUM_CATHEDRAL_KDF_PREFIX='\"CUSTOM_CATHEDRAL.\"' make</pre>
 
-    <h3>Encryption</h3>
+    <h3 id="encryption">Encryption</h3>
 
     <p>
         For the encryption Sanctum comes with backends for the
