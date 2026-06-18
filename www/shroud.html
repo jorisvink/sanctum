@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-<title>Sanctum introduction</title>
+<title>Sanctum || Traffic Protection</title>
 <link rel="stylesheet" href="/sanctum.css">
 </head>
 
@@ -58,51 +58,29 @@
 
     <div class="sep"></div>
 
-    <h2>What is Sanctum?</h2>
+    <h2>Traffic Analysis protection</h2>
 
     <p>
-        Sanctum is a small, reviewable, capable, PQ-secure and
-        <a href="/privsep.html">fully privilege separated</a> novel
-        VPN daemon and protocol designed to run under OpenBSD, Linux and MacOS.
+        Sanctum offers very strong traffic analysis protection, being able
+        to mask all protocol meta-data on the wire, making packets look
+        entirely like random data.
     </p>
 
     <p>
-        It is designed from the ground up with security in mind and
-        will always be open and free, licensed under the ISC license.
+        This feature is called <strong>shroud</strong>.
     </p>
 
     <p>
-        Sanctum uses strong cryptography and a unique hybridized key exchange
-        that combines symmetrical keying with classical and PQ-secure asymmetry.
-        See <a href="/crypto.html">the cryptography page</a> for
-        a detailed description of the cryptosystem in sanctum.
+        Shroud is off by default as it increases overhead and affects
+        performance by about 45% as it has to shroud/unshroud each individual
+        packet with additional unique per-packet masks.
     </p>
 
     <p>
-        It allows the creation of different
-        <a href="/topologies.html">topologies</a> from traditional
-        site-to-site or client-to-site tunnels, to one-way tunnels or
-        p2p e2ee secure links between devices, even when behind NAT.
-    </p>
-
-    <p>
-        Sanctum is often used to create more secure replacements for things
-        like Tailscale or Zerotier.
-    </p>
-
-    <h2>Talks</h2>
-    <p>
-        <ul>
-            <li><a href="https://conclave.se/sect-2025.pdf" target="_blank">SEC-T 2025</a></li>
-            <li><a href="https://conclave.se/sect-2024.pdf" target="_blank">SEC-T 2024</a></li>
-        </ul>
-    </p>
-
-    <h2>Getting in touch</h2>
-    <p>
-        Found a security issue or want to contribute patches to the project?
-    <br>
-        Send an email to &lt;priests snabel-a sanctorum punkt se&gt;
+        While shroud on a normal tunnel setup does not offer many
+        advantages, it is very useful in a cathedral setup as it
+        becomes very tricky for anyone capturing traffic to deduce what
+        devices belong to the same flock and who is talking to whom.
     </p>
 </div>
 

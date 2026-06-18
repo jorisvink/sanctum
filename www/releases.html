@@ -28,6 +28,8 @@
         <br>
         <a href="/crypto.html">Cryptography</a>
         <br>
+        <a href="/shroud.html">Traffic Analysis</a>
+        <br>
         <a href="/privsep.html">Privilege Separation</a>
         <h3>Resources</h3>
         <a href="/guide.html">Setup Guide</a>
@@ -106,7 +108,7 @@ Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
     <li>Hold back key exchanges for a minute if a peer does not answer, reduces packets on the wire a bit when the peer is not online.</li>
     <li>Fixed a missing sanctum_packet_release() in an error path in confess.</li>
     <li>Cathedrals can now signal to peers if they are behind the same external ip, paving the way for local discovery later.</li>
-    <li>Cathedrals now only forget tunnels are 120 seconds, instead of 45.</li>
+    <li>Cathedrals now only forget tunnels after 120 seconds, instead of 45.</li>
     <li>Cathedrals now only allow offers to be federated each 3 seconds, instead of 1.</li>
     </ul>
 </div>
