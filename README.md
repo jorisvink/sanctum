@@ -2,7 +2,7 @@
 
 ## About
 
-Sanctum is a small, reviewable, capable, pq-secure and
+Sanctum is a small, reviewable, capable, PQ-secure and
 [fully privilege separated](https://sanctorum.se/privsep.html)
 VPN daemon for OpenBSD, Linux and MacOS. It is designed from the
 ground up with security in mind and will always be open and free,
