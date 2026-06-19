@@ -18,14 +18,19 @@
         <h3>Introduction</h3>
         <a href="/">About</a>
         <br>
+        <a href="/topologies.html">Topologies</a>
         <h3>Releases</h3>
         <a href="/releases.html">Getting Sanctum</a>
         <br>
+        <a href="/building.html">Building Sanctum</a>
         <h3>Security</h3>
         <a href="/errata.html">Errata</a>
         <br>
         <a href="/crypto.html">Cryptography</a>
         <br>
+        <a href="/shroud.html">Traffic Analysis</a>
+        <br>
+        <a href="/privsep.html">Privilege Separation</a>
         <h3>Resources</h3>
         <a href="/guide.html">Setup Guide</a>
         <br>
@@ -33,6 +38,8 @@
         <br>
         <a href="/cathedral.html">Cathedral Guide</a>
         <h3>Community</h3>
+        <a href="/contributing.html">Contributing</a>
+        <br>
         <a href="https://reliquary.se">The Reliquary</a>
         <br>
         <a href="https://conclave.se">The Conclave</a>
@@ -47,7 +54,7 @@
 <div class="content">
 
 <div class="release">
-Latest release: <a href="/releases/sanctum-1.1.1.tgz">sanctum 1.1.1</a>
+Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
 </div>
 
 <div class="sep"></div>
@@ -68,44 +75,61 @@ Latest release: <a href="/releases/sanctum-1.1.1.tgz">sanctum 1.1.1</a>
     release tarballs from other sites.
 </p>
 
+<h3>1.1.2</h3>
+
+<div class="release-entry">
+    <p>
+        <a href="/releases/sanctum-1.1.2.tgz">sanctum-1.1.2.tgz (3.1MB)</a><br>
+        <small>released: 2026-05-29</small><br>
+        <small>sha256: d4b730626f317ddd8b74019e62b7720a7360228e332bf498124e161c46eedfbf</small>
+    </p>
+
+    <h4>Highlights</h4>
+
+    <ul>
+    <li>Small mbedtls-aes-gcm fixes.</li>
+    <li>Adjust shroud mask to cover sanctum_proto_hdr.</li>
+    </ul>
+</div>
+
 <h3>1.1.1</h3>
 
-<p>
-    <ul style="list-style: none">
-    <li><a href="/releases/sanctum-1.1.1.tgz">sanctum-1.1.1.tgz (3.1MB)</a><br>
-    <small>sha256: f35d1721a7301df0491114c5548d0b2175d93fa877cbb93210e7324041e46d7d</small>
+<div class="release-entry">
+    <p>
+        <a href="/releases/sanctum-1.1.1.tgz">sanctum-1.1.1.tgz (3.1MB)</a><br>
+        <small>released: 2026-05-19</small><br>
+        <small>sha256: f35d1721a7301df0491114c5548d0b2175d93fa877cbb93210e7324041e46d7d</small>
+        </p>
+
+    <h4>Highlights</h4>
+
+    <ul>
+    <li>More paranoia when procs exit, explicitly call nyfe_zeroize_all() and warn on linger sensitive assets.</li>
+    <li>Hold back key exchanges for a minute if a peer does not answer, reduces packets on the wire a bit when the peer is not online.</li>
+    <li>Fixed a missing sanctum_packet_release() in an error path in confess.</li>
+    <li>Cathedrals can now signal to peers if they are behind the same external ip, paving the way for local discovery later.</li>
+    <li>Cathedrals now only forget tunnels after 120 seconds, instead of 45.</li>
+    <li>Cathedrals now only allow offers to be federated each 3 seconds, instead of 1.</li>
     </ul>
-
-<h4>Highlights</h4>
-
-<ul>
-<li>More paranoia when procs exit, explicitly call nyfe_zeroize_all() and warn on linger sensitive assets.</li>
-<li>Hold back key exchanges for a minute if a peer does not answer, reduces packets on the wire a bit when the peer is not online.</li>
-<li>Fixed a missing sanctum_packet_release() in an error path in confess.</li>
-<li>Cathedrals can now signal to peers if they are behind the same external ip, paving the way for local discovery later.</li>
-<li>Cathedrals now only forget tunnels are 120 seconds, instead of 45.</li>
-<li>Cathedrals now only allow offers to be federated each 3 seconds, instead of 1.</li>
-</ul>
-
-</p>
+</div>
 
 <h3>1.1.0</h3>
 
-<p>
-    <ul style="list-style: none">
-    <li><a href="/releases/sanctum-1.1.0.tgz">sanctum-1.1.0.tgz (3.1MB)</a><br>
-    <small>sha256: 17ccba4f8d495f65beff5bfdfd8ebaaaba75ec0283874d8b17fc3ada9fd8b3e6</small>
+<div class="release-entry">
+    <p>
+        <a href="/releases/sanctum-1.1.0.tgz">sanctum-1.1.0.tgz (3.1MB)</a><br>
+        <small>released: 2026-04-15</small><br>
+        <small>sha256: 17ccba4f8d495f65beff5bfdfd8ebaaaba75ec0283874d8b17fc3ada9fd8b3e6</small>
+    </p>
+
+    <h4>Highlights</h4>
+
+    <ul>
+    <li>New shroud functionality, replacing encapsulation. A shroud will mask
+    away protocol meta-data with unique per-client traffic protection keys making
+    traffic analysis much harder.</li>
     </ul>
-
-<h4>Highlights</h4>
-
-<ul>
-<li>New shroud functionality, replacing encapsulation. A shroud will mask
-away protocol meta-data with unique per-client traffic protection keys making
-traffic analysis much harder.</li>
-</ul>
-
-</p>
+</div>
 
 <h3>Packages</h3>
 <p>

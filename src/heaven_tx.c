@@ -30,6 +30,10 @@
 static void	heaven_tx_drop_access(void);
 static void	heaven_tx_send_packet(int, struct sanctum_packet *);
 
+static void	heaven_tx_grace_packet(struct sanctum_packet *);
+static void	heaven_tx_grace_mtu_ack(struct sanctum_packet *);
+static void	heaven_tx_grace_mtu_probe(struct sanctum_packet *pkt);
+
 static void	heaven_tx_l2_log(struct sanctum_ether *);
 static int	heaven_tx_l2_sinner(struct sanctum_packet *);
 
@@ -129,6 +133,17 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_HEAVEN_TX);
 	PRECOND(sanctum->mode != SANCTUM_MODE_PILGRIM);
 
+	if (pkt->type == SANCTUM_PACKET_GRACE) {
+		heaven_tx_grace_packet(pkt);
+		sanctum_packet_release(pkt);
+		return;
+	}
+
+	if (pkt->type != SANCTUM_PACKET_IP) {
+		sanctum_packet_release(pkt);
+		return;
+	}
+
 	if (sanctum->flags & SANCTUM_FLAG_USE_TAP) {
 		if (heaven_tx_l2_sinner(pkt) == -1) {
 			sanctum_packet_release(pkt);
@@ -159,6 +174,111 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 	}
 
 	sanctum_packet_release(pkt);
+}
+
+/*
+ * We have received a grace packet, we process it.
+ *
+ * Inside of the grace packet we potentially find the ack'd length
+ * of a previous grace packet we sent that has arrived on the other side.
+ *
+ * Based on that we know what the MTU for the current path is going to be.
+ */
+static void
+heaven_tx_grace_packet(struct sanctum_packet *pkt)
+{
+	struct sanctum_grace		*grace;
+
+	PRECOND(pkt != NULL);
+	PRECOND(pkt->type == SANCTUM_PACKET_GRACE);
+
+	if (pkt->length < sizeof(struct sanctum_grace)) {
+		sanctum_log(LOG_NOTICE,
+		    "peer sent incorrect grace packet of %zu bytes",
+		    pkt->length);
+		return;
+	}
+
+	grace = sanctum_packet_data(pkt);
+
+	switch (grace->type) {
+	case SANCTUM_GRACE_TYPE_MTU_PROBE:
+		heaven_tx_grace_mtu_probe(pkt);
+		break;
+	case SANCTUM_GRACE_TYPE_MTU_ACK:
+		heaven_tx_grace_mtu_ack(pkt);
+		break;
+	case SANCTUM_GRACE_TYPE_HEARTBEAT:
+		break;
+	default:
+		sanctum_log(LOG_NOTICE, "peer sent invalid grace type %02x",
+		    grace->type);
+		return;
+	}
+
+	sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
+	sanctum_atomic_add(&sanctum->rx.pkt, 1);
+}
+
+/*
+ * Handle a grace MTU probe from our peer. If we received this we
+ * will notify the peer that that size has worked.
+ *
+ * The notification is sent by our heaven-rx proc as it has the ability
+ * to submit packets for encryption on our secure link.
+ */
+static void
+heaven_tx_grace_mtu_probe(struct sanctum_packet *pkt)
+{
+	struct sanctum_grace_mtu	*probe;
+
+	PRECOND(pkt != NULL);
+
+	if (pkt->length < sizeof(*probe)) {
+		sanctum_log(LOG_NOTICE,
+		    "peer sent invalid grace mtu packet of %zu bytes",
+		    pkt->length);
+		return;
+	}
+
+	probe = sanctum_packet_data(pkt);
+	VERIFY(probe->grace.type == SANCTUM_GRACE_TYPE_MTU_PROBE);
+
+	sanctum_atomic_cas_simple(&sanctum->mtu_probe_ack, 0, probe->size);
+}
+
+/*
+ * Handle an MTU ack we received from our peer. This indicates
+ * a probe we have sent arrived and we can use that size as our MTU.
+ */
+static void
+heaven_tx_grace_mtu_ack(struct sanctum_packet *pkt)
+{
+	u_int16_t			mtu;
+	struct sanctum_grace_mtu	*ack;
+
+	PRECOND(pkt != NULL);
+
+	if (pkt->length < sizeof(*ack)) {
+		sanctum_log(LOG_NOTICE,
+		    "peer sent invalid grace mtu packet of %zu bytes",
+		    pkt->length);
+		return;
+	}
+
+	ack = sanctum_packet_data(pkt);
+	VERIFY(ack->grace.type == SANCTUM_GRACE_TYPE_MTU_ACK);
+
+	mtu = sanctum_atomic_read(&sanctum->mtu_value);
+
+	if (ack->size > mtu && ack->size >= SANCTUM_MTU_SIZE_MIN &&
+	    ack->size < SANCTUM_PACKET_DATA_LEN) {
+		sanctum_atomic_write(&sanctum->mtu_value, ack->size);
+		sanctum_atomic_write(&sanctum->mtu_change, ack->size);
+		sanctum_log(LOG_INFO, "MTU ack received (mtu=%u)", ack->size);
+	}
+
+	sanctum_atomic_write(&sanctum->mtu_attempts, 0);
 }
 
 /*

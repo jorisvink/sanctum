@@ -76,3 +76,35 @@ pre {
 small {
     color: gray;
 }
+
+.release-entry {
+    margin-left: 25px;
+}
+
+.errata-entry {
+    margin-left: 25px;
+}
+
+.errata-id {
+    color: #20b700;
+    display: inline-block;
+    font-weight: bold;
+}
+
+.errata-reason {
+    margin-top: 0px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+td, th {
+    border: 1px solid #daa520;
+    text-align: left;
+    padding: 8px;
+}
+
+tr:nth-child(even) {
+}

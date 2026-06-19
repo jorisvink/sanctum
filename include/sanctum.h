@@ -119,11 +119,14 @@ extern const char	*sanctum_build_date;
 /* The length of the seed sent with the shrouded header. */
 #define SANCTUM_SHROUD_SEED_LENGTH	16
 
-/* ESP next_proto value for a heartbeat. */
-#define SANCTUM_PACKET_HEARTBEAT	0xfc
+/* The protocol tail value for an ip packet. */
+#define SANCTUM_PACKET_IP		0x00
 
-/* The number of seconds between heartbeats. */
-#define SANCTUM_HEARTBEAT_INTERVAL	15
+/* The protocol tail value for a grace packet. */
+#define SANCTUM_PACKET_GRACE		0xfc
+
+/* The number of seconds between grace heartbeats. */
+#define SANCTUM_GRACE_HEARTBEAT_INTERVAL	15
 
 /* Maximum number of packets that can be sent under an SA. */
 #define SANCTUM_SA_PACKET_SOFT		(1ULL << 33)
@@ -170,6 +173,25 @@ extern const char	*sanctum_build_date;
 #define SANCTUM_FLOCK_DOMAIN_BITS	8
 #define SANCTUM_FLOCK_DOMAINS		(1 << SANCTUM_FLOCK_DOMAIN_BITS)
 #define SANCTUM_FLOCK_DOMAIN_MASK	(SANCTUM_FLOCK_DOMAINS - 1)
+
+/*
+ * The data structure used when sending graces to our peer.
+ */
+#define SANCTUM_GRACE_TYPE_HEARTBEAT	1
+#define SANCTUM_GRACE_TYPE_MTU_PROBE	2
+#define SANCTUM_GRACE_TYPE_MTU_ACK	3
+
+struct sanctum_grace {
+	u_int16_t	type;
+} __attribute__((packed));
+
+struct sanctum_grace_mtu {
+	struct sanctum_grace	grace;
+	u_int16_t		size;
+} __attribute__((packed));
+
+/* The minimum MTU probe size */
+#define SANCTUM_MTU_SIZE_MIN	(sizeof(struct sanctum_offer))
 
 /*
  * Packets used when doing key offering or cathedral forward registration.
@@ -484,8 +506,10 @@ struct sanctum_shroud_hdr {
  * Maximum packet sizes we can receive from the interfaces.
  */
 #if defined(SANCTUM_JUMBO_FRAMES)
+#define SANCTUM_MTU_SIZE_MAX		9200
 #define SANCTUM_PACKET_DATA_LEN		9216
 #else
+#define SANCTUM_MTU_SIZE_MAX		1500
 #define SANCTUM_PACKET_DATA_LEN		1522
 #endif
 
@@ -506,7 +530,8 @@ struct sanctum_packet {
 	struct sockaddr_in	addr;
 	u_int8_t		next;
 	size_t			length;
-	u_int32_t		target;
+	u_int16_t		target;
+	u_int16_t		type;
 	u_int8_t		buf[SANCTUM_PACKET_MAX_LEN];
 };
 
@@ -564,6 +589,9 @@ struct sanctum_ether {
 
 /* When in liturgy mode, are we hiding ourselves or not. */
 #define SANCTUM_FLAG_LITURGY_HIDE	(1 << 8)
+
+/* Is MTU discovery via grace enabled? */
+#define SANCTUM_FLAG_MTU_DISCOVERY	(1 << 9)
 
 /*
  * The modes in which sanctum can run.
@@ -630,6 +658,21 @@ struct sanctum_state {
 	struct sockaddr_in	tun_mask;
 	u_int16_t		tun_mtu;
 	u_int16_t		tun_spi;
+
+	/* The last mtu that was actively set. */
+	volatile u_int16_t	mtu_size;
+
+	/* Our current mtu value during discovery. */
+	volatile u_int16_t	mtu_value;
+
+	/* Used by heaven-tx to communicate with guardian to set mtu. */
+	volatile u_int16_t	mtu_change;
+
+	/* Used by heaven-tx to communicate with heaven-rx to send an ack. */
+	volatile u_int16_t	mtu_probe_ack;
+
+	/* The number of probe attempts for the current mtu value. */
+	volatile u_int16_t	mtu_attempts;
 
 	/* The path to the pidfile. */
 	char			*pidfile;
@@ -701,10 +744,10 @@ struct sanctum_state {
 	/* RX SA pending. */
 	volatile u_int32_t	rx_pending;
 
-	/* The last heartbeat received from the peer. */
+	/* The last time we received a grace heartbeat from our peer. */
 	volatile u_int64_t	heartbeat;
 
-	/* Do hole punching (by sending many heartbeats for a bit). */
+	/* Do hole punching (by sending many graces for a bit). */
 	volatile int		holepunch;
 
 	/* Process wakeup states. */
@@ -795,7 +838,6 @@ void	sanctum_log(int, const char *, ...)
 void	sanctum_logv(int, const char *, va_list);
 void	sanctum_shm_detach(void *);
 void	*sanctum_alloc_shared(size_t);
-void	sanctum_mem_zero(void *, size_t);
 void	sanctum_inet_mask(void *, u_int32_t);
 void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
@@ -841,6 +883,7 @@ struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
 /* platform bits. */
 void	sanctum_platform_init(void);
 int	sanctum_platform_tundev_create(void);
+void	sanctum_platform_tundev_mtu(u_int16_t);
 void	sanctum_platform_ip_fragmentation(int, int);
 void	sanctum_platform_sandbox(struct sanctum_proc *);
 ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);

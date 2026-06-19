@@ -47,6 +47,9 @@ static void	openbsd_configure_bridge(const char *);
 static void	openbsd_configure_tundev(const char *);
 static void	openbsd_sandbox_pledge(struct sanctum_proc *);
 
+/* The device we are using. */
+static char		*device = NULL;
+
 /*
  * Setup the required platform bits and bobs.
  */
@@ -73,7 +76,7 @@ sanctum_platform_tundev_create(void)
 
 	for (idx = 0; idx < 256; idx++) {
 		len = snprintf(path, sizeof(path), "/dev/%s%d", type, idx);
-		if (len == -1 || (size_t)len >= sizeof(path))
+		if (len < 0 || (size_t)len >= sizeof(path))
 			fatal("/dev/%s%d too long", type, idx);
 
 		if ((fd = open(path, O_RDWR)) != -1)
@@ -104,6 +107,9 @@ sanctum_platform_tundev_create(void)
 	}
 
 	sanctum_log(LOG_INFO, "using %s device '%s'", type, path);
+
+	if ((device = strdup(&path[PATH_SKIP])) == NULL)
+		fatal("strdup failed");
 
 	return (fd);
 }
@@ -246,6 +252,31 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 	(void)close(s);
 }
 
+/*
+ * Set the MTU for our tunnel device.
+ */
+void
+sanctum_platform_tundev_mtu(u_int16_t mtu)
+{
+	int			fd;
+	struct ifreq		ifr;
+
+	PRECOND(mtu >= SANCTUM_MTU_SIZE_MIN && mtu <= sanctum->tun_mtu);
+
+	if (strlcpy(ifr.ifr_name, device, sizeof(ifr.ifr_name)) >=
+	    sizeof(ifr.ifr_name))
+		fatal("ifc '%s' too long", device);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	ifr.ifr_mtu = mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	(void)close(fd);
+}
+
 /* Sandboxing code. */
 void
 sanctum_platform_sandbox(struct sanctum_proc *proc)
@@ -348,7 +379,7 @@ openbsd_configure_tundev(const char *dev)
 		len = snprintf(descr, sizeof(descr), "%s", sanctum->instance);
 	}
 
-	if (len == -1 || (size_t)len >= sizeof(descr))
+	if (len < 0 || (size_t)len >= sizeof(descr))
 		fatal("the description name is too long");
 
 	ifr.ifr_data = descr;

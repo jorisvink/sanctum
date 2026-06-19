@@ -32,6 +32,7 @@ static void	signal_memfault(int);
 static void	usage(void) __attribute__((noreturn));
 static void	version(void) __attribute__((noreturn));
 
+static void	sanctum_mtu_change(void);
 static void	sanctum_pidfile_grab(void);
 static void	sanctum_pidfile_write(void);
 static void	sanctum_pidfile_unlink(void);
@@ -189,6 +190,8 @@ main(int argc, char *argv[])
 				break;
 			}
 		}
+
+		sanctum_mtu_change();
 
 		(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 		sanctum_atomic_write(&sanctum->uptime, ts.tv_sec);
@@ -379,5 +382,27 @@ sanctum_pidfile_unlink(void)
 	if (unlink(sanctum->pidfile) == -1 && errno != ENOENT) {
 		sanctum_log(LOG_NOTICE, "failed to remove pidfile '%s' (%s)",
 		    sanctum->pidfile, strerror(errno));
+	}
+}
+
+/*
+ * Check if we have to update our tunnel mtu, if so call the
+ * platform specific code to do so.
+ */
+static void
+sanctum_mtu_change(void)
+{
+	u_int16_t	mtu;
+
+	if ((mtu = sanctum_atomic_read(&sanctum->mtu_change)) == 0)
+		return;
+
+	if (!sanctum_atomic_cas_simple(&sanctum->mtu_change, mtu, 0))
+		return;
+
+	if (sanctum_atomic_read(&sanctum->mtu_size) != mtu) {
+		sanctum_platform_tundev_mtu(mtu);
+		sanctum_atomic_write(&sanctum->mtu_size, mtu);
+		sanctum_log(LOG_INFO, "MTU has been set to %u", mtu);
 	}
 }

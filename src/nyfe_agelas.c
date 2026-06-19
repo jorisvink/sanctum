@@ -102,6 +102,7 @@ sanctum_cipher_encrypt(struct sanctum_cipher *cipher)
 	VERIFY(cipher->ct != NULL);
 	VERIFY(cipher->tag != NULL);
 	VERIFY(cipher->aad != NULL);
+	VERIFY(cipher->aad_len > 0);
 	VERIFY(cipher->nonce != NULL);
 	VERIFY(cipher->nonce_len == SANCTUM_NONCE_LENGTH);
 
@@ -146,6 +147,7 @@ sanctum_cipher_decrypt(struct sanctum_cipher *cipher)
 	VERIFY(cipher->ct != NULL);
 	VERIFY(cipher->tag != NULL);
 	VERIFY(cipher->aad != NULL);
+	VERIFY(cipher->aad_len > 0);
 	VERIFY(cipher->nonce != NULL);
 	VERIFY(cipher->nonce_len == SANCTUM_NONCE_LENGTH);
 

@@ -50,7 +50,7 @@ exist, below is a list of them.
 
 An offer packet is defined as follows:
 
-```
+```c
 struct sanctum_offer {
 	struct sanctum_offer_hdr	hdr;
 	struct sanctum_offer_data	data;
@@ -78,7 +78,7 @@ Note that **hdr** is added as AAD.
 
 ### Offer header
 
-```
+```c
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
 	u_int64_t		flock_src;
@@ -111,7 +111,7 @@ specific offer packet.
 
 The offer data is encrypted.
 
-```
+```c
 struct sanctum_offer_data {
 	u_int8_t		type;
 	u_int64_t		timestamp;
@@ -142,7 +142,7 @@ in the same flock.
 
 Liturgies are carried in an **offer**.
 
-```
+```c
 struct sanctum_liturgy_offer {
 	u_int8_t		id;
 	u_int16_t		group;

@@ -18,13 +18,19 @@
         <h3>Introduction</h3>
         <a href="/">About</a>
         <br>
+        <a href="/topologies.html">Topologies</a>
         <h3>Releases</h3>
         <a href="/releases.html">Getting Sanctum</a>
         <br>
+        <a href="/building.html">Building Sanctum</a>
         <h3>Security</h3>
         <a href="/errata.html">Errata</a>
         <br>
         <a href="/crypto.html">Cryptography</a>
+        <br>
+        <a href="/shroud.html">Traffic Analysis</a>
+        <br>
+        <a href="/privsep.html">Privilege Separation</a>
         <h3>Resources</h3>
         <a href="/guide.html">Setup Guide</a>
         <br>
@@ -32,6 +38,8 @@
         <br>
         <a href="/cathedral.html">Cathedral Guide</a>
         <h3>Community</h3>
+        <a href="/contributing.html">Contributing</a>
+        <br>
         <a href="https://reliquary.se">The Reliquary</a>
         <br>
         <a href="https://conclave.se">The Conclave</a>
@@ -45,71 +53,51 @@
 
 <div class="content">
     <div class="release">
-    Latest release: <a href="/releases/sanctum-1.1.1.tgz">sanctum 1.1.1</a>
+    Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
     </div>
 
     <div class="sep"></div>
 
+    <p style="margin-top: 5px">
+        <strong style="color: #20b700">Zero security vulnerabilities in 4 years.</strong>
+    </p>
+
     <h2>What is Sanctum?</h2>
 
     <p>
-        Sanctum is a small, reviewable, capable, PQ-secure and fully
-        privilege separated novel VPN daemon and protocol designed to
-        run under OpenBSD, Linux and MacOS.
+        Sanctum is a small, reviewable, capable, PQ-secure and
+        <a href="/privsep.html">fully privilege separated</a> novel
+        VPN daemon and protocol designed to run under OpenBSD, Linux and MacOS.
     </p>
 
     <p>
-        Sanctum is designed from the ground up with security in mind and
+        It is designed from the ground up with security in mind and
         will always be open and free, licensed under the ISC license.
     </p>
 
     <p>
-        Its unique privilege separation design in combination with
-        strong modern sandboxing guarantee that all of its important assets
-        are separated from processes that talk to the internet or handle
-        non-cryptography related things.
-    </p>
-
-    <p>
-        Sanctum allows you to create different topologies, from traditional
-        site-to-site L2/L3 tunnels, to more niche topologies such as
-        one-way tunnels or mesh vpn, for devices behind NAT using
-        hole-punching and Sanctum's cathedrals for peer discovery.
-    </p>
-
-    <p>
-        Cathedral networks can be used to implement more secure replacements
-        for things like Tailscale or Zerotier, where you are in control and
-        where all traffic is properly cryptographically separated from each
-        other.
-    </p>
-
-    <p>
-        A community driven cathedral network exists allowing you to test
-        different setups or even freely use it, see
-        <a target="_blank" href="https://reliquary.se">The Reliquary</a>.
-    </p>
-
-    <h2>Multi-process</h2>
-
-    <p>
-        Sanctum is built using a multi-process approach where each process
-        is only doing one thing. This allows for more fine-grained sandboxing
-        in relation to permissions or allowed system calls.
-    </p>
-
-    <p>
-        Packets flow between these processes in a well-defined manner
-        making it impossible to move a packet straight from the red
-        side to the black side without passing the encryption process and
-        vice-versa.
-    </p>
-
-    <h2>Encryption</h2>
-
-    <p>
+        Sanctum uses strong cryptography and a unique hybridized key exchange
+        that combines symmetrical keying with classical and PQ-secure asymmetry.
         See <a href="/crypto.html">the cryptography page</a> for
         a detailed description of the cryptosystem in sanctum.
+    </p>
+
+    <p>
+        It allows the creation of different
+        <a href="/topologies.html">topologies</a> from traditional
+        site-to-site or client-to-site tunnels, to one-way tunnels or
+        p2p e2ee secure links between devices, even when behind NAT.
+    </p>
+
+    <p>
+        Using the library implementation found in <a href="https://github.com/jorisvink/libkyrka" target="_blank">libkyrka</a> you can embed sanctum its secure
+        p2p e2ee tunnels directly into your applications.
+    </p>
+
+    <p>
+        Sanctum is often used to create more secure replacements for things
+        like Tailscale or Zerotier and by organizations who's communication
+        must remain a secret, even in the future.
     </p>
 
     <h2>Talks</h2>
@@ -120,11 +108,10 @@
         </ul>
     </p>
 
-    <h2>Getting in touch</h2>
+    <h2>Found a security issue?</h2>
     <p>
-        Found a security issue or want to contribute patches to the project?
-    <br>
-        Send an email to &lt;priests snabel-a sanctorum punkt se&gt;
+        Send an email to &lt;priests snabel-a sanctorum punkt se&gt; and
+        we will work with you to correct it.
     </p>
 </div>
 

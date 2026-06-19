@@ -159,7 +159,7 @@ confess_clear_state(void)
 	sanctum_stat_clear(&sanctum->rx);
 	sanctum_atomic_write(&sanctum->rx_pending, 0);
 
-	sanctum_mem_zero(&state, sizeof(state));
+	nyfe_mem_zero(&state, sizeof(state));
 }
 
 /*
@@ -176,7 +176,7 @@ confess_key_management(void)
 	    &state.active, &state.pending) != -1) {
 		sanctum_stat_clear(&sanctum->rx);
 		sanctum_atomic_write(&sanctum->rx_pending, 0);
-		sanctum_mem_zero(&state, sizeof(state));
+		nyfe_mem_zero(&state, sizeof(state));
 	}
 
 	if (state.active.cipher == NULL) {
@@ -251,7 +251,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 	state.active.cipher = state.pending.cipher;
 	state.active.pending = state.pending.pending;
 
-	sanctum_mem_zero(&state.pending, sizeof(state.pending));
+	nyfe_mem_zero(&state.pending, sizeof(state.pending));
 }
 
 /*
@@ -319,7 +319,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	if (sa->pending) {
 		sa->pending = 0;
-		sanctum_atomic_write(&sanctum->rx.pkt, 0);
+		sanctum_atomic_write(&sanctum->rx.pkt, 1);
 		sanctum_atomic_write(&sanctum->rx.bytes, 0);
 		sanctum_atomic_write(&sanctum->rx.age, sa->age);
 		sanctum_atomic_write(&sanctum->rx.spi, sa->spi);
@@ -341,28 +341,27 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	now = sanctum_atomic_read(&sanctum->uptime);
 	sanctum_atomic_write(&sanctum->heartbeat, now);
 
-	if (tail->next == SANCTUM_PACKET_HEARTBEAT) {
-		sanctum_packet_release(pkt);
-		sanctum_atomic_add(&sanctum->rx.pkt, 1);
-		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
-		return (0);
-	}
+	switch (tail->next) {
+	case SANCTUM_PACKET_IP:
+		if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
+			if (pkt->length < sizeof(*ip))
+				return (-1);
 
-	if (tail->next != IPPROTO_IP)
+			ip = sanctum_packet_data(pkt);
+			len = be16toh(ip->ip_len);
+			if (len > pkt->length || len > sanctum->tun_mtu)
+				return (-1);
+
+			pkt->length = len;
+		}
+		break;
+	case SANCTUM_PACKET_GRACE:
+		break;
+	default:
 		return (-1);
-
-	if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
-		if (pkt->length < sizeof(*ip))
-			return (-1);
-
-		ip = sanctum_packet_data(pkt);
-		len = be16toh(ip->ip_len);
-		if (len > pkt->length || len > sanctum->tun_mtu)
-			return (-1);
-
-		pkt->length = len;
 	}
 
+	pkt->type = tail->next;
 	pkt->target = SANCTUM_PROC_HEAVEN_TX;
 
 	if (sanctum_ring_queue(io->heaven, pkt) == -1)

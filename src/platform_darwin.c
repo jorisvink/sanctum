@@ -67,6 +67,9 @@ int	__ulock_wake(uint32_t operation, void *addr, uint64_t wake_value);
 int	sandbox_init_with_parameters(const char *profile,
 	    uint64_t flags, const char *const parameters[], char **errorbuf);
 
+/* The device we are using. */
+static char		*device = NULL;
+
 /*
  * Setup the required platform bits and bobs.
  */
@@ -129,7 +132,7 @@ sanctum_platform_tundev_create(void)
 		fatal("fcntl: %s", errno_s);
 
 	len = snprintf(ifname, sizeof(ifname), "utun%u", idx - 1);
-	if (len == -1 || (size_t)len >= sizeof(ifname))
+	if (len < 0 || (size_t)len >= sizeof(ifname))
 		fatal("snprintf on utun%u failed", idx - 1);
 
 	darwin_configure_tundev(ifname);
@@ -139,6 +142,9 @@ sanctum_platform_tundev_create(void)
 		sanctum_platform_tundev_route(&sanctum->tun_ip,
 		    &sanctum->tun_mask);
 	}
+
+	if ((device = strdup(ifname)) == NULL)
+		fatal("strdup failed");
 
 	return (fd);
 }
@@ -268,6 +274,31 @@ sanctum_platform_tundev_route(struct sockaddr_in *net, struct sockaddr_in *mask)
 }
 
 /*
+ * Set the MTU for our tunnel device.
+ */
+void
+sanctum_platform_tundev_mtu(u_int16_t mtu)
+{
+	int			fd;
+	struct ifreq		ifr;
+
+	PRECOND(mtu >= SANCTUM_MTU_SIZE_MIN && mtu <= sanctum->tun_mtu);
+
+	if (strlcpy(ifr.ifr_name, device, sizeof(ifr.ifr_name)) >=
+	    sizeof(ifr.ifr_name))
+		fatal("ifc '%s' too long", device);
+
+	if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		fatal("socket: %s", errno_s);
+
+	ifr.ifr_mtu = mtu;
+	if (ioctl(fd, SIOCSIFMTU, &ifr) == -1)
+		fatal("ioctl(SIOCSIFMTU): %s", errno_s);
+
+	(void)close(fd);
+}
+
+/*
  * Load a sandbox profile from disk and apply it to our current process.
  * See all *.sb files inside of share/sb for the actual profiles.
  */
@@ -305,7 +336,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 
 	if (sanctum->secret != NULL) {
 		len = snprintf(spath, sizeof(spath), "%s.new", sanctum->secret);
-		if (len == -1 || (size_t)len >= sizeof(spath))
+		if (len < 0 || (size_t)len >= sizeof(spath))
 			fatal("failed to construct new secret path");
 	}
 
@@ -344,7 +375,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 	/* Open the profile from disk. */
 	len = snprintf(path, sizeof(path), "%s/%s.sb",
 	    APPLE_SB_PATH, proc->name);
-	if (len == -1 || (size_t)len >= sizeof(path))
+	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("failed to create path to sandbox profile");
 
 	if ((fd = sanctum_file_open(path, &st)) == -1)

@@ -150,6 +150,7 @@ control_status_request(int fd, struct sockaddr_un *peer)
 	resp.rx.bytes = sanctum_atomic_read(&sanctum->rx.bytes);
 
 	resp.ip = sanctum_atomic_read(&sanctum->peer_ip);
+	resp.mtu = sanctum_atomic_read(&sanctum->mtu_size);
 	resp.port = sanctum_atomic_read(&sanctum->peer_port);
 
 	if (sendto(fd, &resp, sizeof(resp), 0,

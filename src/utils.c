@@ -200,7 +200,7 @@ sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 		sanctum_cipher_cleanup(sa->cipher);
 
 	sa->cipher = sanctum_cipher_setup(key);
-	sanctum_mem_zero(key->key, sizeof(key->key));
+	nyfe_mem_zero(key->key, sizeof(key->key));
 
 	sa->seqnr = 1;
 	sa->pending = 1;
@@ -226,7 +226,7 @@ sanctum_sa_clear(struct sanctum_sa *sa)
 	if (sa->cipher != NULL)
 		sanctum_cipher_cleanup(sa->cipher);
 
-	sanctum_mem_zero(sa, sizeof(*sa));
+	nyfe_mem_zero(sa, sizeof(*sa));
 }
 
 /*
@@ -286,7 +286,7 @@ sanctum_shroud_copy(struct sanctum_shroud *src, struct sanctum_shroud *dst)
 	dst->valid = 1;
 
 	nyfe_memcpy(dst->key, src->key, sizeof(src->key));
-	sanctum_mem_zero(src->key, sizeof(src->key));
+	nyfe_mem_zero(src->key, sizeof(src->key));
 
 	if (!sanctum_atomic_cas_simple(&src->state,
 	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
@@ -328,7 +328,7 @@ sanctum_unix_socket(struct sanctum_sun *cfg)
 	sun.sun_family = AF_UNIX;
 
 	len = snprintf(sun.sun_path, sizeof(sun.sun_path), "%s", cfg->path);
-	if (len == -1 || (size_t)len >= sizeof(sun.sun_path))
+	if (len < 0 || (size_t)len >= sizeof(sun.sun_path))
 		fatal("path '%s' didnt fit into sun.sun_path", cfg->path);
 
 	if (unlink(sun.sun_path) == -1 && errno != ENOENT)
@@ -397,27 +397,6 @@ sanctum_shm_detach(void *ptr)
 }
 
 /*
- * Poor mans memset() that isn't optimized away on the platforms I use it on.
- *
- * If you build this on something and don't test that it actually clears the
- * contents of the data, thats on you. You probably want to do some binary
- * verification.
- */
-void
-sanctum_mem_zero(void *ptr, size_t len)
-{
-	volatile char	*p;
-
-	PRECOND(ptr != NULL);
-	PRECOND(len > 0);
-
-	p = (volatile char *)ptr;
-
-	while (len-- > 0)
-		*(p)++ = 0x00;
-}
-
-/*
  * Helper to parse an IPv4 address into a struct sockaddr_in its sin_addr.
  */
 void
@@ -480,7 +459,7 @@ sanctum_inet_string(struct sockaddr_in *sin)
 
 	len = snprintf(buf, sizeof(buf), "%s:%u",
 	    inet_ntoa(sin->sin_addr), be16toh(sin->sin_port));
-	if (len == -1 || (size_t)len >= sizeof(buf))
+	if (len < 0 || (size_t)len >= sizeof(buf))
 		fatal("snprintf on inet addr failed");
 
 	return (buf);
@@ -900,10 +879,15 @@ sanctum_offer_verify(const char *path, struct sanctum_offer *op)
 	u_int8_t	pk[SANCTUM_ED25519_SIGN_PUBLIC_LENGTH];
 
 	PRECOND(path != NULL);
-	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
-	    op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
-
 	VERIFY(sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+
+	if (op->data.type != SANCTUM_OFFER_TYPE_INFO &&
+	    op->data.type != SANCTUM_OFFER_TYPE_LITURGY) {
+		sanctum_log(LOG_NOTICE,
+		    "a peer sent an invalid signed offer of type 0x%02x",
+		    op->data.type);
+		return (-1);
+	}
 
 	if ((fd = sanctum_file_open(path, NULL)) == -1)
 		return (-1);

@@ -2283,7 +2283,7 @@ cathedral_secret_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
 
 	len = snprintf(buf, buflen, "%s/flock-%" PRIx64 "/%08x.key",
 	    sanctum->secretdir, flock, id);
-	if (len == -1 || (size_t)len >= buflen)
+	if (len < 0 || (size_t)len >= buflen)
 		fatal("failed to construct path to secret");
 }
 
@@ -2300,7 +2300,7 @@ cathedral_pubkey_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
 
 	len = snprintf(buf, buflen, "%s/flock-%" PRIx64 "/%08x.pub",
 	    sanctum->secretdir, flock, id);
-	if (len == -1 || (size_t)len >= buflen)
+	if (len < 0 || (size_t)len >= buflen)
 		fatal("failed to construct path to pubkey");
 }
 
@@ -2722,7 +2722,7 @@ cathedral_tunnel_name_id(u_int64_t src, u_int64_t dst, u_int16_t tun)
 
 	len = snprintf(buf, sizeof(buf),
 	    "%" PRIx64 "-%" PRIx64 ":%04x", src, dst, tun);
-	if (len == -1 || (size_t)len >= sizeof(buf))
+	if (len < 0 || (size_t)len >= sizeof(buf))
 		fatal("failed to create tunnel name");
 
 	return (buf);

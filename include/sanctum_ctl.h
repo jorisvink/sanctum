@@ -46,6 +46,7 @@ struct sanctum_ctl_status_response {
 	struct sanctum_ifstat	rx;
 	u_int32_t		ip;
 	u_int16_t		port;
+	u_int16_t		mtu;
 };
 
 #endif

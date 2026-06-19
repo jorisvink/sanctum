@@ -53,7 +53,7 @@ sanctum_packet_get(void)
 	if ((pkt = sanctum_pool_get(pktpool)) == NULL)
 		return (NULL);
 
-	sanctum_mem_zero(pkt, sizeof(*pkt));
+	nyfe_mem_zero(pkt, sizeof(*pkt));
 
 	return (pkt);
 }

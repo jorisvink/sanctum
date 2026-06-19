@@ -1,6 +1,6 @@
+.TH HYMN 1
 .nh
 .ad 1
-.TH HYMN 1
 .SH NAME
 hymn \- The sanctum configuration tool.
 .SH SYNOPSIS
@@ -21,7 +21,7 @@ Attach a bridge interface to an existing tunnel.
 .TP
 .BR cathedral
 Change the configured cathedral for an existing tunnel.
-.TR
+.TP
 .BR del
 Removes a tunnel from the system.
 .TP
@@ -89,11 +89,11 @@ and
 as the given user
 .I sanctum
 
-.eo
-# hymn add 01-02 tunnel 192.168.10.1/24 mtu 1422 \
-  local 1.2.3.4:1234 secret /etc/sanctum.key \
+.EX
+# hymn add 01-02 tunnel 192.168.10.1/24 mtu 1422 \\
+  local 1.2.3.4:1234 secret /etc/sanctum.key \\
   peer 4.3.2.1:4321 user sanctum
-.ec
+.EE
 
 If we are adding a tunnel that will use a cathedral we can also use the
 .I add
@@ -113,12 +113,12 @@ and the
 is located under
 .I /etc/cathedral.cosk
 
-.eo
-# hymn add deadbeefcafebabe-01-02 tunnel 192.168.10.1/24 \
-  mtu 1422 cathedral 1.2.3.4:1234 kek /etc/device.kek \
-  identity 30b4c39:/etc/cathedral.key \
+.EX
+# hymn add deadbeefcafebabe-01-02 tunnel 192.168.10.1/24 \\
+  mtu 1422 cathedral 1.2.3.4:1234 kek /etc/device.kek \\
+  identity 30b4c39:/etc/cathedral.key \\
   cosk /etc/cathedral.cosk user sanctum
-.ec
+.EE
 
 .SH AUTHORS
 

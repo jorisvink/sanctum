@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-<title>Sanctum errata</title>
+<title>Sanctum || Traffic Protection</title>
 <link rel="stylesheet" href="/sanctum.css">
 </head>
 
@@ -52,53 +52,36 @@
 </div>
 
 <div class="content">
+    <div class="release">
+    Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
+    </div>
 
-<div class="release">
-Latest release: <a href="/releases/sanctum-1.1.2.tgz">sanctum 1.1.2</a>
-</div>
+    <div class="sep"></div>
 
-<div class="sep"></div>
+    <h2>Traffic Analysis protection</h2>
 
-<h2>Errata</h2>
-
-<h3>Reporting</h3>
-
-<p class="content">
-    Please report security bugs to &lt;priests snabel-a sanctorum punkt se&gt;
-</p>
-
-<h3>2026</h3>
-
-<ul style="padding-left: 25px">
-<li>
-    <div class="errata-id">001: RELIABILITY FIX: 2026-05-29</div>
-    <p class="errata-reason">
-        The shroud mask did not cover the entire sanctum_proto_hdr leaving
-        up to 4 bytes unshrouded.
-        <br>
-        <a href="/releases.html">Download the latest release to fix this issue.</a>
+    <p>
+        Sanctum offers very strong traffic analysis protection, being able
+        to mask all protocol meta-data on the wire, making packets look
+        entirely like random data.
     </p>
-</li>
-</ul>
 
-<h3>2025</h3>
+    <p>
+        This feature is called <strong>shroud</strong>.
+    </p>
 
-<ul style="padding-left: 25px">
-    <li>None.</li>
-</ul>
+    <p>
+        Shroud is off by default as it increases overhead and affects
+        performance by about 45% as it has to shroud/unshroud each individual
+        packet with additional unique per-packet masks.
+    </p>
 
-<h3>2024</h3>
-
-<ul style="padding-left: 25px">
-    <li>None.</li>
-</ul>
-
-<h3>2023</h3>
-
-<ul style="padding-left: 25px">
-    <li>None.</li>
-</ul>
-
+    <p>
+        While shroud on a normal tunnel setup does not offer many
+        advantages, it is very useful in a cathedral setup as it
+        becomes very tricky for anyone capturing traffic to deduce what
+        devices belong to the same flock and who is talking to whom.
+    </p>
 </div>
 
 </body>
