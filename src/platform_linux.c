@@ -327,7 +327,7 @@ sanctum_linux_trace_start(struct sanctum_proc *proc)
 	if (seccomp_tracing == 0)
 		return;
 
-	if (waitpid(proc->pid, &status, 0) > 0)
+	if (waitpid(proc->pid, &status, WNOHANG) > 0)
 		sanctum_linux_seccomp(proc, status);
 }
 
