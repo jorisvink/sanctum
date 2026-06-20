@@ -15,6 +15,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
@@ -99,6 +100,7 @@ static struct sock_filter filter_epilogue[] = {
 
 static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(brk),
+	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(sendto),
@@ -110,6 +112,22 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
 	KORE_SYSCALL_ALLOW(restart_syscall),
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
+
+#if defined(SYS_mmap)
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_NONE),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_READ),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_WRITE),
+#endif
+
+#if defined(SYS_mmap2)
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_NONE),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_READ),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_WRITE),
+#endif
+
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_NONE),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_READ),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_WRITE),
 };
 
 static struct sock_filter heaven_rx_seccomp_filter[] = {
