@@ -112,6 +112,7 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
 	KORE_SYSCALL_ALLOW(restart_syscall),
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
+	KORE_SYSCALL_ALLOW_ARG(writev, 0, STDOUT_FILENO),
 
 #if defined(SYS_mmap)
 	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_NONE),
