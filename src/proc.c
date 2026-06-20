@@ -279,7 +279,7 @@ sanctum_proc_create(u_int16_t type,
 	timeo.tv_sec = 0;
 	timeo.tv_nsec = 20000000;
 
-	for (i = 0; i < 75; i++) {
+	for (i = 0; i < 50; i++) {
 		nanosleep(&timeo, NULL);
 		if (sanctum_atomic_read(&sanctum->started[type]))
 			break;
