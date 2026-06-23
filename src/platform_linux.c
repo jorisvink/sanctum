@@ -15,6 +15,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
@@ -99,6 +100,7 @@ static struct sock_filter filter_epilogue[] = {
 
 static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(brk),
+	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(futex),
 	KORE_SYSCALL_ALLOW(sendto),
@@ -110,6 +112,23 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
 	KORE_SYSCALL_ALLOW(restart_syscall),
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
+	KORE_SYSCALL_ALLOW_ARG(writev, 0, STDOUT_FILENO),
+
+#if defined(SYS_mmap)
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_NONE),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_READ),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap, 2, PROT_WRITE),
+#endif
+
+#if defined(SYS_mmap2)
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_NONE),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_READ),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_WRITE),
+#endif
+
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_NONE),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_READ),
+	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_WRITE),
 };
 
 static struct sock_filter heaven_rx_seccomp_filter[] = {
@@ -253,14 +272,16 @@ sanctum_platform_tundev_create(void)
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 {
+	size_t		mtu;
 	u_int8_t	*data;
 
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 
 	data = sanctum_packet_data(pkt);
+	mtu = sanctum_atomic_read(&sanctum->mtu_size);
 
-	return (read(fd, data, SANCTUM_PACKET_DATA_LEN));
+	return (read(fd, data, mtu));
 }
 
 /*
@@ -327,7 +348,7 @@ sanctum_linux_trace_start(struct sanctum_proc *proc)
 	if (seccomp_tracing == 0)
 		return;
 
-	if (waitpid(proc->pid, &status, 0) > 0)
+	if (waitpid(proc->pid, &status, WNOHANG) > 0)
 		sanctum_linux_seccomp(proc, status);
 }
 

@@ -182,7 +182,7 @@ ambry_kek_generate(int argc, char **argv)
 	ambry_mkdir(flock, "internal", 0);
 	ambry_mkdir(flock, "external", 0);
 
-	printf("generating device KEKs under %" PRIx64 " ... ", flock);
+	printf("generating device KEKs under %016" PRIx64 " ... ", flock);
 	fflush(stdout);
 
 	for (idx = 1; idx <= 0xff; idx++) {
@@ -231,7 +231,7 @@ ambry_kek_export(int argc, char **argv)
 	flock_src = ambry_string_to_flock(argv[0]);
 	flock_dst = ambry_string_to_flock(argv[1]);
 
-	len = snprintf(path, sizeof(path), "/external/%" PRIx64, flock_dst);
+	len = snprintf(path, sizeof(path), "/external/%016" PRIx64, flock_dst);
 	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("failed to snprintf external path");
 
@@ -243,7 +243,7 @@ ambry_kek_export(int argc, char **argv)
 		ambry_mkdir(flock_src, path, 1);
 	}
 
-	printf("exporting KEKs for use in %" PRIx64 ":%" PRIx64 " ... ",
+	printf("exporting KEKs for use in %016" PRIx64 ":%016" PRIx64 " ... ",
 	    flock_src, flock_dst);
 	fflush(stdout);
 
@@ -636,7 +636,7 @@ ambry_base_kek_path(u_int64_t flock, u_int8_t kek, char *buf, size_t buflen)
 	int		len;
 
 	len = snprintf(buf, buflen,
-	    "%" PRIx64 "/kek-data/kek-0x%02x", flock, kek);
+	    "%016" PRIx64 "/kek-data/kek-0x%02x", flock, kek);
 	if (len < 0 || (size_t)len >= buflen)
 		fatal("failed to construct path to kek");
 }
@@ -649,10 +649,10 @@ ambry_derived_kek_path(u_int64_t src, u_int64_t dst, u_int8_t kek,
 
 	if (src == dst) {
 		len = snprintf(buf, buflen,
-		    "%" PRIx64 "/internal/kek-0x%02x", src, kek);
+		    "%016" PRIx64 "/internal/kek-0x%02x", src, kek);
 	} else {
 		len = snprintf(buf, buflen,
-		    "%" PRIx64 "/external/%" PRIx64 "/kek-0x%02x",
+		    "%016" PRIx64 "/external/%" PRIx64 "/kek-0x%02x",
 		    src, dst, kek);
 	}
 
@@ -666,14 +666,14 @@ ambry_mkdir(u_int64_t flock, const char *dir, int exists_ok)
 	int		len;
 	char		path[1024];
 
-	len = snprintf(path, sizeof(path), "%" PRIx64, flock);
+	len = snprintf(path, sizeof(path), "%016" PRIx64, flock);
 	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("failed to construct flock dir");
 
 	if (mkdir(path, 0700) == -1 && errno != EEXIST)
 		fatal("failed to create '%s': %s", path, errno_s);
 
-	len = snprintf(path, sizeof(path), "%" PRIx64 "/%s", flock, dir);
+	len = snprintf(path, sizeof(path), "%016" PRIx64 "/%s", flock, dir);
 	if (len < 0 || (size_t)len >= sizeof(path))
 		fatal("failed to construct flock/%s dir", dir);
 

@@ -41,8 +41,9 @@ Specify the name of the instance.
 Path to the shared secret file for tunnels or cathedral federation.
 .TP
 .BR shroud " " <yes|no>
-Enables or disables shroud. Shroud will mask away all protocol relevant
-meta data such that an observer of traffic has a much harder time to
+Enables or disables shroud. Shroud masks the entire packet with unique
+per-packet masks and randomizes the packet lengths in between each peers or
+cathedral hop such that an observer of traffic has a much harder time to
 perform traffic analysis.
 .TP
 .BR run " " <process> " as " <user>

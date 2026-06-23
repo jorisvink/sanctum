@@ -1,0 +1,63 @@
+FROM alpine:latest
+
+MAINTAINER Joris Vink <joris@sanctorum.se>
+
+RUN mkdir -p /var/chroot/nobody
+
+RUN set -e && \
+	addgroup -g 500 purgatory-rx && \
+	adduser -D -u 500 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G purgatory-rx purgatory-rx && \
+	addgroup -g 501 purgatory-tx && \
+	adduser -D -u 501 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G purgatory-tx purgatory-tx && \
+	addgroup -g 502 heaven-rx && \
+	adduser -D -u 502 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G heaven-rx heaven-rx && \
+	addgroup -g 503 heaven-tx && \
+	adduser -D -u 503 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G heaven-tx heaven-tx && \
+	addgroup -g 504 bless && \
+	adduser -D -u 504 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G bless bless && \
+	addgroup -g 505 confess && \
+	adduser -D -u 505 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G confess confess && \
+	addgroup -g 506 chapel && \
+	adduser -D -u 506 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G chapel chapel && \
+	addgroup -g 507 pilgrim && \
+	adduser -D -u 507 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G pilgrim pilgrim && \
+	addgroup -g 508 shrine && \
+	adduser -D -u 508 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G shrine shrine && \
+	addgroup -g 509 cathedral && \
+	adduser -D -u 509 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G cathedral cathedral && \
+	addgroup -g 510 liturgy && \
+	adduser -D -u 510 -h /var/chroot/nobody \
+	    -s /sbin/nologin -G liturgy liturgy && \
+	apk add --no-cache --virtual .build-deps \
+	musl-dev \
+	gcc \
+	make \
+	git \
+	libsodium-static \
+	linux-headers \
+	bsd-compat-headers \
+	pkgconfig && \
+	git clone https://github.com/jorisvink/sanctum && \
+	cd sanctum && \
+	make clean && \
+	CFLAGS=-static LDFLAGS=-static make && \
+	make install && \
+	cd .. && \
+	rm -rf sanctum* && \
+	apk del .build-deps
+
+COPY entry.sh /
+
+STOPSIGNAL SIGQUIT
+
+ENTRYPOINT ["/entry.sh"]

@@ -281,16 +281,17 @@ sanctum_proc_create(u_int16_t type,
 
 	for (i = 0; i < 50; i++) {
 		nanosleep(&timeo, NULL);
+
+#if defined(__linux__)
+		sanctum_linux_trace_start(proc);
+#endif
+
 		if (sanctum_atomic_read(&sanctum->started[type]))
 			break;
 	}
 
 	if (i == 50)
 		fatal("failed to start %s", proc->name);
-
-#if defined(__linux__)
-	sanctum_linux_trace_start(proc);
-#endif
 
 	sanctum_log(LOG_INFO, "started %s (pid=%d)", proc->name, proc->pid);
 
