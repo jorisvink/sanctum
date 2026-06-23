@@ -346,8 +346,10 @@ heaven_rx_grace_mtu(void)
 			    sizeof(struct sanctum_proto_tail) +
 			    SANCTUM_TAG_LENGTH;
 
-			if (sanctum->flags & SANCTUM_FLAG_SHROUD)
+			if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
 				overhead += sizeof(struct sanctum_shroud_hdr);
+				overhead += SANCTUM_SHROUD_TRAIL_LEN;
+			}
 
 			for (i = 0; mtu_sizes[i] != 0; i++) {
 				preset = mtu_sizes[i] - overhead;

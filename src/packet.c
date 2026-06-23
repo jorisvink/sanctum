@@ -21,7 +21,7 @@
 #include "sanctum.h"
 
 static void	packet_shroud_xor(struct sanctum_packet *,
-		    const void *, size_t);
+		    const void *, size_t, int);
 
 /*
  * Shared pool of packets that are to be processed.
@@ -175,16 +175,23 @@ sanctum_packet_from_cathedral(struct sanctum_packet *pkt)
 }
 
 /*
- * Shrouds a packet, masking away the protocol header meta-data
- * so it becomes random data on the wire.
+ * Shroud a packet using a unique mask we derive from the given key
+ * and seed. The mask is applied over the entire packet minus the
+ * shroud header.
+ *
+ * Before do the actual shrouding we randomize the packet length
+ * to hide the actual size (if possible).
  */
 void
 sanctum_packet_shroud(struct sanctum_packet *pkt, const u_int8_t *id,
     size_t ilen, const u_int8_t *seed, size_t slen, const u_int8_t *key,
     size_t klen)
 {
+	u_int16_t			mtu;
 	struct sanctum_shroud_hdr	*hdr;
 	size_t				total;
+	u_int8_t			*data;
+	u_int32_t			min, avail, grow;
 
 	PRECOND(pkt != NULL);
 	PRECOND(id != NULL);
@@ -195,21 +202,48 @@ sanctum_packet_shroud(struct sanctum_packet *pkt, const u_int8_t *id,
 	PRECOND(klen == SANCTUM_KEY_LENGTH);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
 
-	total = sizeof(*hdr) + pkt->length;
+	total = sizeof(*hdr) + pkt->length + SANCTUM_SHROUD_TRAIL_LEN;
 	VERIFY(total > pkt->length && total < SANCTUM_PACKET_MAX_LEN);
 
 	hdr = sanctum_packet_start(pkt);
+	data = sanctum_packet_head(pkt);
 
 	nyfe_memcpy(hdr->id, id, ilen);
 	nyfe_memcpy(hdr->seed_id, seed, slen);
 	sanctum_random_bytes(hdr->seed_data, sizeof(hdr->seed_data));
 
-	packet_shroud_xor(pkt, key, klen);
+	data[pkt->length++] = 0xff;
 	pkt->length += sizeof(*hdr);
+
+	mtu = sanctum_atomic_read(&sanctum->mtu_size);
+	if (pkt->length < mtu) {
+		avail = mtu - pkt->length;
+		if (avail >= 2) {
+			min = -avail % avail;
+
+			for (;;) {
+				sanctum_random_bytes(&grow, sizeof(grow));
+				if (grow >= min)
+					break;
+			}
+		} else {
+			grow = 0;
+		}
+
+		grow = grow % avail;
+		pkt->length += grow;
+
+		VERIFY(pkt->length < SANCTUM_PACKET_MAX_LEN);
+	}
+
+	packet_shroud_xor(pkt, key, klen, 0);
 }
 
 /*
- * Unshrouds a packet to bring back the protocol meta-data.
+ * Unshrouds a packet to bring the entire original packet.
+ *
+ * If unshrouding reduces the remaining packet left to an unexpected
+ * amount we return an error as the packet should be dropped.
  */
 int
 sanctum_packet_unshroud(struct sanctum_packet *pkt, const void *key, size_t len)
@@ -219,48 +253,77 @@ sanctum_packet_unshroud(struct sanctum_packet *pkt, const void *key, size_t len)
 	PRECOND(len == SANCTUM_KEY_LENGTH);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
 
-	if (pkt->length <= sizeof(struct sanctum_shroud_hdr))
+	if (pkt->length <=
+	    sizeof(struct sanctum_shroud_hdr) + SANCTUM_SHROUD_TRAIL_LEN)
 		return (-1);
 
-	packet_shroud_xor(pkt, key, len);
-	pkt->length -= sizeof(struct sanctum_shroud_hdr);
+	packet_shroud_xor(pkt, key, len, 1);
+
+	if (pkt->length < sizeof(struct sanctum_proto_hdr) +
+	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH) {
+		sanctum_log(LOG_NOTICE,
+		    "bad packet size after unshroud (len=%zu)", pkt->length);
+		return (-1);
+	}
 
 	return (0);
 }
 
 /*
- * We calculate the required shroud mask and xor it onto the
- * protocol part of the packet.
+ * We calculate the required shroud mask and xor it onto the packet.
+ * This function should be called with the length of the shroud header
+ * included in the packet length.
+ *
+ * If we are unshrouding we remove the padding bytes from the end of
+ * the packet to recover the original one.
  */
 static void
-packet_shroud_xor(struct sanctum_packet *pkt, const void *key, size_t len)
+packet_shroud_xor(struct sanctum_packet *pkt, const void *key, size_t len,
+    int unshroud)
 {
-	size_t				idx;
 	struct nyfe_kmac256		kdf;
 	struct sanctum_shroud_hdr	*hdr;
-	u_int8_t			*data, mask[SANCTUM_SHROUD_MASK_LEN];
+	u_int8_t			*data;
+	int				steps;
+	size_t				idx, length, orig;
+	u_int8_t			mask[SANCTUM_SHROUD_MASK_MAX];
 
 	PRECOND(pkt != NULL);
 	PRECOND(key != NULL);
 	PRECOND(len == SANCTUM_KEY_LENGTH);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
+	VERIFY(pkt->length >= sizeof(*hdr));
 
 	hdr = sanctum_packet_start(pkt);
 	data = sanctum_packet_head(pkt);
+	length = pkt->length - sizeof(*hdr);
 
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_kmac256_init(&kdf, key, len, SANCTUM_SHROUD_LABEL,
 	    sizeof(SANCTUM_SHROUD_LABEL) - 1);
 	nyfe_kmac256_update(&kdf, hdr, sizeof(*hdr));
-	nyfe_kmac256_final(&kdf, mask, sizeof(mask));
+	nyfe_kmac256_final(&kdf, mask, length);
 	nyfe_zeroize(&kdf, sizeof(kdf));
 
-	/*
-	 * We do not need to check pkt length here before XOR:ing
-	 * the mask onto its data. The packet buffer will have
-	 * SANCTUM_SHROUD_MASK_LEN bytes available even if no data
-	 * was actually written into it.
-	 */
-	for (idx = 0; idx < sizeof(mask); idx++)
+	for (idx = 0; idx < length; idx++)
 		data[idx] ^= mask[idx];
+
+	if (unshroud) {
+		pkt->length -= sizeof(*hdr);
+		orig = pkt->length;
+
+		steps = 0;
+		while (pkt->length > 0 && data[pkt->length - 1] == 0x00) {
+			pkt->length--;
+			steps++;
+		}
+
+		if (pkt->length == 0)
+			return;
+
+		if (steps > 0 && data[pkt->length - 1] != 0xff)
+			pkt->length = orig;
+		else if (steps > 0 || data[pkt->length - 1] == 0xff)
+			pkt->length--;
+	}
 }

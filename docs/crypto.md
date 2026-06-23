@@ -370,12 +370,13 @@ struct sanctum_shroud_hdr {
 } __attribute__((packed));
 ```
 
-If shroud is turned on protocol meta-data is shrouded using unique masks
+If shroud is turned on a packet is "shrouded" using unique masks
 derived from a shroud key per packet. From sanctum its perspective we see
 shroud as a traffic protection feature and not a confidentiality feature.
 
-By hiding the protocol meta-data it becomes harder to figure out what
-devices belong to which flock and who is talking to who.
+By shrouding an entire packet (including its meta-data) it becomes
+harder to figure out what devices belong to which flock, who is talking to whom
+and to even track packets between cathedrals and peers.
 
 All instances talking to each other, including any cathedrals,
 must have shroud enabled for communication to work.

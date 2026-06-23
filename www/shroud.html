@@ -62,8 +62,10 @@
 
     <p>
         Sanctum offers very strong traffic analysis protection, being able
-        to mask all protocol meta-data on the wire, making packets look
-        entirely like random data.
+        to make each packet look distinct from its original packet for each
+        hop it takes (even across cathedrals). It masks away the entire packet,
+        including all of the protocol meta-data and makes the packets look
+        like random data on the wire.
     </p>
 
     <p>
@@ -74,13 +76,6 @@
         Shroud is off by default as it increases overhead and affects
         performance by about 45% as it has to shroud/unshroud each individual
         packet with additional unique per-packet masks.
-    </p>
-
-    <p>
-        While shroud on a normal tunnel setup does not offer many
-        advantages, it is very useful in a cathedral setup as it
-        becomes very tricky for anyone capturing traffic to deduce what
-        devices belong to the same flock and who is talking to whom.
     </p>
 </div>
 

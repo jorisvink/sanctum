@@ -227,6 +227,7 @@ sanctum_config_load(const char *file)
 			fatal("cathedral: cannot use tap");
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
+		config_mtu_check();
 		break;
 	case SANCTUM_MODE_LITURGY:
 		config_l2_check();
@@ -1093,14 +1094,17 @@ config_mtu_check(void)
 
 	PRECOND(sanctum->mode == SANCTUM_MODE_TUNNEL ||
 	    sanctum->mode == SANCTUM_MODE_SHRINE ||
-	    sanctum->mode == SANCTUM_MODE_PILGRIM);
+	    sanctum->mode == SANCTUM_MODE_PILGRIM ||
+	    sanctum->mode == SANCTUM_MODE_CATHEDRAL);
 
 	overhead = sizeof(struct ip) + sizeof(struct udphdr) +
 	    sizeof(struct sanctum_proto_hdr) +
 	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH;
 
-	if (sanctum->flags & SANCTUM_FLAG_SHROUD)
+	if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
 		overhead += sizeof(struct sanctum_shroud_hdr);
+		overhead += SANCTUM_SHROUD_TRAIL_LEN;
+	}
 
 	VERIFY(SANCTUM_PACKET_DATA_LEN > overhead);
 
@@ -1110,6 +1114,7 @@ config_mtu_check(void)
 
 		sanctum->flags |= SANCTUM_FLAG_MTU_DISCOVERY;
 		sanctum->tun_mtu = SANCTUM_MTU_SIZE_MAX - overhead;
+		sanctum->mtu_size = sanctum->tun_mtu;
 	}
 
 	if (sanctum->tun_mtu < sizeof(struct sanctum_offer)) {

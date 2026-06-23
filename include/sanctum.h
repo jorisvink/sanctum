@@ -476,7 +476,7 @@ struct sanctum_proto_tail {
 } __attribute__((packed));
 
 /*
- * The shroud header is used for masking away meta-data from packets.
+ * The shroud header is prepended when shroud is enabled.
  * It consists of the rolling identifier for our peer and a 16-byte
  * seed used for the mask generation.
  */
@@ -487,13 +487,13 @@ struct sanctum_shroud_hdr {
 } __attribute__((packed));
 
 /*
- * The length of the mask we XOR onto the packet if shroud is enabled.
- * We shroud the complete protocol meta-data for offers and normal traffic.
- *
- * Note that sanctum_proto_hdr is larger than struct sanctum_offer_hdr - salt
- * and thus we use the protocol header as the base.
+ * The maximum mask length for a shroud operation, which covers
+ * the entire packet.
  */
-#define SANCTUM_SHROUD_MASK_LEN		(sizeof(struct sanctum_proto_hdr))
+#define SANCTUM_SHROUD_MASK_MAX		SANCTUM_MTU_SIZE_MAX
+
+/* The length of the shroud trailer, after the data. */
+#define SANCTUM_SHROUD_TRAIL_LEN	1
 
 /* A packet header starts after our potential shrouded data. */
 #define SANCTUM_PACKET_HEAD_OFFSET	sizeof(struct sanctum_shroud_hdr)

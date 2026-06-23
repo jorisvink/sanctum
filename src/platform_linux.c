@@ -272,14 +272,16 @@ sanctum_platform_tundev_create(void)
 ssize_t
 sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 {
+	size_t		mtu;
 	u_int8_t	*data;
 
 	PRECOND(fd >= 0);
 	PRECOND(pkt != NULL);
 
 	data = sanctum_packet_data(pkt);
+	mtu = sanctum_atomic_read(&sanctum->mtu_size);
 
-	return (read(fd, data, SANCTUM_PACKET_DATA_LEN));
+	return (read(fd, data, mtu));
 }
 
 /*
