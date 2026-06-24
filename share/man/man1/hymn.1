@@ -28,8 +28,12 @@ Removes a tunnel from the system.
 .BR down
 Brings down a tunnel.
 .TP
+.BR nat
+Changes the NAT port when talking to a cathedral, set to 0 to disable. If
+disabled p2p will be completely disabled automatically.
+.TP
 .BR mtu
-Changes the MTU for an existing tunnel.
+Changes the MTU for an existing tunnel. Use "auto" to turn on MTU discovery.
 .TP
 .BR list
 Show all configured tunnels and their status.
