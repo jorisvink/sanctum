@@ -652,7 +652,7 @@ ambry_derived_kek_path(u_int64_t src, u_int64_t dst, u_int8_t kek,
 		    "%016" PRIx64 "/internal/kek-0x%02x", src, kek);
 	} else {
 		len = snprintf(buf, buflen,
-		    "%016" PRIx64 "/external/%" PRIx64 "/kek-0x%02x",
+		    "%016" PRIx64 "/external/%016" PRIx64 "/kek-0x%02x",
 		    src, dst, kek);
 	}
 
