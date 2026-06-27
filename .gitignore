@@ -7,7 +7,7 @@ pontifex/pontifex
 
 test/00000000aaaaaa00
 test/00000000bbbbbb00
-test/cafeba00
+test/00000000cafeba00
 test/*.key
 test/*.bundle
 test/ambry.keys
