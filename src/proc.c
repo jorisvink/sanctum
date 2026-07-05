@@ -271,7 +271,7 @@ sanctum_proc_create(u_int16_t type,
 		(void)sanctum_last_signal();
 
 		process = proc;
-		proc->pid = getpid(),
+		proc->pid = getpid();
 		proc->entry(proc);
 		/* NOTREACHED */
 	}
