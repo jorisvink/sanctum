@@ -108,7 +108,6 @@ struct tunnel {
 	/* p2p sync */
 	u_int32_t		p2p_ip;
 	u_int16_t		p2p_port;
-	int			p2p_pending;
 	u_int64_t		p2p_cooldown;
 
 	/* Next federation timestamp. */
@@ -783,7 +782,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		}
 
 		tun->federated = 1;
-		tun->p2p_pending = 1;
 	} else {
 		if (tun->federated) {
 			cathedral_peerstat_dec(&peers, 1);
@@ -935,12 +933,6 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
  * These offers may only be sent by cathedrals as part of the p2p_sync
  * setting. They carry information about a peer its external ip:port
  * that can be sent to other peers talking to it.
- *
- * We do not accept there if p2p_pending is not 1, this isn't a perfect
- * solution in any shape or form to prevent malicious cathedrals from
- * sending bad P2P_INFO which is then distributed to clients, but it's a start.
- *
- * Until I come up with a better mechanism, this is the lay of the land.
  */
 static void
 cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
@@ -995,12 +987,6 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 		return;
 	}
 
-	if (tun->p2p_pending == 0) {
-		sanctum_log(LOG_NOTICE, "accepting out of order p2pinfo for %s",
-		    cathedral_tunnel_name(flock, dst, info->tunnel));
-	}
-
-	tun->p2p_pending = 0;
 	tun->p2p_ip = info->ip;
 	tun->p2p_port = info->port;
 	tun->peerinfo = info->flags;
