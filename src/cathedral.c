@@ -51,7 +51,7 @@
 #define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
 /* Cooldown period from peer restart to when we send peerinfo again. */
-#define CATHEDRAL_P2P_COOLDOWN		(10 * 1000)
+#define CATHEDRAL_P2P_COOLDOWN		(15 * 1000)
 
 /* The CATACOMB message magic. */
 #define CATHEDRAL_CATACOMB_MAGIC	0x43415441434F4D42
@@ -1549,6 +1549,7 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	tun->instance = info->instance;
 	tun->limit = (bw / 8) * 1024 * 1024;
 	tun->drain_per_ms = tun->limit / 1000;
+	tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
 
 	cathedral_peerstat_inc(&peers, catacomb);
 	LIST_INSERT_HEAD(&flock->domain->tunnels, tun, list);
