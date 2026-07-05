@@ -989,16 +989,15 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 		return;
 	}
 
-	if (tun->p2p_pending == 0) {
-		sanctum_log(LOG_NOTICE, "out of order p2pinfo for %s",
-		    cathedral_tunnel_name(flock, dst, info->tunnel));
-		return;
-	}
-
 	if (tun->federated == 0) {
 		sanctum_log(LOG_NOTICE, "p2pinfo for non-federated tunnel %s",
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
 		return;
+	}
+
+	if (tun->p2p_pending == 0) {
+		sanctum_log(LOG_NOTICE, "accepting out of order p2pinfo for %s",
+		    cathedral_tunnel_name(flock, dst, info->tunnel));
 	}
 
 	tun->p2p_pending = 0;
