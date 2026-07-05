@@ -50,7 +50,7 @@
 /* The interval at which we send remembrances to peers. */
 #define CATHEDRAL_REMEMBRANCE_NEXT	(15 * 1000)
 
-/* Cooldown period from peer restart to when we send peerinfo again. */
+/* Cooldown period from peer (re)start to when we send peerinfo. */
 #define CATHEDRAL_P2P_COOLDOWN		(15 * 1000)
 
 /* The CATACOMB message magic. */
