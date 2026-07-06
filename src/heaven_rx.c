@@ -284,11 +284,9 @@ heaven_rx_holepunch(void)
 		heartbeats.next = now;
 		heartbeats.interval = 1;
 		heartbeats.reset = now + SANCTUM_GRACE_HEARTBEAT_INTERVAL;
-		sanctum_log(LOG_INFO, "holepunch begins");
 	} else if (heartbeats.reset != 0 && now >= heartbeats.reset) {
 		heartbeats.reset = 0;
 		heartbeats.interval = SANCTUM_GRACE_HEARTBEAT_INTERVAL;
-		sanctum_log(LOG_INFO, "holepunch ends");
 	}
 }
 
