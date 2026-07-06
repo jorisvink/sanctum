@@ -30,8 +30,11 @@
 
 #include "sanctum.h"
 
-/* The amount of times we send out standard MTU sized probes first. */
-#define MTU_DISCOVERY_FIRST_PROBES	2
+/* The first initial probes we send out when discovery starts. */
+#define MTU_DISCOVERY_FIRST_PROBES	4
+
+/* The last step in mtu_sizes, after which we begin dynamic discovery. */
+#define MTU_STEP_LAST			(MTU_DISCOVERY_FIRST_PROBES - 1)
 
 /* The amount of time before we retry MTU discovery. */
 #define MTU_DISCOVERY_INTERVAL		600
@@ -74,18 +77,29 @@ static struct grace_time	mtu_probes;
 /* If we should wakeup SANCTUM_PROC_BLESS. */
 static int			bless_wakeup = 0;
 
-/* Is this our first mtu probe? If so we send a full size. */
-static int			mtu_first = MTU_DISCOVERY_FIRST_PROBES;
+/* The indicator where in the MTU discovery process we are. */
+static int			mtu_step = 0;
+
+/* Our current size we sent to our peer. */
+static u_int16_t		mtu_size = 0;
 
 /*
  * Some standard MTU sizes we send probes for when we start the
  * MTU discovery process in the hopes to speed it up.
+ *
+ * This list is in order of "configured tunnel mtu" -> lower.
+ * Initially each MTU probe tick sends an entry from this list,
+ * after that * the dynamic probes are sent, each tick reduces
+ * the probe size by 32 bytes, until we get an answer or we
+ * reach the minimum configured MTU size.
+ *
+ * Probes stop being sent when we receive an ack via the heaven-tx process.
  */
 static const u_int16_t mtu_sizes[] = {
+	0,
 	1500,
 	1422,
 	1280,
-	0,
 };
 
 /*
@@ -255,11 +269,9 @@ heaven_rx_recv_packets(int fd)
 static void
 heaven_rx_grace_mtu_reset(void)
 {
-	mtu_first = MTU_DISCOVERY_FIRST_PROBES;
+	mtu_step = 0;
+	mtu_size = 0;
 	mtu_probes.next = now + MTU_DISCOVERY_INTERVAL;
-
-	sanctum_atomic_write(&sanctum->mtu_value, 0);
-	sanctum_atomic_write(&sanctum->mtu_attempts, 0);
 }
 
 /*
@@ -272,9 +284,11 @@ heaven_rx_holepunch(void)
 		heartbeats.next = now;
 		heartbeats.interval = 1;
 		heartbeats.reset = now + SANCTUM_GRACE_HEARTBEAT_INTERVAL;
+		sanctum_log(LOG_INFO, "holepunch begins");
 	} else if (heartbeats.reset != 0 && now >= heartbeats.reset) {
 		heartbeats.reset = 0;
 		heartbeats.interval = SANCTUM_GRACE_HEARTBEAT_INTERVAL;
+		sanctum_log(LOG_INFO, "holepunch ends");
 	}
 }
 
@@ -300,7 +314,7 @@ heaven_rx_grace_heartbeat(void)
 	grace->type = SANCTUM_GRACE_TYPE_HEARTBEAT;
 
 	pkt->length = sizeof(*grace);
-	pkt->next = SANCTUM_PACKET_GRACE;
+	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
 
 	if (sanctum_ring_queue(io->bless, pkt) == -1)
@@ -318,9 +332,8 @@ heaven_rx_grace_heartbeat(void)
 static void
 heaven_rx_grace_mtu(void)
 {
-	int		i;
 	size_t		overhead;
-	u_int16_t	mtu, preset;
+	u_int16_t	preset, mtu;
 
 	if (sanctum->mode != SANCTUM_MODE_TUNNEL)
 		return;
@@ -328,60 +341,65 @@ heaven_rx_grace_mtu(void)
 	if (sanctum_atomic_read(&sanctum->tx.spi) == 0)
 		return;
 
+	if (sanctum_atomic_cas_simple(&sanctum->mtu_start, 1, 0)) {
+		heaven_rx_grace_mtu_reset();
+		mtu_probes.next = now;
+	}
+
 	if ((sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY) &&
 	    mtu_probes.next != 0 && now >= mtu_probes.next) {
-		mtu = sanctum_atomic_read(&sanctum->mtu_value);
-
-		if (mtu == sanctum->tun_mtu) {
+		if (sanctum_atomic_cas_simple(&sanctum->mtu_cancel, 1, 0)) {
 			heaven_rx_grace_mtu_reset();
 			return;
 		}
 
-		if (mtu_first > 0) {
-			mtu_first--;
-			heaven_rx_grace_mtu_probe(sanctum->tun_mtu);
-
-			overhead = sizeof(struct ip) + sizeof(struct udphdr) +
-			    sizeof(struct sanctum_proto_hdr) +
-			    sizeof(struct sanctum_proto_tail) +
-			    SANCTUM_TAG_LENGTH;
-
-			if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
-				overhead += sizeof(struct sanctum_shroud_hdr);
-				overhead += SANCTUM_SHROUD_TRAIL_LEN;
-			}
-
-			for (i = 0; mtu_sizes[i] != 0; i++) {
-				preset = mtu_sizes[i] - overhead;
-				if (preset > mtu && preset != sanctum->tun_mtu)
-					heaven_rx_grace_mtu_probe(preset);
-			}
-
-			return;
-		}
-
-		if (mtu == 0) {
-			mtu = SANCTUM_MTU_SIZE_MIN;
-		} else {
-			VERIFY(mtu < sanctum->tun_mtu);
-			mtu += MIN(sanctum->tun_mtu - mtu, 32);
-		}
-
-		if (sanctum_atomic_read(&sanctum->mtu_attempts) < 3) {
-			sanctum_atomic_add(&sanctum->mtu_attempts, 1);
-		} else {
+		if (mtu_size == SANCTUM_MTU_SIZE_MIN) {
+			sanctum_log(LOG_INFO,
+			    "reached MTU limit without acks, your link sucks");
 			heaven_rx_grace_mtu_reset();
 			return;
 		}
 
-		heaven_rx_grace_mtu_probe(mtu);
+		overhead = sizeof(struct ip) + sizeof(struct udphdr) +
+		    sizeof(struct sanctum_proto_hdr) +
+		    sizeof(struct sanctum_proto_tail) +
+		    SANCTUM_TAG_LENGTH;
+
+		if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+			overhead += sizeof(struct sanctum_shroud_hdr);
+			overhead += SANCTUM_SHROUD_TRAIL_LEN;
+		}
+
+		if (mtu_step < MTU_DISCOVERY_FIRST_PROBES) {
+			if (mtu_step == 0) {
+				mtu_step++;
+				heaven_rx_grace_mtu_probe(sanctum->tun_mtu);
+				return;
+			}
+
+			preset = mtu_sizes[mtu_step++] - overhead;
+			heaven_rx_grace_mtu_probe(preset);
+
+			return;
+		}
+
+		if (mtu_size == 0) {
+			mtu_size = mtu_sizes[MTU_STEP_LAST] - overhead - 32;
+		} else {
+			VERIFY(mtu_size > SANCTUM_MTU_SIZE_MIN);
+			mtu_size -= MIN(mtu_size - SANCTUM_MTU_SIZE_MIN, 32);
+		}
+
+		heaven_rx_grace_mtu_probe(mtu_size);
 	}
 
 	if ((mtu = sanctum_atomic_read(&sanctum->mtu_probe_ack)) == 0)
 		return;
 
-	if (!sanctum_atomic_cas_simple(&sanctum->mtu_probe_ack, mtu, 0))
-		fatal("mtu_probe_ack changed unexpected");
+	if (!sanctum_atomic_cas_simple(&sanctum->mtu_probe_ack, mtu, 0)) {
+		sanctum_log(LOG_INFO, "mtu_probe_ack changed unexpected");
+		return;
+	}
 
 	if (mtu < SANCTUM_MTU_SIZE_MIN || mtu > sanctum->tun_mtu) {
 		sanctum_log(LOG_NOTICE, "peer sent bad MTU size of %u", mtu);
@@ -411,7 +429,7 @@ heaven_rx_grace_mtu_ack(u_int16_t mtu)
 	resp->size = mtu;
 
 	pkt->length = sizeof(*resp);
-	pkt->next = SANCTUM_PACKET_GRACE;
+	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
 
 	if (sanctum_ring_queue(io->bless, pkt) == -1)
@@ -440,7 +458,7 @@ heaven_rx_grace_mtu_probe(u_int16_t mtu)
 	probe->grace.type = SANCTUM_GRACE_TYPE_MTU_PROBE;
 
 	pkt->length = mtu;
-	pkt->next = SANCTUM_PACKET_GRACE;
+	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
 
 	if (sanctum_ring_queue(io->bless, pkt) == -1)

@@ -220,7 +220,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	hdr->flock.dst = htobe64(sanctum->cathedral_flock_dst);
 
 	tail->reserved = 0;
-	tail->next = pkt->next;
+	tail->next = pkt->type;
 	pkt->length += sizeof(*tail);
 
 	memcpy(&aad, hdr, sizeof(*hdr));

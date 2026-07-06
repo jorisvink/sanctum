@@ -528,7 +528,6 @@ struct sanctum_shroud_hdr {
  */
 struct sanctum_packet {
 	struct sockaddr_in	addr;
-	u_int8_t		next;
 	size_t			length;
 	u_int16_t		target;
 	u_int16_t		type;
@@ -662,17 +661,15 @@ struct sanctum_state {
 	/* The last mtu that was actively set. */
 	volatile u_int16_t	mtu_size;
 
-	/* Our current mtu value during discovery. */
-	volatile u_int16_t	mtu_value;
-
 	/* Used by heaven-tx to communicate with guardian to set mtu. */
 	volatile u_int16_t	mtu_change;
 
 	/* Used by heaven-tx to communicate with heaven-rx to send an ack. */
 	volatile u_int16_t	mtu_probe_ack;
 
-	/* The number of probe attempts for the current mtu value. */
-	volatile u_int16_t	mtu_attempts;
+	/* Used to start/stop MTU discovery explicitly from other procs. */
+	volatile int		mtu_start;
+	volatile int		mtu_cancel;
 
 	/* The path to the pidfile. */
 	char			*pidfile;
