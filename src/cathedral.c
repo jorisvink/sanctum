@@ -1754,8 +1754,8 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 		if (p2p_cooldown == 0 && tun->p2p_ip == peer->p2p_ip)
 			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
 
-		info->peer_port = sanctum->local.sin_port;
-		info->peer_ip = sanctum->local.sin_addr.s_addr;
+		info->peer_port = sanctum->cathedral.sin_port;
+		info->peer_ip = sanctum->cathedral.sin_addr.s_addr;
 	}
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
@@ -1848,8 +1848,8 @@ cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
 	idx = 1;
 	list = &op->data.offer.remembrance;
 
-	list->ports[0] = sanctum->local.sin_port;
-	list->ips[0] = sanctum->local.sin_addr.s_addr;
+	list->ports[0] = sanctum->cathedral.sin_port;
+	list->ips[0] = sanctum->cathedral.sin_addr.s_addr;
 
 	LIST_FOREACH(cathedral, &federations, list) {
 		if (idx >= SANCTUM_CATHEDRALS_MAX)
@@ -2488,8 +2488,8 @@ cathedral_settings_federate(const char *option)
 		return;
 	}
 
-	if (sin.sin_addr.s_addr == sanctum->local.sin_addr.s_addr &&
-	    htobe16(port) == sanctum->local.sin_port) {
+	if (sin.sin_addr.s_addr == sanctum->cathedral.sin_addr.s_addr &&
+	    htobe16(port) == sanctum->cathedral.sin_port) {
 		sanctum_log(LOG_INFO, "skipping federation to own cathedral");
 		return;
 	}

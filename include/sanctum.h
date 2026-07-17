@@ -623,7 +623,7 @@ struct sanctum_state {
 	/* The local address from the configuration. */
 	struct sockaddr_in	local;
 
-	/* The current selected cathedral remote address (tunnel mode only). */
+	/* The cathedral address (tunnel / cathedral mode). */
 	struct sockaddr_in	cathedral;
 
 	/* The current index into the cathedrals remembrance list. */

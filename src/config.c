@@ -64,6 +64,7 @@ static void	config_parse_settings(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
+static void	config_parse_cathedral_ip(char *);
 static void	config_parse_cathedral_cosk(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
@@ -113,6 +114,7 @@ static const struct {
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
 	{ "cathedral_id",		config_parse_cathedral_id },
+	{ "cathedral_ip",		config_parse_cathedral_ip },
 	{ "cathedral_cosk",		config_parse_cathedral_cosk },
 	{ "cathedral_flock",		config_parse_cathedral_flock },
 	{ "cathedral_secret",		config_parse_cathedral_secret },
@@ -228,6 +230,10 @@ sanctum_config_load(const char *file)
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		config_mtu_check();
+		if (sanctum->cathedral.sin_addr.s_addr == 0) {
+			memcpy(&sanctum->cathedral,
+			    &sanctum->local, sizeof(sanctum->cathedral));
+		}
 		break;
 	case SANCTUM_MODE_LITURGY:
 		config_l2_check();
@@ -779,6 +785,17 @@ config_parse_cathedral_id(char *opt)
 
 	if (sscanf(opt, "%x", &sanctum->cathedral_id) != 1)
 		fatal("cathedral_id <32-bit hex value>");
+}
+
+/*
+ * Parse the cathedral_ip configuration option.
+ */
+static void
+config_parse_cathedral_ip(char *ip)
+{
+	PRECOND(ip != NULL);
+
+	config_parse_ip_port(ip, &sanctum->cathedral);
 }
 
 /*

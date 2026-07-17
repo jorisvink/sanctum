@@ -126,6 +126,10 @@ key used to authenticate offers sent to the cathedrals.
 
 .SH CATHEDRAL SPECIFIC OPTIONS
 .TP
+.BR cathedral_ip " " <ip:port>
+Sets the cathedral its external ip:port in case it is behind NAT and
+port-forwarding.
+.TP
 .BR secretdir " " <path>
 Directory containing secret files for cathedral mode. This path contains
 the client cathedral secrets and COSKs.
