@@ -795,6 +795,9 @@ config_parse_cathedral_ip(char *ip)
 {
 	PRECOND(ip != NULL);
 
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+		fatal("cathedral_ip is only for cathedral mode");
+
 	config_parse_ip_port(ip, &sanctum->cathedral);
 }
 
