@@ -463,6 +463,9 @@ chapel_cathedral_send_info(u_int64_t magic)
 	if (sanctum->cathedral_remembrance != NULL)
 		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
 
+	if (sanctum->kek == NULL)
+		info->flags |= SANCTUM_INFO_FLAG_SKIP_AMBRY;
+
 	if (sanctum_offer_sign(op) == -1) {
 		sanctum_log(LOG_NOTICE, "discarding offer, failed to sign");
 		sanctum_packet_release(pkt);

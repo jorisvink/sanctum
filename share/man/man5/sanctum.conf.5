@@ -85,6 +85,10 @@ will automatically create it.
 Enable or disable traffic flow control, which pads packets to the maximum
 MTU size before encrypting them.
 .TP
+.BR kek " " <path>
+Sets the KEK (Key-Encryption-Key) to use when unwrapping shared secrets
+received as an ambry from a cathedral.
+.TP
 .BR cathedral " " <[fqdn|ip]:port>
 Specify the FQDN or IP address and port of the cathedral server.
 .TP
