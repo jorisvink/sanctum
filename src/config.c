@@ -65,6 +65,7 @@ static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
 static void	config_parse_cathedral_ip(char *);
+static void	config_parse_cathedral_mtu(char *);
 static void	config_parse_cathedral_cosk(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
@@ -115,6 +116,7 @@ static const struct {
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
 	{ "cathedral_id",		config_parse_cathedral_id },
 	{ "cathedral_ip",		config_parse_cathedral_ip },
+	{ "cathedral_mtu",		config_parse_cathedral_mtu },
 	{ "cathedral_cosk",		config_parse_cathedral_cosk },
 	{ "cathedral_flock",		config_parse_cathedral_flock },
 	{ "cathedral_secret",		config_parse_cathedral_secret },
@@ -799,6 +801,28 @@ config_parse_cathedral_ip(char *ip)
 		fatal("cathedral_ip is only for cathedral mode");
 
 	config_parse_ip_port(ip, &sanctum->cathedral);
+}
+
+/*
+ * Parse the cathedral_mtu configuration option.
+ */
+static void
+config_parse_cathedral_mtu(char *opt)
+{
+	u_int16_t	mtu;
+
+	PRECOND(opt != NULL);
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+		fatal("the cathedral_mtu option is only for cathedrals");
+
+	if (sscanf(opt, "%hu", &mtu) != 1)
+		fatal("invalid cathedral_mtu specified (%s)", opt);
+
+	if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+		fatal("cathedral_mtu (%u) invalid", mtu);
+
+	sanctum->tun_mtu = mtu;
 }
 
 /*
