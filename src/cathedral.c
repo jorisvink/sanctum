@@ -742,7 +742,8 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		}
 	}
 
-	if (catacomb == 0 && nat == 0)
+	if (catacomb == 0 && nat == 0 &&
+	    !(info->flags & SANCTUM_INFO_FLAG_SKIP_AMBRY))
 		cathedral_ambry_send(flock, dst, info, &pkt->addr, id);
 
 	if (nat) {
