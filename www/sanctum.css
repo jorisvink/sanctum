@@ -1,20 +1,34 @@
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+    font-weight: normal;
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+    font-weight: bold;
+}
+
 body {
-    color: #eeeef1;
-    background-color: #101010;
-    font-family: Verdana, sans-serif;
+    color: #ffffff;
+    background-color: #0a0814;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
 }
 
 h2, h3 {
-    color: #a66520;
+    color: #4ade80;
 }
 
 .nav > .menu > h3 {
-    color: #ffffd7;
+    color: #c084fc;
 }
 
 .nav > .menu > a {
     display: inline-block;
     margin-bottom: 8px;
+    color: #94a3b8;
 }
 
 .content {
@@ -43,7 +57,7 @@ img {
 }
 
 .sep {
-    background-color: #daa520;
+    background-color: #a855f7;
     width: 100%;
     height: 5px;
     border-radius: 5px;
@@ -59,22 +73,22 @@ img {
 }
 
 .menu-sep {
-    color: #a66520;
+    color: #4ade80;
 }
 
 a, a:visited {
-    color: #daa520;
+    color: #c084fc;
     text-decoration: none;
 }
 
 pre {
-    background-color: #0c0c0c;
+    background: #14112a;
     border-radius: 5px;
     padding: 15px;
 }
 
 small {
-    color: gray;
+    color: #94a3b8;
 }
 
 .release-entry {
@@ -86,7 +100,7 @@ small {
 }
 
 .errata-id {
-    color: #20b700;
+    color: #4ade80;
     display: inline-block;
     font-weight: bold;
 }
@@ -101,7 +115,7 @@ table {
 }
 
 td, th {
-    border: 1px solid #daa520;
+    border: 1px solid #c084fc;
     text-align: left;
     padding: 8px;
 }
