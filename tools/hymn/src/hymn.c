@@ -146,6 +146,7 @@ static void	hymn_mkdir(const char *, int);
 static void	hymn_unlink(const char *, ...)
 		    __attribute__((format (printf, 1, 2)));
 
+static void	hymn_fmt_output(int, const char *, ...);
 static void	hymn_pid_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 static void	hymn_conf_path(char *, size_t, const char *,
@@ -154,7 +155,7 @@ static void	hymn_control_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 
 static int	hymn_tunnel_list(struct tunnels *);
-static void	hymn_tunnel_info(struct tunnel *, const char *);
+static void	hymn_tunnel_info(struct tunnel *, int);
 static void	hymn_tunnel_up(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_down(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_status(const char *, u_int8_t, u_int8_t);
@@ -1204,18 +1205,18 @@ hymn_list(int argc, char *argv[])
 	struct tunnels				list;
 	struct tunnel				*tun, *lit;
 	int					skip_tunnel;
-	int					normal_tunnels, seen_liturgy;
 
 	if (argc > 1)
 		fatal("Usage: hymn list [flock]");
 
-	seen_liturgy = 0;
-	normal_tunnels = hymn_tunnel_list(&list);
+	hymn_tunnel_list(&list);
 
-	if (argc == 0 && normal_tunnels)
-		printf("normal tunnels:\n");
-	else
-		normal_tunnels = 1;
+	printf("\33[0;1m");
+	hymn_fmt_output(0, "status");
+	hymn_fmt_output(5, "tunnel");
+	hymn_fmt_output(24, "name");
+	hymn_fmt_output(14, "peer");
+	printf("\n");
 
 	TAILQ_FOREACH(tun, &list, list) {
 		skip_tunnel = 0;
@@ -1240,17 +1241,7 @@ hymn_list(int argc, char *argv[])
 		if (skip_tunnel)
 			continue;
 
-		if (strcmp(tun->config.flock, "hymn") && normal_tunnels) {
-			normal_tunnels = 0;
-			printf("cathedral tunnels:\n");
-		}
-
-		if (seen_liturgy == 0 && tun->config.is_liturgy) {
-			seen_liturgy = 1;
-			printf("liturgies:\n");
-		}
-
-		hymn_tunnel_info(tun, "");
+		hymn_tunnel_info(tun, 0);
 
 		if (tun->config.is_liturgy) {
 			TAILQ_FOREACH(lit, &list, list) {
@@ -1262,7 +1253,7 @@ hymn_list(int argc, char *argv[])
 				    lit->config.src)
 					continue;
 
-				hymn_tunnel_info(lit, " + ");
+				hymn_tunnel_info(lit, 1);
 			}
 		}
 	}
@@ -1864,23 +1855,24 @@ hymn_tunnel_list(struct tunnels *list)
 }
 
 static void
-hymn_tunnel_info(struct tunnel *tun, const char *label)
+hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 {
 	struct timespec				ts;
 	struct sanctum_ctl_status_response	resp;
 	time_t					last;
+	int					offset;
 	char					path[PATH_MAX];
 
-	printf("    %s%s-%02x-%02x - ",
-	    label, tun->config.flock, tun->config.src, tun->config.dst);
-
+	last = 0;
 	hymn_pid_path(path, sizeof(path),
 	    tun->config.flock, tun->config.src, tun->config.dst);
 
 	if (access(path, R_OK) == -1) {
-		printf("down");
+		hymn_fmt_output(0, "\33[0;31mdown");
+		offset = 7;
 	} else if (tun->config.is_liturgy) {
-		printf("running");
+		hymn_fmt_output(0, "\33[0;32mrunning");
+		offset = 4;
 	} else {
 		hymn_control_path(path, sizeof(path),
 		    tun->config.flock, tun->config.src,
@@ -1892,14 +1884,53 @@ hymn_tunnel_info(struct tunnel *tun, const char *label)
 
 		if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
 		    resp.rx.last > 0 && last < 120) {
-			printf("online");
+			hymn_fmt_output(0, "\33[0;32monline");
+			offset = 5;
 		} else {
-			printf("pending");
+			hymn_fmt_output(0, "\33[0;33mpending");
+			offset = 4;
 		}
 	}
 
-	if (tun->config.name != NULL)
-		printf(" (%s)", tun->config.name);
+	printf("\033[0m");
+
+	if (subtunnel) {
+		hymn_fmt_output(offset + 1, "\xe2\x94\x94");
+		offset = 1;
+	}
+
+	hymn_fmt_output(offset, "%s-%02x-%02x",
+	    tun->config.flock, tun->config.src, tun->config.dst);
+
+	if (!strcmp(tun->config.flock, "hymn"))
+		offset = 20;
+	else
+		offset = 8;
+
+	if (subtunnel)
+		offset -= 3;
+
+	if (tun->config.name != NULL) {
+		hymn_fmt_output(offset, "%.13s", tun->config.name);
+		if (strlen(tun->config.name) > 13) {
+			printf("...");
+			offset = 2;
+		} else {
+			offset = 18 - strlen(tun->config.name);
+		}
+	} else {
+		hymn_fmt_output(offset, "-");
+		offset = 17;
+	}
+
+	if (last != 0) {
+		hymn_fmt_output(offset, "%u.%u.%u.%u:%u",
+		    (resp.ip & 0xff), (resp.ip >> 8) & 0xff,
+		    (resp.ip >> 16) & 0xff, (resp.ip >> 24) & 0xff,
+		    be16toh(resp.port));
+	} else {
+		hymn_fmt_output(offset, "-");
+	}
 
 	printf("\n");
 }
@@ -2851,4 +2882,17 @@ hymn_tunnel_auto_configured(const char *flock, u_int8_t src, char **name)
 	}
 
 	return (1);
+}
+
+static void
+hymn_fmt_output(int offset, const char *fmt, ...)
+{
+	va_list		args;
+
+	if (offset > 0)
+		printf("%*c", offset, ' ');
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
 }
