@@ -1930,7 +1930,7 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 		hymn_fmt_output(offset, "%u.%u.%u.%u:%u",
 		    (resp.ip & 0xff), (resp.ip >> 8) & 0xff,
 		    (resp.ip >> 16) & 0xff, (resp.ip >> 24) & 0xff,
-		    be16toh(resp.port));
+		    ntohs(resp.port));
 	} else {
 		hymn_fmt_output(offset, "-");
 	}
