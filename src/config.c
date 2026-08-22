@@ -823,6 +823,7 @@ config_parse_cathedral_mtu(char *opt)
 		fatal("cathedral_mtu (%u) invalid", mtu);
 
 	sanctum->tun_mtu = mtu;
+	sanctum->mtu_size = mtu;
 }
 
 /*
