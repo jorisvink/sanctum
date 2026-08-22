@@ -1902,10 +1902,13 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 	hymn_fmt_output(offset, "%s-%02x-%02x",
 	    tun->config.flock, tun->config.src, tun->config.dst);
 
-	if (!strcmp(tun->config.flock, "hymn"))
+	if (!strcmp(tun->config.flock, "hymn")) {
 		offset = 20;
-	else
-		offset = 8;
+	} else {
+		if (strlen(tun->config.flock) > 16)
+			fatal("invalid flock '%s'", tun->config.flock);
+		offset = 24 - strlen(tun->config.flock);
+	}
 
 	if (subtunnel)
 		offset -= 3;
