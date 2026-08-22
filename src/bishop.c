@@ -61,7 +61,7 @@
     "device %s %s user %s shroud %s"
 
 /* The format string for up/down of a tunnel via the hymn tool. */
-#define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x"
+#define HYMN_FMT_UP_DOWN	"hymn %s %" PRIx64 "-%02x-%02x bishop"
 
 /* The format string for route add via the hymn tool. */
 #define HYMN_FMT_ROUTE_ADD	"hymn route add %s/32 via %" PRIx64 "-%02x-%02x"

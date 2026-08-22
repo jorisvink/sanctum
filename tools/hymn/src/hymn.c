@@ -1151,10 +1151,11 @@ hymn_up(int argc, char *argv[])
 		}
 		break;
 	case 1:
+	case 2:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 			usage_simple("status");
 
-		if (dst != 0 &&
+		if (argc == 1 && dst != 0 &&
 		    hymn_tunnel_auto_configured(flock, src, &name)) {
 			fatal("refusing to start %s, it is owned by %s",
 			    argv[0], name);
@@ -1285,10 +1286,11 @@ hymn_down(int argc, char *argv[])
 		}
 		break;
 	case 1:
+	case 2:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 			usage_simple("[up | down]");
 
-		if (dst != 0 &&
+		if (argc == 1 && dst != 0 &&
 		    hymn_tunnel_auto_configured(flock, src, &name)) {
 			fatal("refusing to down %s, it is owned by %s",
 			    argv[0], name);
