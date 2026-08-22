@@ -154,9 +154,11 @@ static void	hymn_control_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 
 static int	hymn_tunnel_list(struct tunnels *);
+static void	hymn_tunnel_info(struct tunnel *, const char *);
 static void	hymn_tunnel_up(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_down(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_status(const char *, u_int8_t, u_int8_t);
+static int	hymn_tunnel_auto_configured(const char *, u_int8_t, char **);
 static int	hymn_tunnel_parse(char *, const char **,
 		    u_int8_t *, u_int8_t *, int);
 
@@ -1128,6 +1130,7 @@ static int
 hymn_up(int argc, char *argv[])
 {
 	struct tunnels			list;
+	char				*name;
 	const char			*flock;
 	struct tunnel			*tunnel;
 	u_int8_t			src, dst;
@@ -1136,6 +1139,12 @@ hymn_up(int argc, char *argv[])
 	case 0:
 		hymn_tunnel_list(&list);
 		TAILQ_FOREACH(tunnel, &list, list) {
+			if (tunnel->config.is_liturgy == 0 &&
+			    hymn_tunnel_auto_configured(tunnel->config.flock,
+			    tunnel->config.src, NULL)) {
+				continue;
+			}
+
 			hymn_tunnel_up(tunnel->config.flock,
 			    tunnel->config.src, tunnel->config.dst);
 		}
@@ -1143,6 +1152,13 @@ hymn_up(int argc, char *argv[])
 	case 1:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 			usage_simple("status");
+
+		if (dst != 0 &&
+		    hymn_tunnel_auto_configured(flock, src, &name)) {
+			fatal("refusing to start %s, it is owned by %s",
+			    argv[0], name);
+		}
+
 		hymn_tunnel_up(flock, src, dst);
 		break;
 	default:
@@ -1185,12 +1201,9 @@ hymn_status(int argc, char *argv[])
 static int
 hymn_list(int argc, char *argv[])
 {
-	struct timespec				ts;
 	struct tunnels				list;
-	struct tunnel				*tun;
-	struct sanctum_ctl_status_response	resp;
-	time_t					last;
-	char					path[PATH_MAX];
+	struct tunnel				*tun, *lit;
+	int					skip_tunnel;
 	int					normal_tunnels, seen_liturgy;
 
 	if (argc > 1)
@@ -1204,11 +1217,27 @@ hymn_list(int argc, char *argv[])
 	else
 		normal_tunnels = 1;
 
-	while ((tun = TAILQ_FIRST(&list)) != NULL) {
-		/* Yes we are leaking and thats fine, we are dead soon. */
-		TAILQ_REMOVE(&list, tun, list);
+	TAILQ_FOREACH(tun, &list, list) {
+		skip_tunnel = 0;
 
 		if (argc == 1 && strcmp(tun->config.flock, argv[0]))
+			continue;
+
+		TAILQ_FOREACH(lit, &list, list) {
+			if (lit == tun)
+				continue;
+			if (lit->config.is_liturgy == 0)
+				continue;
+
+			if (strcmp(tun->config.flock, lit->config.flock) ||
+			    tun->config.src != lit->config.src)
+				continue;
+
+			skip_tunnel = 1;
+			break;
+		}
+
+		if (skip_tunnel)
 			continue;
 
 		if (strcmp(tun->config.flock, "hymn") && normal_tunnels) {
@@ -1221,37 +1250,21 @@ hymn_list(int argc, char *argv[])
 			printf("liturgies:\n");
 		}
 
-		printf("    %s-%02x-%02x - ",
-		    tun->config.flock, tun->config.src, tun->config.dst);
+		hymn_tunnel_info(tun, "");
 
-		hymn_pid_path(path, sizeof(path),
-		    tun->config.flock, tun->config.src, tun->config.dst);
+		if (tun->config.is_liturgy) {
+			TAILQ_FOREACH(lit, &list, list) {
+				if (lit == tun)
+					continue;
 
-		if (access(path, R_OK) == -1) {
-			printf("down");
-		} else if (tun->config.is_liturgy) {
-			printf("running");
-		} else {
-			hymn_control_path(path, sizeof(path),
-			    tun->config.flock, tun->config.src,
-			    tun->config.dst);
-			hymn_ctl_status(path, &resp);
+				if (strcmp(tun->config.flock,
+				    lit->config.flock) || tun->config.src !=
+				    lit->config.src)
+					continue;
 
-			(void)clock_gettime(CLOCK_MONOTONIC, &ts);
-			last = ts.tv_sec - resp.rx.last;
-
-			if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
-			    resp.rx.last > 0 && last < 120) {
-				printf("online");
-			} else {
-				printf("pending");
+				hymn_tunnel_info(lit, " + ");
 			}
 		}
-
-		if (tun->config.name != NULL)
-			printf(" (%s)\n", tun->config.name);
-		else
-			printf("\n");
 	}
 
 	return (0);
@@ -1261,6 +1274,7 @@ static int
 hymn_down(int argc, char *argv[])
 {
 	struct tunnels			list;
+	char				*name;
 	const char			*flock;
 	struct tunnel			*tunnel;
 	u_int8_t			src, dst;
@@ -1269,6 +1283,12 @@ hymn_down(int argc, char *argv[])
 	case 0:
 		hymn_tunnel_list(&list);
 		TAILQ_FOREACH(tunnel, &list, list) {
+			if (tunnel->config.is_liturgy == 0 &&
+			    hymn_tunnel_auto_configured(tunnel->config.flock,
+			    tunnel->config.src, NULL)) {
+				continue;
+			}
+
 			hymn_tunnel_down(tunnel->config.flock,
 			    tunnel->config.src, tunnel->config.dst);
 		}
@@ -1276,6 +1296,13 @@ hymn_down(int argc, char *argv[])
 	case 1:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 			usage_simple("[up | down]");
+
+		if (dst != 0 &&
+		    hymn_tunnel_auto_configured(flock, src, &name)) {
+			fatal("refusing to down %s, it is owned by %s",
+			    argv[0], name);
+		}
+
 		hymn_tunnel_down(flock, src, dst);
 		break;
 	default:
@@ -1747,6 +1774,7 @@ hymn_tunnel_list(struct tunnels *list)
 	char			*ext;
 	const char		*flock;
 	u_int8_t		src, dst;
+	u_int16_t		ours, other;
 	struct tunnel		*tun, *entry;
 	int			normal_tunnels;
 	char			path[PATH_MAX];
@@ -1778,6 +1806,8 @@ hymn_tunnel_list(struct tunnels *list)
 		hymn_config_init(&tun->config);
 		hymn_config_load(path, &tun->config);
 
+		ours = src << 8 | dst;
+
 		if (!strcmp(flock, "hymn")) {
 			normal_tunnels++;
 			TAILQ_INSERT_HEAD(list, tun, list);
@@ -1787,9 +1817,13 @@ hymn_tunnel_list(struct tunnels *list)
 					continue;
 				if (entry->config.is_liturgy == 0)
 					continue;
+
+				other = entry->config.src << 8 |
+				    entry->config.dst;
+
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
-				    entry->config.src > src) {
+				    ours < other) {
 					TAILQ_INSERT_BEFORE(entry, tun, list);
 					break;
 				}
@@ -1801,10 +1835,13 @@ hymn_tunnel_list(struct tunnels *list)
 			TAILQ_FOREACH(entry, list, list) {
 				if (entry->config.cathedral_flock == 0)
 					continue;
+
+				other = entry->config.src << 8 |
+				    entry->config.dst;
+
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
-				    entry->config.src > src ||
-				    entry->config.is_liturgy) {
+				    ours < other || entry->config.is_liturgy) {
 					TAILQ_INSERT_BEFORE(entry, tun, list);
 					break;
 				}
@@ -1824,6 +1861,47 @@ hymn_tunnel_list(struct tunnels *list)
 	(void)closedir(dir);
 
 	return (normal_tunnels);
+}
+
+static void
+hymn_tunnel_info(struct tunnel *tun, const char *label)
+{
+	struct timespec				ts;
+	struct sanctum_ctl_status_response	resp;
+	time_t					last;
+	char					path[PATH_MAX];
+
+	printf("    %s%s-%02x-%02x - ",
+	    label, tun->config.flock, tun->config.src, tun->config.dst);
+
+	hymn_pid_path(path, sizeof(path),
+	    tun->config.flock, tun->config.src, tun->config.dst);
+
+	if (access(path, R_OK) == -1) {
+		printf("down");
+	} else if (tun->config.is_liturgy) {
+		printf("running");
+	} else {
+		hymn_control_path(path, sizeof(path),
+		    tun->config.flock, tun->config.src,
+		    tun->config.dst);
+		hymn_ctl_status(path, &resp);
+
+		(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+		last = ts.tv_sec - resp.rx.last;
+
+		if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
+		    resp.rx.last > 0 && last < 120) {
+			printf("online");
+		} else {
+			printf("pending");
+		}
+	}
+
+	if (tun->config.name != NULL)
+		printf(" (%s)", tun->config.name);
+
+	printf("\n");
 }
 
 static void
@@ -2716,7 +2794,7 @@ hymn_ctl_response(int fd, void *resp, size_t len)
 static void
 hymn_dump_ifstat(const char *name, struct sanctum_ifstat *st)
 {
-	struct timespec				ts;
+	struct timespec		ts;
 
 	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -2740,4 +2818,37 @@ hymn_dump_ifstat(const char *name, struct sanctum_ifstat *st)
 	}
 
 	printf("\n");
+}
+
+static int
+hymn_tunnel_auto_configured(const char *flock, u_int8_t src, char **name)
+{
+	int		len;
+	struct config	cfg;
+	char		path[PATH_MAX], prefix[32];
+
+	hymn_conf_path(path, sizeof(path), flock, src, 0x00);
+
+	if (access(path, R_OK) == -1)
+		return (0);
+
+	memset(&cfg, 0, sizeof(cfg));
+	hymn_config_load(path, &cfg);
+
+	/* Yes we leak, we aren't alive long. */
+	if (name != NULL) {
+		if (cfg.name) {
+			*name = cfg.name;
+		} else {
+			len = snprintf(prefix, sizeof(prefix),
+			    "%s-%02x-00", flock, src);
+			if (len < 0 || (size_t)len >= sizeof(prefix))
+				fatal("snprintf buffer for prefix too small");
+
+			if ((*name = strdup(prefix)) == NULL)
+				fatal("strdup failed");
+		}
+	}
+
+	return (1);
 }
