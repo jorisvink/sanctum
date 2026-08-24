@@ -1862,10 +1862,12 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 	struct timespec				ts;
 	struct sanctum_ctl_status_response	resp;
 	time_t					last;
-	int					offset;
+	int					offset, up;
 	char					path[PATH_MAX];
 
+	up = 0;
 	last = 0;
+
 	hymn_pid_path(path, sizeof(path),
 	    tun->config.flock, tun->config.src, tun->config.dst);
 
@@ -1876,6 +1878,8 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 		hymn_fmt_output(0, "\33[0;32mrunning");
 		offset = 4;
 	} else {
+		up = 1;
+
 		hymn_control_path(path, sizeof(path),
 		    tun->config.flock, tun->config.src,
 		    tun->config.dst);
@@ -1928,7 +1932,7 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 		offset = 17;
 	}
 
-	if (last != 0) {
+	if (up) {
 		hymn_fmt_output(offset, "%u.%u.%u.%u:%u",
 		    (resp.ip & 0xff), (resp.ip >> 8) & 0xff,
 		    (resp.ip >> 16) & 0xff, (resp.ip >> 24) & 0xff,
