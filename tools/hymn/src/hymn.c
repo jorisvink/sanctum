@@ -1875,7 +1875,7 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 		hymn_fmt_output(0, "\33[0;31mdown");
 		offset = 7;
 	} else if (tun->config.is_liturgy) {
-		hymn_fmt_output(0, "\33[0;32mrunning");
+		hymn_fmt_output(0, "\33[0;36mrunning");
 		offset = 4;
 	} else {
 		up = 1;
