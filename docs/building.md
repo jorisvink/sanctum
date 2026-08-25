@@ -62,6 +62,7 @@ following libraries:
 * libsodium-aegis
 * libsodium-aes-gcm (default)
 * mbedtls-aes-gcm (mbedtls 3.x)
+* openssl-aes-gcm (any openssl)
 
 These can be selected by setting the **CIPHER** environment
 variable at compile time.
