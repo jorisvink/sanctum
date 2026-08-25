@@ -52,7 +52,7 @@ struct cipher_aes_gcm {
 };
 
 /* The cipher indicator for -v. */
-const char	*sanctum_cipher = "openssl-softaes-gcm";
+const char	*sanctum_cipher = "openssl-aes-gcm";
 
 /*
  * Perform any one-time cipher initialization.
