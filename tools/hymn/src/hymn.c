@@ -1889,7 +1889,7 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 		last = ts.tv_sec - resp.rx.last;
 
 		if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
-		    resp.rx.last > 0 && last < 120) {
+		    resp.rx.last > 0 && last < 30) {
 			hymn_fmt_output(0, "\33[0;32monline");
 			offset = 5;
 		} else {
