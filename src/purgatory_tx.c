@@ -174,6 +174,7 @@ purgatory_tx_drop_access(void)
 static void
 purgatory_tx_send_packet(struct sanctum_packet *pkt)
 {
+	size_t			mtu;
 	struct sockaddr_in	peer;
 	void			*data;
 
@@ -216,7 +217,11 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 			if (errno == EMSGSIZE) {
 				sanctum_log(LOG_INFO,
 				    "packet (size=%zu) too large, "
-				    "lower tunnel MTU", pkt->length);
+				    "lowering tunnel MTU", pkt->length);
+				mtu = sanctum_atomic_read(&sanctum->mtu_size);
+				if (mtu - 64 >= SANCTUM_MTU_SIZE_MIN)
+					mtu -= 64;
+				sanctum_atomic_write(&sanctum->mtu_change, mtu);
 				break;
 			}
 			if (errno == ENETUNREACH || errno == EHOSTUNREACH) {
