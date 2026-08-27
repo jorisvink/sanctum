@@ -66,6 +66,9 @@
 /* The format string for route add via the hymn tool. */
 #define HYMN_FMT_ROUTE_ADD	"hymn route add %s/32 via %" PRIx64 "-%02x-%02x"
 
+/* Handling resolving of hosts via hymn. */
+#define HYMN_FMT_RESOLVE_CONF	"hymn resolve %" PRIx64 "-%02x-%02x %s"
+
 static int	bishop_instance_alive(u_int8_t, u_int8_t);
 static int	bishop_instance_exists(u_int8_t, u_int8_t);
 static int	bishop_instance_running(u_int8_t, u_int8_t);
@@ -176,8 +179,10 @@ sanctum_bishop(struct sanctum_proc *proc)
 			continue;
 
 		if (bishop_instance_exists(local_id, idx) != -1 &&
-		    bishop_instance_running(local_id, idx) != -1)
+		    bishop_instance_running(local_id, idx) != -1) {
 			bishop_hymn_run("down", local_id, idx);
+			bishop_hymn_run("unresolve", local_id, idx);
+		}
 	}
 
 	bishop_hymn_reap(-1);
@@ -242,6 +247,7 @@ bishop_liturgy_request(struct sanctum_packet *pkt)
 
 		if (bishop_instance_running(src, dst) == -1) {
 			bishop_hymn_run("up", src, dst);
+			bishop_hymn_run("resolve", src, dst);
 			instances[dst] = 1;
 		}
 	} else {
@@ -249,6 +255,7 @@ bishop_liturgy_request(struct sanctum_packet *pkt)
 		    bishop_instance_running(src, dst) != -1 &&
 		    bishop_instance_alive(src, dst) == -1) {
 			bishop_hymn_run("down", src, dst);
+			bishop_hymn_run("unresolve", src, dst);
 			instances[dst] = 0;
 		}
 	}
@@ -311,6 +318,12 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 		bishop_liturgy_address(ip, sizeof(ip), dst, src);
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_ROUTE_ADD,
 		    ip, sanctum->cathedral_flock, src, dst);
+	} else if (!strcmp(cmd, "resolve")) {
+		len = snprintf(buf, sizeof(buf), HYMN_FMT_RESOLVE_CONF,
+		    sanctum->cathedral_flock, src, dst, "on");
+	} else if (!strcmp(cmd, "unresolve")) {
+		len = snprintf(buf, sizeof(buf), HYMN_FMT_RESOLVE_CONF,
+		    sanctum->cathedral_flock, src, dst, "off");
 	} else {
 		fatal("unknown hymn command '%s'", cmd);
 	}
