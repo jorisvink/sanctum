@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/un.h>
@@ -3016,7 +3017,7 @@ static void
 hymn_hosts_load(struct hosts *hosts)
 {
 	FILE		*fp;
-	int		orig;
+	int		fd, orig;
 	struct host	*host, *next;
 	char		*line, buf[1024];
 
@@ -3027,6 +3028,11 @@ hymn_hosts_load(struct hosts *hosts)
 
 	if ((fp = fopen(HYMN_HOSTS_PATH, "r")) == NULL)
 		fatal("failed to open %s: %s", HYMN_HOSTS_PATH, errno_s);
+
+	fd = fileno(fp);
+
+	if (flock(fd, LOCK_EX) == -1)
+		fatal("failed to grab hosts lock: %s", errno_s);
 
 	while ((line = hymn_config_read(fp, buf, sizeof(buf), orig)) != NULL) {
 		if (orig == 1 && !strcmp(line, HYMN_HOST_SEP)) {
@@ -3063,7 +3069,10 @@ hymn_hosts_load(struct hosts *hosts)
 		host = next;
 	}
 
-	fclose(fp);
+	/*
+	 * We do not close the hosts file on purpose, we want the flock
+	 * to stick around until we exit. This is by design.
+	 */
 }
 
 static void
@@ -3077,7 +3086,6 @@ hymn_hosts_save(struct hosts *hosts)
 		fatal("failed to open temporary hosts file: %s", errno_s);
 
 	fd = fileno(fp);
-
 	if (fchmod(fd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) == -1)
 		fatal("failed to change permissions on hosts temp file");
 
