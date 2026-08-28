@@ -1265,14 +1265,14 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 	if (!(offer->flags & OFFER_INCLUDE_KEM_PK))
 		return;
 
-	if (offer->ct_frag & (1 << xchg->fragment)) {
-		sanctum_log(LOG_INFO, "ct fragment %u already seen",
+	if (xchg->fragment >= SANCTUM_OFFER_KEM_FRAGMENTS) {
+		sanctum_log(LOG_NOTICE, "peer sent invalid ct fragment %u",
 		    xchg->fragment);
 		return;
 	}
 
-	if (xchg->fragment >= SANCTUM_OFFER_KEM_FRAGMENTS) {
-		sanctum_log(LOG_NOTICE, "peer sent invalid ct fragment %u",
+	if (offer->ct_frag & (1 << xchg->fragment)) {
+		sanctum_log(LOG_INFO, "ct fragment %u already seen",
 		    xchg->fragment);
 		return;
 	}
