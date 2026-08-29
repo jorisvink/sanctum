@@ -99,11 +99,7 @@ sanctum_proc_start(void)
 	struct sanctum_proc_io		io;
 	struct sockaddr_in		nat;
 
-	if (sanctum->mode != SANCTUM_MODE_LITURGY) {
-		sanctum_proc_create(SANCTUM_PROC_CONTROL,
-		    sanctum_control, NULL);
-	}
-
+	sanctum_proc_create(SANCTUM_PROC_CONTROL, sanctum_control, NULL);
 	io.crypto = sanctum_bind_local(&sanctum->local);
 
 	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL &&

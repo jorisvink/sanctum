@@ -241,10 +241,10 @@ static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
 static void	hymn_config_parse_liturgy_group(struct config *, char *);
 static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
 
-static void	hymn_ctl_status(const char *,
+static int	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
 static void	hymn_ctl_response(int, void *, size_t);
-static void	hymn_ctl_request(int, const char *, const void *, size_t);
+static int	hymn_ctl_request(int, const char *, const void *, size_t);
 
 static void	hymn_unix_socket(struct sockaddr_un *, const char *);
 static void	hymn_dump_ifstat(const char *, struct sanctum_ifstat *);
@@ -1978,27 +1978,32 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 	if (access(path, R_OK) == -1) {
 		hymn_fmt_output(0, "\33[0;31mdown");
 		offset = 7;
-	} else if (tun->config.is_liturgy) {
-		hymn_fmt_output(0, "\33[0;36mrunning");
-		offset = 4;
 	} else {
 		up = 1;
-
 		hymn_control_path(path, sizeof(path),
 		    tun->config.flock, tun->config.src,
 		    tun->config.dst);
-		hymn_ctl_status(path, &resp);
 
-		(void)clock_gettime(CLOCK_MONOTONIC, &ts);
-		last = ts.tv_sec - resp.rx.last;
+		if (hymn_ctl_status(path, &resp) == -1)
+			return;
 
-		if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
-		    resp.rx.last > 0 && last < 30) {
-			hymn_fmt_output(0, "\33[0;32monline");
-			offset = 5;
-		} else {
-			hymn_fmt_output(0, "\33[0;33mpending");
+		if (tun->config.is_liturgy) {
+			hymn_fmt_output(0, "\33[0;36mliturgy");
 			offset = 4;
+		}
+
+		if (tun->config.is_liturgy == 0) {
+			(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+			last = ts.tv_sec - resp.rx.last;
+
+			if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
+			    resp.rx.last > 0 && last < 30) {
+				hymn_fmt_output(0, "\33[0;32monline");
+				offset = 5;
+			} else {
+				hymn_fmt_output(0, "\33[0;33mpending");
+				offset = 4;
+			}
 		}
 	}
 
@@ -2177,17 +2182,19 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	if (access(path, R_OK) == -1)
 		status = "  not active";
-	else if (config.is_liturgy)
-		status = "  running";
 	else
 		status = NULL;
 
+	printf("%s-%02x-%02x:\n", flock, src, dst);
+
 	if (status == NULL) {
 		hymn_control_path(path, sizeof(path), flock, src, dst);
-		hymn_ctl_status(path, &resp);
+		if (hymn_ctl_status(path, &resp) == -1) {
+			printf("  error obtaining information\n");
+			return;
+		}
 	}
 
-	printf("%s-%02x-%02x:\n", flock, src, dst);
 
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
@@ -2287,6 +2294,8 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	} else if (config.is_liturgy == 0) {
 		hymn_dump_ifstat("tx", &resp.tx);
 		hymn_dump_ifstat("rx", &resp.rx);
+	} else {
+		printf("  liturgy is running\n");
 	}
 }
 
@@ -2382,6 +2391,9 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		cfg->runas[SANCTUM_PROC_CONFESS] = "root";
 		cfg->runas[SANCTUM_PROC_CATHEDRAL] = "root";
 	}
+
+	if (cfg->is_liturgy && cfg->runas[SANCTUM_PROC_CONTROL] == NULL)
+		cfg->runas[SANCTUM_PROC_CONTROL] = "root";
 
 	len = snprintf(tmp, sizeof(tmp), "%s.new", path);
 	if (len < 0 || (size_t)len >= sizeof(tmp))
@@ -2529,15 +2541,13 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 
 	hymn_config_write(fd, "\n");
 
-	if (cfg->is_liturgy == 0) {
-		hymn_config_write(fd, "run control as %s\n",
-		    cfg->runas[SANCTUM_PROC_CONTROL]);
-		hymn_config_write(fd,
-		    "control /tmp/%s-%02x-%02x.control %s\n",
-		    flock, cfg->src, cfg->dst,
-		    cfg->runas[SANCTUM_PROC_CONTROL]);
-		hymn_config_write(fd, "\n");
-	}
+	hymn_config_write(fd, "run control as %s\n",
+	    cfg->runas[SANCTUM_PROC_CONTROL]);
+	hymn_config_write(fd,
+	    "control /tmp/%s-%02x-%02x.control %s\n",
+	    flock, cfg->src, cfg->dst,
+	    cfg->runas[SANCTUM_PROC_CONTROL]);
+	hymn_config_write(fd, "\n");
 
 	hymn_config_write(fd, "run bishop as %s\n",
 	    cfg->runas[SANCTUM_PROC_BISHOP]);
@@ -2870,7 +2880,7 @@ hymn_unix_socket(struct sockaddr_un *sun, const char *path)
 		fatal("failed to create path to '%s'", path);
 }
 
-static void
+static int
 hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 {
 	int				fd;
@@ -2892,11 +2902,14 @@ hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 
 	ctl.cmd = SANCTUM_CTL_STATUS;
 
-	hymn_ctl_request(fd, path, &ctl, sizeof(ctl));
+	if (hymn_ctl_request(fd, path, &ctl, sizeof(ctl)) == -1)
+		return (-1);
+
 	hymn_ctl_response(fd, out, sizeof(*out));
+	return (0);
 }
 
-static void
+static int
 hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 {
 	ssize_t			ret;
@@ -2909,7 +2922,8 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 		    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("send: %s", errno_s);
+			fprintf(stderr, "%s: %s\n", path, errno_s);
+			return (-1);
 		}
 
 		if ((size_t)ret != len)
@@ -2917,6 +2931,8 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 
 		break;
 	}
+
+	return (0);
 }
 
 static void
@@ -3130,15 +3146,12 @@ hymn_hosts_modify(struct hosts *hosts, struct config *cfg, int remove)
 	addr.ip |= src << 24;
 	addr.ip |= dst << 16;
 
-	cfg->src = src;
-	cfg->dst = dst;
-
 	if (cfg->name != NULL) {
 		len = snprintf(buf, sizeof(buf), "%s %s",
 		    hymn_ip_str(&addr), cfg->name);
 	} else {
 		len = snprintf(buf, sizeof(buf), "%s %s-%02x-%02x",
-		    hymn_ip_str(&addr), cfg->flock, cfg->src, cfg->dst);
+		    hymn_ip_str(&addr), cfg->flock, src, dst);
 	}
 
 	if (len < 0 || (size_t)len >= sizeof(buf))

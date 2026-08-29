@@ -1213,7 +1213,8 @@ config_cathedral_check(void)
 	if (sanctum->cathedral_flock_dst == 0)
 		sanctum->cathedral_flock_dst = sanctum->cathedral_flock;
 
-	if (sanctum->mode == SANCTUM_MODE_TUNNEL) {
+	if (sanctum->mode == SANCTUM_MODE_TUNNEL ||
+	    sanctum->mode == SANCTUM_MODE_LITURGY) {
 		if (sanctum->peer_ip == 0) {
 			sanctum_atomic_write(&sanctum->peer_port,
 			    sanctum->cathedral.sin_port);
