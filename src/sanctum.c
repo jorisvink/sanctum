@@ -401,7 +401,8 @@ sanctum_mtu_change(void)
 		return;
 
 	if (sanctum_atomic_read(&sanctum->mtu_size) != mtu) {
-		sanctum_platform_tundev_mtu(mtu);
+		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+			sanctum_platform_tundev_mtu(mtu);
 		sanctum_atomic_write(&sanctum->mtu_size, mtu);
 		sanctum_log(LOG_INFO, "MTU has been set to %u", mtu);
 	}
