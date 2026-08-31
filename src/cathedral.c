@@ -15,7 +15,6 @@
  */
 
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
 
 #include <arpa/inet.h>
@@ -363,6 +362,9 @@ static struct ifstats		traffic;
  */
 static struct shroud		*shroud_last = NULL;
 
+/* The inter-cathedral shroud key. */
+static u_int8_t			shroud_cathedral[SANCTUM_KEY_LENGTH];
+
 /*
  * Cathedral - The place packets all meet and get exchanged.
  *
@@ -407,6 +409,10 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	next_expire = 0;
 	next_status = 0;
 	next_settings = 0;
+
+	sanctum_base_key(sanctum->secret, CATHEDRAL_CATACOMB_MAGIC,
+	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
+	    shroud_cathedral, sizeof(shroud_cathedral));
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -1167,7 +1173,6 @@ cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
 {
 	struct tunnel		*srv;
 	int			cathedral;
-	u_int8_t		key[SANCTUM_KEY_LENGTH];
 	u_int8_t		id[SANCTUM_SHROUD_ID_LENGTH];
 	u_int8_t		seed[SANCTUM_SHROUD_SEED_LENGTH];
 
@@ -1190,16 +1195,8 @@ cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
 	sanctum_random_bytes(seed, sizeof(seed));
 
 	if (cathedral) {
-		nyfe_zeroize_register(key, sizeof(key));
-
-		sanctum_base_key(sanctum->secret,
-		    CATHEDRAL_CATACOMB_MAGIC, SANCTUM_CATHEDRAL_MAGIC,
-		    SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL, key, sizeof(key));
-
-		sanctum_packet_shroud(pkt, id, sizeof(id),
-		    seed, sizeof(seed), key, sizeof(key));
-
-		nyfe_zeroize(key, sizeof(key));
+		sanctum_packet_shroud(pkt, id, sizeof(id), seed, sizeof(seed),
+		    shroud_cathedral, sizeof(shroud_cathedral));
 	} else {
 		VERIFY(shroud != NULL);
 		sanctum_packet_shroud(pkt, id, sizeof(id), seed, sizeof(seed),
@@ -1219,7 +1216,6 @@ cathedral_unshroud_packet(struct sanctum_packet *pkt)
 	struct tunnel			*srv;
 	struct shroud			*shroud;
 	int				cathedral;
-	u_int8_t			key[SANCTUM_KEY_LENGTH];
 
 	PRECOND(pkt != NULL);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
@@ -1241,18 +1237,10 @@ cathedral_unshroud_packet(struct sanctum_packet *pkt)
 			return (-1);
 		}
 
-		nyfe_zeroize_register(key, sizeof(key));
-
-		sanctum_base_key(sanctum->secret,
-		    CATHEDRAL_CATACOMB_MAGIC, SANCTUM_CATHEDRAL_MAGIC,
-		    SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL, key, sizeof(key));
-
-		if (sanctum_packet_unshroud(pkt, key, sizeof(key)) == -1) {
-			nyfe_zeroize(key, sizeof(key));
+		if (sanctum_packet_unshroud(pkt, shroud_cathedral,
+		    sizeof(shroud_cathedral)) == -1)
 			return (-1);
-		}
 
-		nyfe_zeroize(key, sizeof(key));
 		return (0);
 	}
 
