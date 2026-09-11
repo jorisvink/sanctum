@@ -169,6 +169,9 @@ extern const char	*sanctum_build_date;
 /* Number of seconds after which we consider a cathedral timed out. */
 #define SANCTUM_CATHEDRAL_TIMEOUT	45
 
+/* The number of cathedral hops a packet can do before being delivered. */
+#define SANCTUM_CATHEDRAL_HOPS		3
+
 /* The number of domains per flock. */
 #define SANCTUM_FLOCK_DOMAIN_BITS	8
 #define SANCTUM_FLOCK_DOMAINS		(1 << SANCTUM_FLOCK_DOMAIN_BITS)
@@ -207,6 +210,10 @@ struct sanctum_grace_mtu {
  *	5) A remembrance offering (from cathedral to us)
  *	6) A key exchange offering (between peers)
  *	7) A p2p info offer (between cathedrals only).
+ *
+ * All offers are confidentiality and integrity protected using
+ * some form of key, be it the peers shared secret, or a peer
+ * its cathedral-secret.
  */
 #define SANCTUM_OFFER_TYPE_KEY		1
 #define SANCTUM_OFFER_TYPE_AMBRY	2
@@ -594,6 +601,9 @@ struct sanctum_ether {
 
 /* Is MTU discovery via grace enabled? */
 #define SANCTUM_FLAG_MTU_DISCOVERY	(1 << 9)
+
+/* Should we use the cathedral commixtion feature? */
+#define SANCTUM_FLAG_COMMIXTION		(1 << 10)
 
 /*
  * The modes in which sanctum can run.

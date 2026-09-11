@@ -32,8 +32,17 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
+/* The mask for getting rid of the hop-count in a packet sequence number. */
+#define CATHEDRAL_HOP_MASK	0x00ffffffffffffff
+
+/* The position where the hop count is placed in the packet sequence number. */
+#define CATHEDRAL_HOP_BITS		56
+
 /* The number of seconds in between allowed federation for offers. */
 #define CATHEDRAL_FEDERATE_NEXT		(3 * 1000)
+
+/* The interval at which we recalculate commixtions. */
+#define CATHEDRAL_COMMIXTION_NEXT	(300 * 1000)
 
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(120 * 1000)
@@ -85,7 +94,19 @@ struct peerstat {
 };
 
 /*
- * A known tunnel and its endpoint, or a federated cathedral.
+ * A federated cathedral.
+ */
+struct federated {
+	int			retain;
+
+	u_int32_t		ip;
+	u_int16_t		port;
+
+	LIST_ENTRY(federated)	list;
+};
+
+/*
+ * A known tunnel and its endpoint.
  * These live under the flockent's tunnel list. 
  */
 struct tunnel {
@@ -100,6 +121,9 @@ struct tunnel {
 	int			federated;
 	u_int32_t		rx_active;
 	u_int32_t		rx_pending;
+
+	/* Mixnet hops. */
+	u_int8_t		hops[SANCTUM_CATHEDRAL_HOPS];
 
 	/* flock information */
 	u_int64_t		src;
@@ -265,6 +289,12 @@ static void		cathedral_shroud_packet(struct sanctum_packet *,
 static int		cathedral_unshroud_packet(struct sanctum_packet *);
 static void		cathedral_shroud_alloc(u_int64_t, u_int64_t, u_int32_t);
 
+static void		cathedral_commixtion_init(struct tunnel *,
+			    struct flockent *);
+static void		cathedral_commixtion_rollover(struct flockent *);
+static struct federated	*cathedral_commixtion_packet(struct tunnel *,
+			    struct sanctum_packet *);
+
 static void	cathedral_peerstat_inc(struct peerstat *, int);
 static void	cathedral_peerstat_dec(struct peerstat *, int);
 
@@ -326,10 +356,10 @@ static int	cathedral_forward_allowed(u_int64_t, u_int64_t,
 static struct sanctum_proc_io	*io = NULL;
 
 /* The list of federation cathedrals we can forward too. */
-static LIST_HEAD(, tunnel)	federations;
+static LIST_HEAD(, federated)	federations;
 
 /* The current number of configured active federations. */
-static u_int8_t			federation_count = 0;
+static u_int32_t		federation_count = 0;
 
 /* The list of configured flocks. */
 static LIST_HEAD(, flockent)	flocks;
@@ -383,7 +413,8 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	struct sanctum_packet	*pkt;
 	struct flockent		*flock;
 	int			sig, running;
-	u_int64_t		now, next_expire, next_settings, next_status;
+	u_int64_t		now, next_expire, next_status;
+	u_int64_t		next_commixtion, next_settings;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -409,6 +440,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	next_expire = 0;
 	next_status = 0;
 	next_settings = 0;
+	next_commixtion = 0;
 
 	sanctum_base_key(sanctum->secret, CATHEDRAL_CATACOMB_MAGIC,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
@@ -439,6 +471,14 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
 			LIST_FOREACH(flock, &flocks, list)
 				cathedral_tunnel_expire(flock, now);
+		}
+
+		if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+		    (now >= next_commixtion)) {
+			next_commixtion = now + CATHEDRAL_COMMIXTION_NEXT;
+			sanctum_log(LOG_INFO, "commixtion rollover");
+			LIST_FOREACH(flock, &flocks, list)
+				cathedral_commixtion_rollover(flock);
 		}
 
 		if (now >= next_status) {
@@ -472,7 +512,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 static void
 cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 {
-	struct tunnel			*srv;
+	struct federated		*srv;
 	struct sanctum_proto_hdr	*hdr;
 	struct sanctum_offer_hdr	*offer;
 	u_int32_t			seq, spi;
@@ -732,6 +772,8 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
 		sanctum_log(LOG_INFO, "%s peer restart detected",
 		    cathedral_tunnel_name(flock, dst, info->tunnel));
+		if (sanctum->flags & SANCTUM_FLAG_COMMIXTION)
+			cathedral_commixtion_init(tun, flock);
 	} else if (catacomb == 0 && nat == 0) {
 		cathedral_info_send(tun, flock, dst, info, &pkt->addr, id, now);
 
@@ -1003,8 +1045,8 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 	struct sanctum_offer		*op;
 	struct sanctum_packet		*pkt;
 	u_int8_t			*ptr;
+	struct federated		*srv;
 	struct sanctum_key		cipher;
-	struct tunnel			*tunnel;
 
 	PRECOND(flock != NULL);
 	PRECOND(dst != NULL);
@@ -1041,7 +1083,7 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	LIST_FOREACH(tunnel, &federations, list) {
+	LIST_FOREACH(srv, &federations, list) {
 		if ((pkt = sanctum_packet_get()) == NULL) {
 			sanctum_log(LOG_NOTICE,
 			    "no CATACOMB update possible, out of packets");
@@ -1057,8 +1099,8 @@ cathedral_offer_federate(struct flockent *flock, struct flockent *dst,
 		sanctum_offer_tfc(pkt);
 
 		pkt->addr.sin_family = AF_INET;
-		pkt->addr.sin_port = tunnel->port;
-		pkt->addr.sin_addr.s_addr = tunnel->ip;
+		pkt->addr.sin_port = srv->port;
+		pkt->addr.sin_addr.s_addr = srv->ip;
 
 		cathedral_shroud_packet(pkt, NULL);
 
@@ -1171,7 +1213,7 @@ cathedral_shroud_find(struct sanctum_packet *pkt)
 static void
 cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
 {
-	struct tunnel		*srv;
+	struct federated	*srv;
 	int			cathedral;
 	u_int8_t		id[SANCTUM_SHROUD_ID_LENGTH];
 	u_int8_t		seed[SANCTUM_SHROUD_SEED_LENGTH];
@@ -1213,7 +1255,7 @@ cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
 static int
 cathedral_unshroud_packet(struct sanctum_packet *pkt)
 {
-	struct tunnel			*srv;
+	struct federated		*srv;
 	struct shroud			*shroud;
 	int				cathedral;
 
@@ -1357,6 +1399,7 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 {
 	u_int16_t			tid;
 	struct sanctum_proto_hdr	*hdr;
+	struct federated		*srv;
 	u_int32_t			drain;
 	u_int64_t			delta;
 	struct tunnel			*tunnel;
@@ -1406,9 +1449,18 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	}
 
 	pkt->addr.sin_family = AF_INET;
+	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
 	pkt->addr.sin_port = tunnel->port;
 	pkt->addr.sin_addr.s_addr = tunnel->ip;
-	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+
+	if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+	    federation_count > 0) {
+		if ((srv = cathedral_commixtion_packet(tunnel, pkt)) != NULL) {
+			pkt->addr.sin_port = srv->port;
+			pkt->addr.sin_addr.s_addr = srv->ip;
+		}
+	}
 
 	cathedral_shroud_packet(pkt, tunnel->shroud);
 
@@ -1486,6 +1538,111 @@ cathedral_forward_allowed(u_int64_t flock_src, u_int64_t flock_dst,
 }
 
 /*
+ * Roll over all tunnels their commixtion hops with new values.
+ */
+static void
+cathedral_commixtion_rollover(struct flockent *flock)
+{
+	struct flockdom		*dom;
+	struct tunnel		*tun;
+
+	PRECOND(flock != NULL);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_COMMIXTION);
+
+	if (federation_count == 0)
+		return;
+
+	LIST_FOREACH(dom, &flock->domains, list) {
+		LIST_FOREACH(tun, &dom->tunnels, list)
+			cathedral_commixtion_init(tun, flock);
+	}
+}
+
+/*
+ * (re)Initialise commixtion by generating a new random hop pattern for each
+ * invidiaul hop that can occur.
+ *
+ * This list does not have to be synced per cathedral, it is fine that
+ * each cathedral maintains its own list of hops as the way the packet
+ * flows will be deterministic in the end.
+ */
+static void
+cathedral_commixtion_init(struct tunnel *tun, struct flockent *flock)
+{
+	int			idx;
+
+	PRECOND(tun != NULL);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_COMMIXTION);
+
+	if (federation_count == 0)
+		return;
+
+	sanctum_random_bytes(tun->hops, sizeof(tun->hops));
+
+	for (idx = SANCTUM_CATHEDRAL_HOPS - 1; idx >= 0; idx--) {
+		tun->hops[idx] = tun->hops[idx] % federation_count;
+		sanctum_log(LOG_INFO, "%s hop %d = %u",
+		    cathedral_tunnel_name(flock, flock, tun->id), idx,
+		    tun->hops[idx]);
+	}
+}
+
+/*
+ * Attempt to mix a packet by sending it to another cathedral first.
+ *
+ * What cathedral we send it to is taken from the tunnel its hops member
+ * for the given hop index. This is stable for the entire duration of
+ * the tunnel its alive time in the cathedral.
+ */
+static struct federated *
+cathedral_commixtion_packet(struct tunnel *tun, struct sanctum_packet *pkt)
+{
+	u_int64_t			pn;
+	u_int8_t			hop;
+	struct sanctum_proto_hdr	*hdr;
+	u_int32_t			count;
+	struct federated		*cathedral;
+
+	PRECOND(tun != NULL);
+	PRECOND(pkt != NULL);
+	VERIFY(federation_count > 0);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
+	VERIFY(sanctum->flags & SANCTUM_FLAG_COMMIXTION);
+
+	hdr = sanctum_packet_head(pkt);
+	pn = be64toh(hdr->pn);
+
+	hop = (pn >> CATHEDRAL_HOP_BITS) & 0xff;
+	if (hop == 0)
+		return (NULL);
+
+	if (hop > SANCTUM_CATHEDRAL_HOPS)
+		hop = SANCTUM_CATHEDRAL_HOPS;
+
+	hop--;
+	pn = (pn & CATHEDRAL_HOP_MASK) | (u_int64_t)hop << CATHEDRAL_HOP_BITS;
+	hdr->pn = htobe64(pn);
+
+	count = 0;
+	LIST_FOREACH(cathedral, &federations, list) {
+		if (count == tun->hops[hop])
+			break;
+		count++;
+	}
+
+	if (cathedral == NULL) {
+		sanctum_log(LOG_NOTICE,
+		    "commixtion: failed to select a cathedral (%u/%u)",
+		    tun->hops[hop], federation_count);
+		return (NULL);
+	}
+
+	return (cathedral);
+}
+
+/*
  * Find or create a tunnel entry for the given flock and tunnel.
  * Will return NULL if an entry is not found or cannot be created.
  */
@@ -1554,6 +1711,9 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 
 	cathedral_peerstat_inc(&peers, catacomb);
 	LIST_INSERT_HEAD(&flock->domain->tunnels, tun, list);
+
+	if (sanctum->flags & SANCTUM_FLAG_COMMIXTION)
+		cathedral_commixtion_init(tun, flock);
 
 	sanctum_log(LOG_INFO, "%s discovered (%u mbit/sec) (%d)",
 	    cathedral_tunnel_name(flock, dst, info->tunnel), bw, catacomb);
@@ -1834,7 +1994,7 @@ cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
 	struct sanctum_offer			*op;
 	struct sanctum_packet			*pkt;
 	struct sanctum_remembrance_offer	*list;
-	struct tunnel				*cathedral;
+	struct federated			*cathedral;
 	char					secret[1024];
 
 	PRECOND(flock != NULL);
@@ -2310,13 +2470,14 @@ cathedral_pubkey_path(char *buf, size_t buflen, u_int64_t flock, u_int32_t id)
 static void
 cathedral_settings_reload(void)
 {
-	int			fd;
 	struct stat		st;
 	FILE			*fp;
 	struct tunnel		*entry;
 	struct flockdom		*domain;
+	int			fd, refresh;
 	struct xflock		*xfl, *xnext;
 	struct flockent		*flock, *fnext;
+	struct federated	*srv, *srvnext;
 	struct shroud		*shroud, *snext;
 	char			buf[256], *kw, *option;
 
@@ -2349,12 +2510,8 @@ cathedral_settings_reload(void)
 	LIST_FOREACH(shroud, &shrouds, list)
 		shroud->retain = 0;
 
-	while ((entry = LIST_FIRST(&federations)) != NULL) {
-		LIST_REMOVE(entry, list);
-		free(entry);
-	}
-
-	LIST_INIT(&federations);
+	LIST_FOREACH(srv, &federations, list)
+		srv->retain = 0;
 
 	flock = NULL;
 	federation_count = 0;
@@ -2465,6 +2622,31 @@ cathedral_settings_reload(void)
 		free(shroud);
 	}
 
+	refresh = 0;
+
+	for (srv = LIST_FIRST(&federations); srv != NULL; srv = srvnext) {
+		srvnext = LIST_NEXT(srv, list);
+
+		if (srv->retain) {
+			sanctum_log(LOG_INFO, "federation retained");
+			continue;
+		}
+
+		sanctum_log(LOG_INFO, "federation removed");
+		LIST_REMOVE(srv, list);
+		free(srv);
+
+		refresh = 1;
+	}
+
+	if (sanctum->flags & SANCTUM_FLAG_COMMIXTION) {
+		if (refresh) {
+			sanctum_log(LOG_INFO, "forced commixtion rollover");
+			LIST_FOREACH(flock, &flocks, list)
+				cathedral_commixtion_rollover(flock);
+		}
+	}
+
 	sanctum_log(LOG_INFO, "settings reloaded");
 
 	settings_last_mtime = st.st_mtime;
@@ -2479,7 +2661,7 @@ cathedral_settings_federate(const char *option)
 {
 	struct sockaddr_in	sin;
 	u_int16_t		port;
-	struct tunnel		*tunnel;
+	struct federated	*cathedral;
 	char			ip[INET_ADDRSTRLEN];
 
 	PRECOND(option != NULL);
@@ -2507,16 +2689,25 @@ cathedral_settings_federate(const char *option)
 		return;
 	}
 
-	if ((tunnel = calloc(1, sizeof(*tunnel))) == NULL)
+	federation_count++;
+
+	LIST_FOREACH(cathedral, &federations, list) {
+		if (cathedral->port == htobe16(port) &&
+		    cathedral->ip == sin.sin_addr.s_addr) {
+			cathedral->retain = 1;
+			return;
+		}
+	}
+
+	if ((cathedral = calloc(1, sizeof(*cathedral))) == NULL)
 		fatal("calloc: failed to allocate federation");
 
-	tunnel->port = htobe16(port);
-	tunnel->ip = sin.sin_addr.s_addr;
+	cathedral->retain = 1;
+	cathedral->port = htobe16(port);
+	cathedral->ip = sin.sin_addr.s_addr;
 
 	sanctum_log(LOG_INFO, "federating to %s:%u", ip, port);
-
-	federation_count++;
-	LIST_INSERT_HEAD(&federations, tunnel, list);
+	LIST_INSERT_HEAD(&federations, cathedral, list);
 }
 
 /*

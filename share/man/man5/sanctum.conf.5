@@ -55,6 +55,17 @@ Specify the control socket path and the user who owns it.
 .BR local " " <ip:port>
 Specify the local IP address and port sanctum shall bind too. May be set
 to 0.0.0.0:0 for non cathedrals.
+.TP
+.BR cathedral_commixtion " " <yes|no>
+Enables the
+.BR commixtion
+feature. If enabled, instructs cathedrals to mix our traffic
+between different cathedrals a certain amount of times before being
+delivered to our peer. Note that both client and cathedral must have the
+.BR cathedral_commixtion
+enabled, otherwise no mixing happens. This feature
+.BR requires
+shroud.
 
 .SH TUNNEL SPECIFIC OPTIONS
 .TP

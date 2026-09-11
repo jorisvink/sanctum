@@ -83,4 +83,7 @@
 /* The KDF label for a cathedral shroud key. */
 #define SANCTUM_CATHEDRAL_SHROUD_KEY_KDF_LABEL	CLABEL(CATHEDRAL.SHROUD.KEY)
 
+/* The KDF label for the commixtion calculation. */
+#define SANCTUM_CATHEDRAL_COMMIXTION_LABEL	CLABEL(CATHEDRAL.COMMIXTION)
+
 #endif

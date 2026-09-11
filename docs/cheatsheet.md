@@ -40,6 +40,7 @@ projects directly related to sanctum.
 | cathedral | An authenticated relay and discovery service for sanctum. |
 | liturgy | A cathedral feature that helps with auto-discovery of peers. |
 | remembrance | A cathedral feature for sharing federated ip:port information. |
+| commixtion | The mixing of packets inside of the cathedral network. |
 
 ## Descendants
 

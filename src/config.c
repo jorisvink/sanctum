@@ -72,6 +72,7 @@ static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_cathedral_p2p_sync(char *);
 static void	config_parse_cathedral_flock_dst(char *);
+static void	config_parse_cathedral_commixtion(char *);
 static void	config_parse_liturgy_discoverable(char *);
 static void	config_parse_cathedral_remembrance(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
@@ -123,6 +124,7 @@ static const struct {
 	{ "cathedral_nat_port",		config_parse_cathedral_nat_port },
 	{ "cathedral_p2p_sync",		config_parse_cathedral_p2p_sync },
 	{ "cathedral_flock_dst",	config_parse_cathedral_flock_dst },
+	{ "cathedral_commixtion",	config_parse_cathedral_commixtion },
 	{ "cathedral_remembrance",	config_parse_cathedral_remembrance },
 	{ NULL,			NULL },
 };
@@ -229,6 +231,9 @@ sanctum_config_load(const char *file)
 	case SANCTUM_MODE_CATHEDRAL:
 		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
 			fatal("cathedral: cannot use tap");
+		if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+		    !(sanctum->flags & SANCTUM_FLAG_SHROUD))
+			fatal("cathedral: commixtion requires shroud");
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		config_mtu_check();
@@ -827,6 +832,23 @@ config_parse_cathedral_mtu(char *opt)
 }
 
 /*
+ * Parse the cathedral_commixtion configuration option.
+ */
+static void
+config_parse_cathedral_commixtion(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags |= SANCTUM_FLAG_COMMIXTION;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags &= ~SANCTUM_FLAG_COMMIXTION;
+	} else {
+		fatal("cathedral_commixtion <yes|no>");
+	}
+}
+
+/*
  * Parse the cathedral_remembrance configuration option.
  */
 static void
@@ -1212,6 +1234,14 @@ config_cathedral_check(void)
 
 	if (sanctum->cathedral_flock_dst == 0)
 		sanctum->cathedral_flock_dst = sanctum->cathedral_flock;
+
+	if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+	    !(sanctum->flags & SANCTUM_FLAG_SHROUD))
+		fatal("using commixtion only makes sense when using shroud");
+
+	if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+	    sanctum->cathedral_nat_port != 0)
+		fatal("using commixtion only makes sense when p2p is disabled");
 
 	if (sanctum->mode == SANCTUM_MODE_TUNNEL ||
 	    sanctum->mode == SANCTUM_MODE_LITURGY) {
