@@ -891,7 +891,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	group = be16toh(lit->group);
 
 	if (lit->id == 0 || lit->id >= SANCTUM_PEERS_PER_FLOCK) {
-		sanctum_log(LOG_NOTICE, "%s sent a valid liturgy id",
+		sanctum_log(LOG_NOTICE, "%s sent an invalid liturgy id",
 		    cathedral_tunnel_name(flock, flock, lit->id));
 		return;
 	}
