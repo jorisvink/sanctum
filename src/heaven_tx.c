@@ -254,7 +254,6 @@ heaven_tx_grace_mtu_probe(struct sanctum_packet *pkt)
 static void
 heaven_tx_grace_mtu_ack(struct sanctum_packet *pkt)
 {
-	u_int16_t			mtu;
 	struct sanctum_grace_mtu	*ack;
 
 	PRECOND(pkt != NULL);
@@ -269,16 +268,18 @@ heaven_tx_grace_mtu_ack(struct sanctum_packet *pkt)
 	ack = sanctum_packet_data(pkt);
 	VERIFY(ack->grace.type == SANCTUM_GRACE_TYPE_MTU_ACK);
 
-	mtu = sanctum_atomic_read(&sanctum->mtu_value);
-
-	if (ack->size > mtu && ack->size >= SANCTUM_MTU_SIZE_MIN &&
-	    ack->size < SANCTUM_PACKET_DATA_LEN) {
-		sanctum_atomic_write(&sanctum->mtu_value, ack->size);
-		sanctum_atomic_write(&sanctum->mtu_change, ack->size);
-		sanctum_log(LOG_INFO, "MTU ack received (mtu=%u)", ack->size);
+	if (ack->size < SANCTUM_MTU_SIZE_MIN ||
+	    ack->size > SANCTUM_PACKET_DATA_LEN) {
+		sanctum_log(LOG_NOTICE,
+		    "peer sent an MTU ack with an invalid size (%u)",
+		    ack->size);
+		return;
 	}
 
-	sanctum_atomic_write(&sanctum->mtu_attempts, 0);
+	sanctum_atomic_write(&sanctum->mtu_change, ack->size);
+	sanctum_log(LOG_INFO, "MTU ack received (mtu=%u)", ack->size);
+
+	sanctum_atomic_write(&sanctum->mtu_cancel, 1);
 }
 
 /*

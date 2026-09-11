@@ -62,12 +62,14 @@ following libraries:
 * libsodium-aegis
 * libsodium-aes-gcm (default)
 * mbedtls-aes-gcm (mbedtls 3.x)
+* openssl-aes-gcm (any openssl)
 
 These can be selected by setting the **CIPHER** environment
 variable at compile time.
 
 ```
 $ CIPHER=mbedtls-aes-gcm make
+# CIPHER=mbedtls-aes-gcm make install
 ```
 
 ## Classical ECDH
@@ -83,6 +85,7 @@ variable at compile time.
 
 ```
 $ ASYMMETRY=mbedtls-x25519 make
+# ASYMMETRY=mbedtls-x25519 make install
 ```
 
 ## PQ-secure KEM
@@ -97,6 +100,7 @@ variable at compile time.
 
 ```
 $ KEM=custom-kem-backend make
+# KEM=custom-kem-backend make install
 ```
 
 ## Random
@@ -111,6 +115,7 @@ variable at compile time.
 
 ```
 $ PRNG=custom-random-backend make
+# PRNG=custom-random-backend make install
 ```
 
 ## Signature
@@ -125,4 +130,5 @@ variable at compile time.
 
 ```
 $ SIGNATURE=custom-signature-backend make
+# SIGNATURE=custom-signature-backend make install
 ```

@@ -169,6 +169,9 @@ extern const char	*sanctum_build_date;
 /* Number of seconds after which we consider a cathedral timed out. */
 #define SANCTUM_CATHEDRAL_TIMEOUT	45
 
+/* The number of cathedral hops a packet can do before being delivered. */
+#define SANCTUM_CATHEDRAL_HOPS		3
+
 /* The number of domains per flock. */
 #define SANCTUM_FLOCK_DOMAIN_BITS	8
 #define SANCTUM_FLOCK_DOMAINS		(1 << SANCTUM_FLOCK_DOMAIN_BITS)
@@ -207,6 +210,10 @@ struct sanctum_grace_mtu {
  *	5) A remembrance offering (from cathedral to us)
  *	6) A key exchange offering (between peers)
  *	7) A p2p info offer (between cathedrals only).
+ *
+ * All offers are confidentiality and integrity protected using
+ * some form of key, be it the peers shared secret, or a peer
+ * its cathedral-secret.
  */
 #define SANCTUM_OFFER_TYPE_KEY		1
 #define SANCTUM_OFFER_TYPE_AMBRY	2
@@ -280,6 +287,9 @@ struct sanctum_p2p_info_offer {
 
 /* Set in an info offer if peer wants remembrance. */
 #define SANCTUM_INFO_FLAG_REMEMBRANCE		(1 << 0)
+
+/* Set in an info offer if peer does not want ambries. */
+#define SANCTUM_INFO_FLAG_SKIP_AMBRY		(1 << 1)
 
 /*
  * Set in an info offer from a cathedral if it sees the same external ipv4
@@ -528,7 +538,6 @@ struct sanctum_shroud_hdr {
  */
 struct sanctum_packet {
 	struct sockaddr_in	addr;
-	u_int8_t		next;
 	size_t			length;
 	u_int16_t		target;
 	u_int16_t		type;
@@ -593,6 +602,9 @@ struct sanctum_ether {
 /* Is MTU discovery via grace enabled? */
 #define SANCTUM_FLAG_MTU_DISCOVERY	(1 << 9)
 
+/* Should we use the cathedral commixtion feature? */
+#define SANCTUM_FLAG_COMMIXTION		(1 << 10)
+
 /*
  * The modes in which sanctum can run.
  *
@@ -624,7 +636,7 @@ struct sanctum_state {
 	/* The local address from the configuration. */
 	struct sockaddr_in	local;
 
-	/* The current selected cathedral remote address (tunnel mode only). */
+	/* The cathedral address (tunnel / cathedral mode). */
 	struct sockaddr_in	cathedral;
 
 	/* The current index into the cathedrals remembrance list. */
@@ -662,17 +674,15 @@ struct sanctum_state {
 	/* The last mtu that was actively set. */
 	volatile u_int16_t	mtu_size;
 
-	/* Our current mtu value during discovery. */
-	volatile u_int16_t	mtu_value;
-
 	/* Used by heaven-tx to communicate with guardian to set mtu. */
 	volatile u_int16_t	mtu_change;
 
 	/* Used by heaven-tx to communicate with heaven-rx to send an ack. */
 	volatile u_int16_t	mtu_probe_ack;
 
-	/* The number of probe attempts for the current mtu value. */
-	volatile u_int16_t	mtu_attempts;
+	/* Used to start/stop MTU discovery explicitly from other procs. */
+	volatile int		mtu_start;
+	volatile int		mtu_cancel;
 
 	/* The path to the pidfile. */
 	char			*pidfile;

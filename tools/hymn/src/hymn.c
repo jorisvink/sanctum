@@ -16,6 +16,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/un.h>
@@ -46,9 +47,14 @@
 
 #define errno_s			strerror(errno)
 
+#define HYMN_HOSTS_PATH		"/etc/hosts"
+#define HYMN_HOSTS_TMP_PATH	"/etc/hosts.sanctum"
+
 #define HYMN_BASE_PATH		"/etc/hymn"
 #define HYMN_RUN_PATH		"/var/run/hymn"
 #define HYMN_CLIENT_SOCKET	"/tmp/hymn.client"
+
+#define HYMN_HOST_SEP		"# Hymn hosts below, do not touch the divine"
 
 #define HYMN_TUNNEL		(1 << 1)
 #define HYMN_PEER		(1 << 2)
@@ -75,6 +81,18 @@ struct addr {
 };
 
 LIST_HEAD(addrlist, addr);
+
+struct host {
+	char			*line;
+	TAILQ_ENTRY(host)	list;
+};
+
+TAILQ_HEAD(host_list, host);
+
+struct hosts {
+	struct host_list	current;
+	struct host_list	ours;
+};
 
 struct config {
 	u_int8_t		src;
@@ -146,6 +164,7 @@ static void	hymn_mkdir(const char *, int);
 static void	hymn_unlink(const char *, ...)
 		    __attribute__((format (printf, 1, 2)));
 
+static void	hymn_fmt_output(int, const char *, ...);
 static void	hymn_pid_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 static void	hymn_conf_path(char *, size_t, const char *,
@@ -153,10 +172,16 @@ static void	hymn_conf_path(char *, size_t, const char *,
 static void	hymn_control_path(char *, size_t, const char *,
 		    u_int8_t, u_int8_t);
 
+static void	hymn_hosts_save(struct hosts *);
+static void	hymn_hosts_load(struct hosts *);
+static int	hymn_hosts_modify(struct hosts *, struct config *, int);
+
 static int	hymn_tunnel_list(struct tunnels *);
+static void	hymn_tunnel_info(struct tunnel *, int);
 static void	hymn_tunnel_up(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_down(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_status(const char *, u_int8_t, u_int8_t);
+static int	hymn_tunnel_auto_configured(const char *, u_int8_t, char **);
 static int	hymn_tunnel_parse(char *, const char **,
 		    u_int8_t *, u_int8_t *, int);
 
@@ -174,6 +199,7 @@ static int	hymn_bridge(int, char **);
 static int	hymn_status(int, char **);
 static int	hymn_accept(int, char **);
 static int	hymn_keygen(int, char **);
+static int	hymn_resolve(int, char **);
 static int	hymn_liturgy(int, char **);
 static int	hymn_restart(int, char **);
 static int	hymn_cathedral(int, char **);
@@ -182,7 +208,7 @@ static int	hymn_remembrance(int, char **);
 static void	hymn_config_init(struct config *);
 static void	hymn_config_write(int, const char *, ...)
 		    __attribute__((format (printf, 2, 3)));
-static char	*hymn_config_read(FILE *, char *, size_t);
+static char	*hymn_config_read(FILE *, char *, size_t, int);
 static void	hymn_config_load(const char *, struct config *);
 static void	hymn_config_save(const char *, const char *, struct config *);
 
@@ -215,10 +241,10 @@ static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
 static void	hymn_config_parse_liturgy_group(struct config *, char *);
 static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
 
-static void	hymn_ctl_status(const char *,
+static int	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
 static void	hymn_ctl_response(int, void *, size_t);
-static void	hymn_ctl_request(int, const char *, const void *, size_t);
+static int	hymn_ctl_request(int, const char *, const void *, size_t);
 
 static void	hymn_unix_socket(struct sockaddr_un *, const char *);
 static void	hymn_dump_ifstat(const char *, struct sanctum_ifstat *);
@@ -229,6 +255,7 @@ static void	hymn_netlist_del(const char *,
 		    struct addrlist *, struct addr *);
 
 static struct addr	*hymn_net_parse(const char *);
+static const char	*hymn_ip_str(struct addr *);
 static const char	*hymn_ip_mask_str(struct addr *);
 static const char	*hymn_ip_port_str(struct addr *);
 static void		hymn_ip_port_parse(struct addr *, char *);
@@ -258,6 +285,7 @@ static const struct {
 	{ "accept",		hymn_accept },
 	{ "keygen",		hymn_keygen },
 	{ "liturgy",		hymn_liturgy },
+	{ "resolve",		hymn_resolve },
 	{ "restart",		hymn_restart },
 	{ "cathedral",		hymn_cathedral },
 	{ "remembrance",	hymn_remembrance },
@@ -323,6 +351,7 @@ usage(void)
 	fprintf(stderr, "  cathedral   - change cathedral for a tunnel\n");
 	fprintf(stderr, "  del         - delete an existing tunnel\n");
 	fprintf(stderr, "  down        - kills the given tunnel\n");
+	fprintf(stderr, "  nat         - change NAT detection port\n");
 	fprintf(stderr, "  mtu         - change mtu for a given tunnel\n");
 	fprintf(stderr, "  list        - list all configured tunnels\n");
 	fprintf(stderr, "  liturgy     - configure a liturgy\n");
@@ -333,6 +362,7 @@ usage(void)
 	fprintf(stderr, "  restart     - restart a tunnel (down, up)\n");
 	fprintf(stderr, "  route       - modify tunnel routing rules\n");
 	fprintf(stderr, "  up          - starts the given tunnel\n");
+	fprintf(stderr, "  resolve     - add/remove host for liturgies\n");
 
 	exit(1);
 }
@@ -1127,6 +1157,7 @@ static int
 hymn_up(int argc, char *argv[])
 {
 	struct tunnels			list;
+	char				*name;
 	const char			*flock;
 	struct tunnel			*tunnel;
 	u_int8_t			src, dst;
@@ -1135,13 +1166,27 @@ hymn_up(int argc, char *argv[])
 	case 0:
 		hymn_tunnel_list(&list);
 		TAILQ_FOREACH(tunnel, &list, list) {
+			if (tunnel->config.is_liturgy == 0 &&
+			    hymn_tunnel_auto_configured(tunnel->config.flock,
+			    tunnel->config.src, NULL) != -1) {
+				continue;
+			}
+
 			hymn_tunnel_up(tunnel->config.flock,
 			    tunnel->config.src, tunnel->config.dst);
 		}
 		break;
 	case 1:
+	case 2:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 			usage_simple("status");
+
+		if (argc == 1 && dst != 0 &&
+		    hymn_tunnel_auto_configured(flock, src, &name) != -1) {
+			fatal("refusing to start %s, it is owned by %s",
+			    argv[0], name);
+		}
+
 		hymn_tunnel_up(flock, src, dst);
 		break;
 	default:
@@ -1184,73 +1229,60 @@ hymn_status(int argc, char *argv[])
 static int
 hymn_list(int argc, char *argv[])
 {
-	struct timespec				ts;
 	struct tunnels				list;
-	struct tunnel				*tun;
-	struct sanctum_ctl_status_response	resp;
-	time_t					last;
-	char					path[PATH_MAX];
-	int					normal_tunnels, seen_liturgy;
+	struct tunnel				*tun, *lit;
+	int					skip_tunnel;
 
 	if (argc > 1)
 		fatal("Usage: hymn list [flock]");
 
-	seen_liturgy = 0;
-	normal_tunnels = hymn_tunnel_list(&list);
+	hymn_tunnel_list(&list);
 
-	if (argc == 0 && normal_tunnels)
-		printf("normal tunnels:\n");
-	else
-		normal_tunnels = 1;
+	printf("\33[0;1m");
+	hymn_fmt_output(0, "status");
+	hymn_fmt_output(5, "tunnel");
+	hymn_fmt_output(24, "name");
+	hymn_fmt_output(14, "peer");
+	printf("\n");
 
-	while ((tun = TAILQ_FIRST(&list)) != NULL) {
-		/* Yes we are leaking and thats fine, we are dead soon. */
-		TAILQ_REMOVE(&list, tun, list);
+	TAILQ_FOREACH(tun, &list, list) {
+		skip_tunnel = 0;
 
 		if (argc == 1 && strcmp(tun->config.flock, argv[0]))
 			continue;
 
-		if (strcmp(tun->config.flock, "hymn") && normal_tunnels) {
-			normal_tunnels = 0;
-			printf("cathedral tunnels:\n");
+		TAILQ_FOREACH(lit, &list, list) {
+			if (lit == tun)
+				continue;
+			if (lit->config.is_liturgy == 0)
+				continue;
+
+			if (strcmp(tun->config.flock, lit->config.flock) ||
+			    tun->config.src != lit->config.src)
+				continue;
+
+			skip_tunnel = 1;
+			break;
 		}
 
-		if (seen_liturgy == 0 && tun->config.is_liturgy) {
-			seen_liturgy = 1;
-			printf("liturgies:\n");
-		}
+		if (skip_tunnel)
+			continue;
 
-		printf("    %s-%02x-%02x - ",
-		    tun->config.flock, tun->config.src, tun->config.dst);
+		hymn_tunnel_info(tun, 0);
 
-		hymn_pid_path(path, sizeof(path),
-		    tun->config.flock, tun->config.src, tun->config.dst);
+		if (tun->config.is_liturgy) {
+			TAILQ_FOREACH(lit, &list, list) {
+				if (lit == tun)
+					continue;
 
-		if (access(path, R_OK) == -1) {
-			printf("down");
-		} else if (tun->config.is_liturgy) {
-			printf("running");
-		} else {
-			hymn_control_path(path, sizeof(path),
-			    tun->config.flock, tun->config.src,
-			    tun->config.dst);
-			hymn_ctl_status(path, &resp);
+				if (strcmp(tun->config.flock,
+				    lit->config.flock) || tun->config.src !=
+				    lit->config.src)
+					continue;
 
-			(void)clock_gettime(CLOCK_MONOTONIC, &ts);
-			last = ts.tv_sec - resp.rx.last;
-
-			if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
-			    resp.rx.last > 0 && last < 120) {
-				printf("online");
-			} else {
-				printf("pending");
+				hymn_tunnel_info(lit, 1);
 			}
 		}
-
-		if (tun->config.name != NULL)
-			printf(" (%s)\n", tun->config.name);
-		else
-			printf("\n");
 	}
 
 	return (0);
@@ -1260,6 +1292,7 @@ static int
 hymn_down(int argc, char *argv[])
 {
 	struct tunnels			list;
+	char				*name;
 	const char			*flock;
 	struct tunnel			*tunnel;
 	u_int8_t			src, dst;
@@ -1268,13 +1301,27 @@ hymn_down(int argc, char *argv[])
 	case 0:
 		hymn_tunnel_list(&list);
 		TAILQ_FOREACH(tunnel, &list, list) {
+			if (tunnel->config.is_liturgy == 0 &&
+			    hymn_tunnel_auto_configured(tunnel->config.flock,
+			    tunnel->config.src, NULL) != -1) {
+				continue;
+			}
+
 			hymn_tunnel_down(tunnel->config.flock,
 			    tunnel->config.src, tunnel->config.dst);
 		}
 		break;
 	case 1:
+	case 2:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 			usage_simple("[up | down]");
+
+		if (argc == 1 && dst != 0 &&
+		    hymn_tunnel_auto_configured(flock, src, &name) != -1) {
+			fatal("refusing to down %s, it is owned by %s",
+			    argv[0], name);
+		}
+
 		hymn_tunnel_down(flock, src, dst);
 		break;
 	default:
@@ -1297,8 +1344,10 @@ usage_name(void)
 static int
 hymn_name(int argc, char *argv[])
 {
-	const char		*flock;
+	int			add;
+	struct hosts		hosts;
 	struct config		config;
+	const char		*flock;
 	u_int8_t		src, dst;
 	char			path[PATH_MAX];
 
@@ -1313,11 +1362,18 @@ hymn_name(int argc, char *argv[])
 	hymn_config_init(&config);
 	hymn_config_load(path, &config);
 
+	add = 0;
 	config.src = src;
 	config.dst = dst;
 
 	if ((config.flock = strdup(flock)) == NULL)
 		fatal("strdup");
+
+	if (hymn_tunnel_auto_configured(flock, src, NULL) != -1) {
+		hymn_hosts_load(&hosts);
+		if (hymn_hosts_modify(&hosts, &config, 1) != -1)
+			add = 1;
+	}
 
 	if (config.name != NULL) {
 		free(config.name);
@@ -1326,6 +1382,11 @@ hymn_name(int argc, char *argv[])
 
 	hymn_config_set_name(&config, argv[1]);
 	hymn_config_save(path, flock, &config);
+
+	if (add) {
+		(void)hymn_hosts_modify(&hosts, &config, 0);
+		hymn_hosts_save(&hosts);
+	}
 
 	printf("%s-%02x-%02x name updated to '%s'\n", flock, src, dst, argv[1]);
 
@@ -1428,6 +1489,55 @@ hymn_remembrance(int argc, char *argv[])
 	printf("%s-%02x-%02x remembrance turned %s\n",
 	    flock, src, dst, argv[1]);
 	printf("restart the tunnel for the change to take effect\n");
+
+	return (0);
+}
+
+static void
+usage_resolve(void)
+{
+	fprintf(stderr, "usage: hymn resolve ");
+	fprintf(stderr, "[name | <flock>-<src>-<dst>] [on|off]\n");
+
+	exit(1);
+}
+
+static int
+hymn_resolve(int argc, char *argv[])
+{
+	struct hosts		hosts;
+	const char		*flock;
+	struct config		config;
+	u_int8_t		src, dst;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_remembrance();
+
+	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
+		usage_resolve();
+
+	if (hymn_tunnel_auto_configured(flock, src, NULL) == -1)
+		fatal("resolve only makes sense for liturgy nodes");
+
+	hymn_conf_path(path, sizeof(path), flock, src, dst);
+
+	hymn_config_init(&config);
+	hymn_config_load(path, &config);
+
+	if ((config.flock = strdup(flock)) == NULL)
+		fatal("strdup");
+
+	hymn_hosts_load(&hosts);
+
+	if (!strcmp(argv[1], "on"))
+		(void)hymn_hosts_modify(&hosts, &config, 0);
+	else if (!strcmp(argv[1], "off"))
+		(void)hymn_hosts_modify(&hosts, &config, 1);
+	else
+		fatal("unexpected value '%s', wanted on|off", argv[1]);
+
+	hymn_hosts_save(&hosts);
 
 	return (0);
 }
@@ -1558,6 +1668,21 @@ hymn_ip_mask_parse(struct addr *addr, const char *opt)
 		fatal("ip '%s' is invalid", copy);
 
 	free(copy);
+}
+
+static const char *
+hymn_ip_str(struct addr *addr)
+{
+	in_addr_t	ip;
+	static char	str[INET_ADDRSTRLEN + 3];
+
+	ip = htonl(addr->ip);
+
+	(void)snprintf(str, sizeof(str), "%u.%u.%u.%u",
+	    (ip >> 24) & 0xff, (ip >> 16) & 0xff,
+	    (ip >> 8) & 0xff, (ip) & 0xff);
+
+	return (str);
 }
 
 static const char *
@@ -1746,6 +1871,7 @@ hymn_tunnel_list(struct tunnels *list)
 	char			*ext;
 	const char		*flock;
 	u_int8_t		src, dst;
+	u_int16_t		ours, other;
 	struct tunnel		*tun, *entry;
 	int			normal_tunnels;
 	char			path[PATH_MAX];
@@ -1777,6 +1903,8 @@ hymn_tunnel_list(struct tunnels *list)
 		hymn_config_init(&tun->config);
 		hymn_config_load(path, &tun->config);
 
+		ours = src << 8 | dst;
+
 		if (!strcmp(flock, "hymn")) {
 			normal_tunnels++;
 			TAILQ_INSERT_HEAD(list, tun, list);
@@ -1786,9 +1914,13 @@ hymn_tunnel_list(struct tunnels *list)
 					continue;
 				if (entry->config.is_liturgy == 0)
 					continue;
+
+				other = entry->config.src << 8 |
+				    entry->config.dst;
+
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
-				    entry->config.src > src) {
+				    ours < other) {
 					TAILQ_INSERT_BEFORE(entry, tun, list);
 					break;
 				}
@@ -1800,10 +1932,13 @@ hymn_tunnel_list(struct tunnels *list)
 			TAILQ_FOREACH(entry, list, list) {
 				if (entry->config.cathedral_flock == 0)
 					continue;
+
+				other = entry->config.src << 8 |
+				    entry->config.dst;
+
 				if ((entry->config.cathedral_flock >
 				    tun->config.cathedral_flock) ||
-				    entry->config.src > src ||
-				    entry->config.is_liturgy) {
+				    ours < other || entry->config.is_liturgy) {
 					TAILQ_INSERT_BEFORE(entry, tun, list);
 					break;
 				}
@@ -1823,6 +1958,99 @@ hymn_tunnel_list(struct tunnels *list)
 	(void)closedir(dir);
 
 	return (normal_tunnels);
+}
+
+static void
+hymn_tunnel_info(struct tunnel *tun, int subtunnel)
+{
+	struct timespec				ts;
+	struct sanctum_ctl_status_response	resp;
+	time_t					last;
+	int					offset, up;
+	char					path[PATH_MAX];
+
+	up = 0;
+	last = 0;
+
+	hymn_pid_path(path, sizeof(path),
+	    tun->config.flock, tun->config.src, tun->config.dst);
+
+	if (access(path, R_OK) == -1) {
+		hymn_fmt_output(0, "\33[0;31mdown");
+		offset = 7;
+	} else {
+		up = 1;
+		hymn_control_path(path, sizeof(path),
+		    tun->config.flock, tun->config.src,
+		    tun->config.dst);
+
+		if (hymn_ctl_status(path, &resp) == -1)
+			return;
+
+		if (tun->config.is_liturgy) {
+			hymn_fmt_output(0, "\33[0;36mliturgy");
+			offset = 4;
+		}
+
+		if (tun->config.is_liturgy == 0) {
+			(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+			last = ts.tv_sec - resp.rx.last;
+
+			if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
+			    resp.rx.last > 0 && last < 30) {
+				hymn_fmt_output(0, "\33[0;32monline");
+				offset = 5;
+			} else {
+				hymn_fmt_output(0, "\33[0;33mpending");
+				offset = 4;
+			}
+		}
+	}
+
+	printf("\033[0m");
+
+	if (subtunnel) {
+		hymn_fmt_output(offset + 1, "\xe2\x94\x94");
+		offset = 1;
+	}
+
+	hymn_fmt_output(offset, "%s-%02x-%02x",
+	    tun->config.flock, tun->config.src, tun->config.dst);
+
+	if (!strcmp(tun->config.flock, "hymn")) {
+		offset = 20;
+	} else {
+		if (strlen(tun->config.flock) > 16)
+			fatal("invalid flock '%s'", tun->config.flock);
+		offset = 24 - strlen(tun->config.flock);
+	}
+
+	if (subtunnel)
+		offset -= 3;
+
+	if (tun->config.name != NULL) {
+		hymn_fmt_output(offset, "%.13s", tun->config.name);
+		if (strlen(tun->config.name) > 13) {
+			printf("...");
+			offset = 2;
+		} else {
+			offset = 18 - strlen(tun->config.name);
+		}
+	} else {
+		hymn_fmt_output(offset, "-");
+		offset = 17;
+	}
+
+	if (up) {
+		hymn_fmt_output(offset, "%u.%u.%u.%u:%u",
+		    (resp.ip & 0xff), (resp.ip >> 8) & 0xff,
+		    (resp.ip >> 16) & 0xff, (resp.ip >> 24) & 0xff,
+		    ntohs(resp.port));
+	} else {
+		hymn_fmt_output(offset, "-");
+	}
+
+	printf("\n");
 }
 
 static void
@@ -1911,7 +2139,7 @@ hymn_tunnel_down(const char *flock, u_int8_t src, u_int8_t dst)
 		fatal("fopen(%s): %s", path, errno_s);
 	}
 
-	if ((ptr = hymn_config_read(fp, buf, sizeof(buf))) == NULL)
+	if ((ptr = hymn_config_read(fp, buf, sizeof(buf), 1)) == NULL)
 		fatal("failed to read %s", path);
 
 	pid = hymn_number(ptr, 10, 0, UINT_MAX);
@@ -1954,17 +2182,19 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 
 	if (access(path, R_OK) == -1)
 		status = "  not active";
-	else if (config.is_liturgy)
-		status = "  running";
 	else
 		status = NULL;
 
+	printf("%s-%02x-%02x:\n", flock, src, dst);
+
 	if (status == NULL) {
 		hymn_control_path(path, sizeof(path), flock, src, dst);
-		hymn_ctl_status(path, &resp);
+		if (hymn_ctl_status(path, &resp) == -1) {
+			printf("  error obtaining information\n");
+			return;
+		}
 	}
 
-	printf("%s-%02x-%02x:\n", flock, src, dst);
 
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
@@ -2064,6 +2294,8 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	} else if (config.is_liturgy == 0) {
 		hymn_dump_ifstat("tx", &resp.tx);
 		hymn_dump_ifstat("rx", &resp.rx);
+	} else {
+		printf("  liturgy is running\n");
 	}
 }
 
@@ -2097,7 +2329,7 @@ hymn_config_write(int fd, const char *fmt, ...)
 }
 
 static char *
-hymn_config_read(FILE *fp, char *in, size_t len)
+hymn_config_read(FILE *fp, char *in, size_t len, int retain)
 {
 	char		*p, *t;
 
@@ -2106,6 +2338,9 @@ hymn_config_read(FILE *fp, char *in, size_t len)
 
 	p = in;
 	in[strcspn(in, "\n")] = '\0';
+
+	if (retain)
+		return (p);
 
 	while (isspace(*(unsigned char *)p))
 		p++;
@@ -2156,6 +2391,9 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 		cfg->runas[SANCTUM_PROC_CONFESS] = "root";
 		cfg->runas[SANCTUM_PROC_CATHEDRAL] = "root";
 	}
+
+	if (cfg->is_liturgy && cfg->runas[SANCTUM_PROC_CONTROL] == NULL)
+		cfg->runas[SANCTUM_PROC_CONTROL] = "root";
 
 	len = snprintf(tmp, sizeof(tmp), "%s.new", path);
 	if (len < 0 || (size_t)len >= sizeof(tmp))
@@ -2303,15 +2541,13 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 
 	hymn_config_write(fd, "\n");
 
-	if (cfg->is_liturgy == 0) {
-		hymn_config_write(fd, "run control as %s\n",
-		    cfg->runas[SANCTUM_PROC_CONTROL]);
-		hymn_config_write(fd,
-		    "control /tmp/%s-%02x-%02x.control %s\n",
-		    flock, cfg->src, cfg->dst,
-		    cfg->runas[SANCTUM_PROC_CONTROL]);
-		hymn_config_write(fd, "\n");
-	}
+	hymn_config_write(fd, "run control as %s\n",
+	    cfg->runas[SANCTUM_PROC_CONTROL]);
+	hymn_config_write(fd,
+	    "control /tmp/%s-%02x-%02x.control %s\n",
+	    flock, cfg->src, cfg->dst,
+	    cfg->runas[SANCTUM_PROC_CONTROL]);
+	hymn_config_write(fd, "\n");
 
 	hymn_config_write(fd, "run bishop as %s\n",
 	    cfg->runas[SANCTUM_PROC_BISHOP]);
@@ -2355,7 +2591,7 @@ hymn_config_load(const char *path, struct config *cfg)
 	if ((fp = fopen(path, "r")) == NULL)
 		fatal("failed to open '%s': %s", path, errno_s);
 
-	while ((option = hymn_config_read(fp, buf, sizeof(buf))) != NULL) {
+	while ((option = hymn_config_read(fp, buf, sizeof(buf), 0)) != NULL) {
 		if (strlen(option) == 0)
 			continue;
 
@@ -2644,7 +2880,7 @@ hymn_unix_socket(struct sockaddr_un *sun, const char *path)
 		fatal("failed to create path to '%s'", path);
 }
 
-static void
+static int
 hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 {
 	int				fd;
@@ -2666,11 +2902,14 @@ hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 
 	ctl.cmd = SANCTUM_CTL_STATUS;
 
-	hymn_ctl_request(fd, path, &ctl, sizeof(ctl));
+	if (hymn_ctl_request(fd, path, &ctl, sizeof(ctl)) == -1)
+		return (-1);
+
 	hymn_ctl_response(fd, out, sizeof(*out));
+	return (0);
 }
 
-static void
+static int
 hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 {
 	ssize_t			ret;
@@ -2683,7 +2922,8 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 		    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
 			if (errno == EINTR)
 				continue;
-			fatal("send: %s", errno_s);
+			fprintf(stderr, "%s: %s\n", path, errno_s);
+			return (-1);
 		}
 
 		if ((size_t)ret != len)
@@ -2691,6 +2931,8 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 
 		break;
 	}
+
+	return (0);
 }
 
 static void
@@ -2715,7 +2957,7 @@ hymn_ctl_response(int fd, void *resp, size_t len)
 static void
 hymn_dump_ifstat(const char *name, struct sanctum_ifstat *st)
 {
-	struct timespec				ts;
+	struct timespec		ts;
 
 	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -2739,4 +2981,208 @@ hymn_dump_ifstat(const char *name, struct sanctum_ifstat *st)
 	}
 
 	printf("\n");
+}
+
+static int
+hymn_tunnel_auto_configured(const char *flock, u_int8_t src, char **name)
+{
+	int		len;
+	struct config	cfg;
+	char		path[PATH_MAX], prefix[32];
+
+	hymn_conf_path(path, sizeof(path), flock, src, 0x00);
+
+	if (access(path, R_OK) == -1)
+		return (-1);
+
+	memset(&cfg, 0, sizeof(cfg));
+	hymn_config_load(path, &cfg);
+
+	/* Yes we leak, we aren't alive long. */
+	if (name != NULL) {
+		if (cfg.name) {
+			*name = cfg.name;
+		} else {
+			len = snprintf(prefix, sizeof(prefix),
+			    "%s-%02x-00", flock, src);
+			if (len < 0 || (size_t)len >= sizeof(prefix))
+				fatal("snprintf buffer for prefix too small");
+
+			if ((*name = strdup(prefix)) == NULL)
+				fatal("strdup failed");
+		}
+	}
+
+	return (0);
+}
+
+static void
+hymn_fmt_output(int offset, const char *fmt, ...)
+{
+	va_list		args;
+
+	if (offset > 0)
+		printf("%*c", offset, ' ');
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
+}
+
+static void
+hymn_hosts_load(struct hosts *hosts)
+{
+	FILE		*fp;
+	int		fd, orig;
+	struct host	*host, *next;
+	char		*line, buf[1024];
+
+	orig = 1;
+
+	TAILQ_INIT(&hosts->ours);
+	TAILQ_INIT(&hosts->current);
+
+	if ((fp = fopen(HYMN_HOSTS_PATH, "r")) == NULL)
+		fatal("failed to open %s: %s", HYMN_HOSTS_PATH, errno_s);
+
+	fd = fileno(fp);
+
+	if (flock(fd, LOCK_EX) == -1)
+		fatal("failed to grab hosts lock: %s", errno_s);
+
+	while ((line = hymn_config_read(fp, buf, sizeof(buf), orig)) != NULL) {
+		if (orig == 1 && !strcmp(line, HYMN_HOST_SEP)) {
+			orig = 0;
+			continue;
+		}
+
+		if (orig == 0 && line[0] == '\0')
+			continue;
+
+		if ((host = calloc(1, sizeof(*host))) == NULL)
+			fatal("calloc: failed");
+
+		if ((host->line = strdup(line)) == NULL)
+			fatal("strdup: failed");
+
+		if (orig == 0)
+			TAILQ_INSERT_TAIL(&hosts->ours, host, list);
+		else
+			TAILQ_INSERT_TAIL(&hosts->current, host, list);
+	}
+
+	TAILQ_FOREACH_REVERSE(host, &hosts->current, host_list, list) {
+		if (host->line[0] != '\0')
+			break;
+	}
+
+	host = TAILQ_NEXT(host, list);
+	while (host != NULL) {
+		next = TAILQ_NEXT(host, list);
+		TAILQ_REMOVE(&hosts->current, host, list);
+		free(host->line);
+		free(host);
+		host = next;
+	}
+
+	/*
+	 * We do not close the hosts file on purpose, we want the flock
+	 * to stick around until we exit. This is by design.
+	 */
+}
+
+static void
+hymn_hosts_save(struct hosts *hosts)
+{
+	int		fd;
+	FILE		*fp;
+	struct host	*host;
+
+	if ((fp = fopen(HYMN_HOSTS_TMP_PATH, "w")) == NULL)
+		fatal("failed to open temporary hosts file: %s", errno_s);
+
+	fd = fileno(fp);
+	if (fchmod(fd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) == -1)
+		fatal("failed to change permissions on hosts temp file");
+
+	while ((host = TAILQ_FIRST(&hosts->current)) != NULL) {
+		TAILQ_REMOVE(&hosts->current, host, list);
+		fprintf(fp, "%s\n", host->line);
+		free(host->line);
+		free(host);
+	}
+
+	if (!TAILQ_EMPTY(&hosts->ours)) {
+		fprintf(fp, "\n%s\n", HYMN_HOST_SEP);
+
+		while ((host = TAILQ_FIRST(&hosts->ours)) != NULL) {
+			TAILQ_REMOVE(&hosts->ours, host, list);
+			fprintf(fp, "%s\n", host->line);
+			free(host->line);
+			free(host);
+		}
+	}
+
+	if (fclose(fp) != 0)
+		fatal("fclose failed");
+
+	if (rename(HYMN_HOSTS_TMP_PATH, HYMN_HOSTS_PATH) == -1)
+		printf("failed to rename hosts file into place: %s", errno_s);
+}
+
+static int
+hymn_hosts_modify(struct hosts *hosts, struct config *cfg, int remove)
+{
+	int		len;
+	struct addr	addr;
+	struct host	*host;
+	u_int8_t	src, dst;
+	char		buf[1024];
+
+	src = (cfg->tun.ip >> 16) & 0xff;
+	dst = (cfg->tun.ip >> 24) & 0xff;
+
+	addr.ip = cfg->tun.ip & 0x0000ffff;
+	addr.ip |= src << 24;
+	addr.ip |= dst << 16;
+
+	if (cfg->name != NULL) {
+		len = snprintf(buf, sizeof(buf), "%s %s",
+		    hymn_ip_str(&addr), cfg->name);
+	} else {
+		len = snprintf(buf, sizeof(buf), "%s %s-%02x-%02x",
+		    hymn_ip_str(&addr), cfg->flock, src, dst);
+	}
+
+	if (len < 0 || (size_t)len >= sizeof(buf))
+		fatal("buf too short for hosts entry");
+
+	TAILQ_FOREACH(host, &hosts->ours, list) {
+		if (!strncmp(host->line, buf, len))
+			break;
+	}
+
+	if (remove) {
+		if (host != NULL) {
+			TAILQ_REMOVE(&hosts->ours, host, list);
+			free(host->line);
+			free(host);
+			return (0);
+		}
+
+		return (-1);
+	}
+
+	if (host != NULL)
+		return (-1);
+
+	if ((host = calloc(1, sizeof(*host))) == NULL)
+		fatal("calloc: failed");
+
+	if ((host->line = strdup(buf)) == NULL)
+		fatal("strdup: failed");
+
+	TAILQ_INSERT_TAIL(&hosts->ours, host, list);
+
+	return (0);
 }

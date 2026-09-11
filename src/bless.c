@@ -220,7 +220,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	hdr->flock.dst = htobe64(sanctum->cathedral_flock_dst);
 
 	tail->reserved = 0;
-	tail->next = pkt->next;
+	tail->next = pkt->type;
 	pkt->length += sizeof(*tail);
 
 	memcpy(&aad, hdr, sizeof(*hdr));
@@ -249,6 +249,12 @@ bless_packet_process(struct sanctum_packet *pkt)
 
 	VERIFY(pkt->length + sizeof(*hdr) < sizeof(pkt->buf));
 	pkt->length += sizeof(*hdr);
+
+	if (sanctum->flags & SANCTUM_FLAG_COMMIXTION) {
+		hdr->pn = be64toh(hdr->pn);
+		hdr->pn |= (u_int64_t)SANCTUM_CATHEDRAL_HOPS << 56;
+		hdr->pn = htobe64(hdr->pn);
+	}
 
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 

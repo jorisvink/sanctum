@@ -393,6 +393,7 @@ sanctum_platform_sandbox(struct sanctum_proc *proc)
 		fatal("failed to read profile");
 
 	profile[flen] = '\0';
+	sanctum_log(LOG_INFO, "applying macos sandbox");
 
 	/* And finally, apply it. */
 	if (sandbox_init_with_parameters(profile, 0, params, &errmsg) == -1)
@@ -440,7 +441,7 @@ sanctum_platform_wakeup(u_int32_t *addr)
 
 	if (sanctum_atomic_cas_simple(addr, 0, 1)) {
 		ret = __ulock_wake(UL_COMPARE_AND_WAIT_SHARED, addr, 0);
-		if (ret == -1)
+		if (ret == -1 && errno != ENOENT)
 			sanctum_log(LOG_INFO, "ulock wake: %s", errno_s);
 	}
 }

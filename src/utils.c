@@ -135,6 +135,7 @@ sanctum_peer_update(u_int32_t ip, u_int16_t port)
 
 		sanctum_atomic_write(&sanctum->peer_ip, ip);
 		sanctum_atomic_write(&sanctum->peer_port, port);
+		sanctum_atomic_write(&sanctum->mtu_start, 1);
 	}
 }
 

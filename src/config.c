@@ -64,12 +64,15 @@ static void	config_parse_settings(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
+static void	config_parse_cathedral_ip(char *);
+static void	config_parse_cathedral_mtu(char *);
 static void	config_parse_cathedral_cosk(char *);
 static void	config_parse_cathedral_flock(char *);
 static void	config_parse_cathedral_secret(char *);
 static void	config_parse_cathedral_nat_port(char *);
 static void	config_parse_cathedral_p2p_sync(char *);
 static void	config_parse_cathedral_flock_dst(char *);
+static void	config_parse_cathedral_commixtion(char *);
 static void	config_parse_liturgy_discoverable(char *);
 static void	config_parse_cathedral_remembrance(char *);
 static void	config_parse_unix(char *, struct sanctum_sun *);
@@ -113,12 +116,15 @@ static const struct {
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
 	{ "cathedral_id",		config_parse_cathedral_id },
+	{ "cathedral_ip",		config_parse_cathedral_ip },
+	{ "cathedral_mtu",		config_parse_cathedral_mtu },
 	{ "cathedral_cosk",		config_parse_cathedral_cosk },
 	{ "cathedral_flock",		config_parse_cathedral_flock },
 	{ "cathedral_secret",		config_parse_cathedral_secret },
 	{ "cathedral_nat_port",		config_parse_cathedral_nat_port },
 	{ "cathedral_p2p_sync",		config_parse_cathedral_p2p_sync },
 	{ "cathedral_flock_dst",	config_parse_cathedral_flock_dst },
+	{ "cathedral_commixtion",	config_parse_cathedral_commixtion },
 	{ "cathedral_remembrance",	config_parse_cathedral_remembrance },
 	{ NULL,			NULL },
 };
@@ -225,9 +231,16 @@ sanctum_config_load(const char *file)
 	case SANCTUM_MODE_CATHEDRAL:
 		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
 			fatal("cathedral: cannot use tap");
+		if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+		    !(sanctum->flags & SANCTUM_FLAG_SHROUD))
+			fatal("cathedral: commixtion requires shroud");
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		config_mtu_check();
+		if (sanctum->cathedral.sin_addr.s_addr == 0) {
+			memcpy(&sanctum->cathedral,
+			    &sanctum->local, sizeof(sanctum->cathedral));
+		}
 		break;
 	case SANCTUM_MODE_LITURGY:
 		config_l2_check();
@@ -782,6 +795,60 @@ config_parse_cathedral_id(char *opt)
 }
 
 /*
+ * Parse the cathedral_ip configuration option.
+ */
+static void
+config_parse_cathedral_ip(char *ip)
+{
+	PRECOND(ip != NULL);
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+		fatal("cathedral_ip is only for cathedral mode");
+
+	config_parse_ip_port(ip, &sanctum->cathedral);
+}
+
+/*
+ * Parse the cathedral_mtu configuration option.
+ */
+static void
+config_parse_cathedral_mtu(char *opt)
+{
+	u_int16_t	mtu;
+
+	PRECOND(opt != NULL);
+
+	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
+		fatal("the cathedral_mtu option is only for cathedrals");
+
+	if (sscanf(opt, "%hu", &mtu) != 1)
+		fatal("invalid cathedral_mtu specified (%s)", opt);
+
+	if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+		fatal("cathedral_mtu (%u) invalid", mtu);
+
+	sanctum->tun_mtu = mtu;
+	sanctum->mtu_size = mtu;
+}
+
+/*
+ * Parse the cathedral_commixtion configuration option.
+ */
+static void
+config_parse_cathedral_commixtion(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (!strcmp(opt, "yes")) {
+		sanctum->flags |= SANCTUM_FLAG_COMMIXTION;
+	} else if (!strcmp(opt, "no")) {
+		sanctum->flags &= ~SANCTUM_FLAG_COMMIXTION;
+	} else {
+		fatal("cathedral_commixtion <yes|no>");
+	}
+}
+
+/*
  * Parse the cathedral_remembrance configuration option.
  */
 static void
@@ -1168,7 +1235,16 @@ config_cathedral_check(void)
 	if (sanctum->cathedral_flock_dst == 0)
 		sanctum->cathedral_flock_dst = sanctum->cathedral_flock;
 
-	if (sanctum->mode == SANCTUM_MODE_TUNNEL) {
+	if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+	    !(sanctum->flags & SANCTUM_FLAG_SHROUD))
+		fatal("using commixtion only makes sense when using shroud");
+
+	if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
+	    sanctum->cathedral_nat_port != 0)
+		fatal("using commixtion only makes sense when p2p is disabled");
+
+	if (sanctum->mode == SANCTUM_MODE_TUNNEL ||
+	    sanctum->mode == SANCTUM_MODE_LITURGY) {
 		if (sanctum->peer_ip == 0) {
 			sanctum_atomic_write(&sanctum->peer_port,
 			    sanctum->cathedral.sin_port);

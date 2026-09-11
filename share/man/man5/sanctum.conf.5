@@ -55,6 +55,17 @@ Specify the control socket path and the user who owns it.
 .BR local " " <ip:port>
 Specify the local IP address and port sanctum shall bind too. May be set
 to 0.0.0.0:0 for non cathedrals.
+.TP
+.BR cathedral_commixtion " " <yes|no>
+Enables the
+.BR commixtion
+feature. If enabled, instructs cathedrals to mix our traffic
+between different cathedrals a certain amount of times before being
+delivered to our peer. Note that both client and cathedral must have the
+.BR cathedral_commixtion
+enabled, otherwise no mixing happens. This feature
+.BR requires
+shroud.
 
 .SH TUNNEL SPECIFIC OPTIONS
 .TP
@@ -84,6 +95,10 @@ will automatically create it.
 .BR tfc " " <on/off>
 Enable or disable traffic flow control, which pads packets to the maximum
 MTU size before encrypting them.
+.TP
+.BR kek " " <path>
+Sets the KEK (Key-Encryption-Key) to use when unwrapping shared secrets
+received as an ambry from a cathedral.
 .TP
 .BR cathedral " " <[fqdn|ip]:port>
 Specify the FQDN or IP address and port of the cathedral server.
@@ -125,6 +140,13 @@ Path to the Cathedral Offer Signing Key. This is an ed25519 secret
 key used to authenticate offers sent to the cathedrals.
 
 .SH CATHEDRAL SPECIFIC OPTIONS
+.TP
+.BR cathedral_ip " " <ip:port>
+Sets the cathedral its external ip:port in case it is behind NAT and
+port-forwarding.
+.TP
+.BR cathedral_mtu " " <mtu>
+Sets the expected MTU value for the cathedral interface.
 .TP
 .BR secretdir " " <path>
 Directory containing secret files for cathedral mode. This path contains

@@ -1,0 +1,35 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Deep background -->
+  <rect width="64" height="64" fill="#0a0814" />
+  
+  <!-- Outer Halo (Ethereal Glow) -->
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#c084fc" stroke-width="0.5" opacity="0.4" />
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#a855f7" stroke-width="1" opacity="0.3" />
+
+  <!-- Mandalic/Spiritual Layers -->
+  <g transform="translate(32, 32)">
+    <!-- Rotating Sacred Geometry - Concentric Rings of Light -->
+    <circle r="22" fill="none" stroke="#4ade80" stroke-width="1" opacity="0.3" />
+    <circle r="15" fill="none" stroke="#c084fc" stroke-width="1" opacity="0.4" />
+    
+    <!-- Radiant Spoke Pattern (The Aura) -->
+    <g stroke="#a855f7" stroke-width="0.5" opacity="0.6">
+      <line x1="0" y1="-22" x2="0" y2="22" />
+      <line x1="0" y1="0" x2="22" y2="0" />
+      <line x1="-15.5" y1="-10.6" x2="15.5" y2="10.6" />
+      <line x1="-15.5" y1="10.6" x2="15.5" y2="-10.6" />
+    </g>
+
+    <!-- The Central Sanctum (The Core of Light) -->
+    <circle r="8" fill="#4ade80" opacity="0.8" />
+    <circle r="4" fill="#ffffff" opacity="0.5" />
+    
+    <!-- Subtle Inner Ornamentation -->
+    <path d="M0 -12 A 12 12 0 0 1 12 0" fill="none" stroke="#c084fc" stroke-width="1" opacity="0.5" />
+  </g>
+  
+  <!-- Floating Spiritual Dust/Orbs -->
+  <circle cx="15" cy="15" r="1.5" fill="#a855f7" opacity="0.6" />
+  <circle cx="48" cy="20" r="1" fill="#4ade80" opacity="0.5" />
+  <circle cx="52" cy="45" r="2" fill="#c084fc" opacity="0.4" />
+</svg>
