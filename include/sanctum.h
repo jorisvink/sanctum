@@ -516,8 +516,8 @@ struct sanctum_shroud_hdr {
  * Maximum packet sizes we can receive from the interfaces.
  */
 #if defined(SANCTUM_JUMBO_FRAMES)
-#define SANCTUM_MTU_SIZE_MAX		9200
-#define SANCTUM_PACKET_DATA_LEN		9216
+#define SANCTUM_MTU_SIZE_MAX		8192
+#define SANCTUM_PACKET_DATA_LEN		8208
 #else
 #define SANCTUM_MTU_SIZE_MAX		1500
 #define SANCTUM_PACKET_DATA_LEN		1522
