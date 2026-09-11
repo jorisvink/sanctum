@@ -890,6 +890,12 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	lit = &op->data.offer.liturgy;
 	group = be16toh(lit->group);
 
+	if (lit->id == 0 || lit->id >= SANCTUM_PEERS_PER_FLOCK) {
+		sanctum_log(LOG_NOTICE, "%s sent a valid liturgy id",
+		    cathedral_tunnel_name(flock, flock, lit->id));
+		return;
+	}
+
 	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
 		sanctum_log(LOG_NOTICE, "%s is not tied to %08x",
 		    cathedral_tunnel_name(flock, flock, lit->id), id);
