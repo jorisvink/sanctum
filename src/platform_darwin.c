@@ -170,7 +170,7 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	iov[0].iov_base = &protocol;
 	iov[0].iov_len = sizeof(protocol);
 	iov[1].iov_base = data;
-	iov[1].iov_len = SANCTUM_PACKET_DATA_LEN;
+	iov[1].iov_len = sanctum_atomic_read(&sanctum->mtu_size);
 
 	/*
 	 * We have to adjust the total data read with the protocol
