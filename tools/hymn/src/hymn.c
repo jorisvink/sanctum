@@ -960,7 +960,7 @@ hymn_nat(int argc, char *argv[])
 
 	if (hymn_tunnel_parse(argv[0],
 	    &flock, &config.src, &config.dst, 1) == -1)
-		usage_route();
+		usage_nat();
 
 	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
 	hymn_config_load(path, &config);
@@ -1055,7 +1055,7 @@ hymn_shroud(int argc, char *argv[])
 
 	if (hymn_tunnel_parse(argv[0],
 	    &flock, &config.src, &config.dst, 1) == -1)
-		usage_route();
+		usage_shroud();
 
 	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
 	hymn_config_load(path, &config);
@@ -1512,7 +1512,7 @@ hymn_resolve(int argc, char *argv[])
 	char			path[PATH_MAX];
 
 	if (argc != 2)
-		usage_remembrance();
+		usage_resolve();
 
 	if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
 		usage_resolve();
