@@ -46,7 +46,7 @@ sanctum_control(struct sanctum_proc *proc)
 	sanctum_signal_trap(SIGQUIT);
 	sanctum_signal_ignore(SIGINT);
 
-	pfd.fd = sanctum_unix_socket(&sanctum->control);
+	pfd.fd = sanctum_unix_socket(&sanctum->control, 0644);
 
 	running = 1;
 

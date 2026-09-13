@@ -312,10 +312,10 @@ sanctum_stat_clear(struct sanctum_ifstat *ifc)
 
 /*
  * Create a new UNIX socket at the given path, owned by the supplied
- * uid and gid and with 0700 permissions.
+ * uid and gid and with the given permissions.
  */
 int
-sanctum_unix_socket(struct sanctum_sun *cfg)
+sanctum_unix_socket(struct sanctum_sun *cfg, mode_t mode)
 {
 	struct sockaddr_un	sun;
 	int			fd, len, flags;
@@ -341,7 +341,7 @@ sanctum_unix_socket(struct sanctum_sun *cfg)
 	if (chown(sun.sun_path, cfg->uid, cfg->gid) == -1)
 		fatal("chown(%s): %s", sun.sun_path, errno_s);
 
-	if (chmod(sun.sun_path, S_IRWXU) == -1)
+	if (chmod(sun.sun_path, mode) == -1)
 		fatal("chmod(%s): %s", sun.sun_path, errno_s);
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1)

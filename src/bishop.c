@@ -612,7 +612,7 @@ bishop_control_init(void)
 	if (len < 0 || (size_t)len >= sizeof(cfg.path))
 		fatal("bishop client socket path too long");
 
-	cfd = sanctum_unix_socket(&cfg);
+	cfd = sanctum_unix_socket(&cfg, S_IRWXU);
 }
 
 /*
