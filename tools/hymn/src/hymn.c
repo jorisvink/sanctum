@@ -1553,7 +1553,7 @@ hymn_resolve(int argc, char *argv[])
 static void
 usage_refresh(void)
 {
-	fprintf(stderr, "usage: hymn refresh-configs");
+	fprintf(stderr, "usage: hymn refresh");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Refresh configurations and permissions for hymn.\n");
 
