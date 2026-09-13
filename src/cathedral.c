@@ -1614,9 +1614,9 @@ cathedral_commixtion_packet(struct tunnel *tun, struct sanctum_packet *pkt)
 
 	PRECOND(tun != NULL);
 	PRECOND(pkt != NULL);
-	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
 
-	if (!(sanctum->flags & SANCTUM_FLAG_COMMIXTION) ||
+	if (!(sanctum->flags & SANCTUM_FLAG_SHROUD) ||
+	    !(sanctum->flags & SANCTUM_FLAG_COMMIXTION) ||
 	    federation_count == 0) {
 		can_hop = 0;
 	} else {
