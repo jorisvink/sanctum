@@ -182,7 +182,7 @@ static void	hymn_hosts_load(struct hosts *);
 static int	hymn_hosts_modify(struct hosts *, struct config *, int);
 
 static int	hymn_tunnel_list(struct tunnels *);
-static void	hymn_tunnel_info(struct tunnel *, int);
+static int	hymn_tunnel_info(struct tunnel *, int);
 static void	hymn_tunnel_up(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_down(const char *, u_int8_t, u_int8_t);
 static void	hymn_tunnel_status(const char *, u_int8_t, u_int8_t);
@@ -1276,7 +1276,8 @@ hymn_list(int argc, char *argv[])
 		if (skip_tunnel)
 			continue;
 
-		hymn_tunnel_info(tun, 0);
+		if (hymn_tunnel_info(tun, 0) == -1)
+			continue;
 
 		if (tun->config.is_liturgy) {
 			TAILQ_FOREACH(lit, &list, list) {
@@ -1288,7 +1289,7 @@ hymn_list(int argc, char *argv[])
 				    lit->config.src)
 					continue;
 
-				hymn_tunnel_info(lit, 1);
+				(void)hymn_tunnel_info(lit, 1);
 			}
 		}
 	}
@@ -2014,7 +2015,7 @@ hymn_tunnel_list(struct tunnels *list)
 	return (normal_tunnels);
 }
 
-static void
+static int
 hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 {
 	struct timespec				ts;
@@ -2038,8 +2039,10 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 		    tun->config.flock, tun->config.src,
 		    tun->config.dst);
 
-		if (hymn_ctl_status(path, &resp) == -1)
-			return;
+		if (hymn_ctl_status(path, &resp) == -1) {
+			printf("\033[0m");
+			return (-1);
+		}
 
 		if (tun->config.is_liturgy) {
 			hymn_fmt_output(0, "\33[0;36mliturgy");
@@ -2105,6 +2108,8 @@ hymn_tunnel_info(struct tunnel *tun, int subtunnel)
 	}
 
 	printf("\n");
+
+	return (0);
 }
 
 static void
@@ -2244,7 +2249,7 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 	if (status == NULL) {
 		hymn_control_path(path, sizeof(path), flock, src, dst);
 		if (hymn_ctl_status(path, &resp) == -1) {
-			printf("  error obtaining information\n");
+			printf("  permission denied\n");
 			return;
 		}
 	}
@@ -2968,13 +2973,16 @@ hymn_ctl_status(const char *path, struct sanctum_ctl_status_response *out)
 		fatal("bind: %s", errno_s);
 
 	memset(&ctl, 0, sizeof(ctl));
-
 	ctl.cmd = SANCTUM_CTL_STATUS;
 
-	if (hymn_ctl_request(fd, path, &ctl, sizeof(ctl)) == -1)
+	if (hymn_ctl_request(fd, path, &ctl, sizeof(ctl)) == -1) {
+		(void)unlink(spath);
 		return (-1);
+	}
 
 	hymn_ctl_response(fd, out, sizeof(*out));
+	(void)unlink(spath);
+
 	return (0);
 }
 
@@ -2991,8 +2999,9 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 		    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
 			if (errno == EINTR)
 				continue;
-			fprintf(stderr, "%s: %s\n", path, errno_s);
-			return (-1);
+			if (errno == EACCES)
+				return (-1);
+			fatal("%s: %s", path, errno_s);
 		}
 
 		if ((size_t)ret != len)
