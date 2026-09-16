@@ -292,7 +292,7 @@ packet_shroud_xor(struct sanctum_packet *pkt, const void *key, size_t len,
 	PRECOND(key != NULL);
 	PRECOND(len == SANCTUM_KEY_LENGTH);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
-	VERIFY(pkt->length >= sizeof(*hdr));
+	VERIFY(pkt->length >= sizeof(*hdr) && pkt->length <= sizeof(mask));
 
 	hdr = sanctum_packet_start(pkt);
 	data = sanctum_packet_head(pkt);
