@@ -2063,6 +2063,9 @@ cathedral_p2pinfo_send(struct flockent *flock, struct flockent *dst,
 	PRECOND(dst != NULL);
 	PRECOND(tun != NULL);
 
+	if (tun->peerinfo == 0)
+		return;
+
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
