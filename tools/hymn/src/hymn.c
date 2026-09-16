@@ -2453,9 +2453,15 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	if (cfg->user != NULL) {
 		user = cfg->user;
 	} else {
-		if ((user = getlogin()) == NULL) {
-			if ((user = getenv("HYMN_USER")) == NULL)
+		user = getenv("SUDO_USER");
+		if (user == NULL)
+			user = getenv("DOAS_USER");
+		if (user == NULL)
+			user = getenv("HYMN_USER");
+		if (user == NULL) {
+			if ((user = getlogin()) == NULL) {
 				fatal("who are you? specify via HYMN_USER");
+			}
 		}
 	}
 
