@@ -310,8 +310,13 @@ sanctum_config_release(void)
 		free(sanctum->runas[type]);
 	}
 
+	free(sanctum->kek);
 	free(sanctum->secret);
 	free(sanctum->pidfile);
+	free(sanctum->cathedral_cosk);
+	free(sanctum->cathedral_name);
+	free(sanctum->cathedral_secret);
+	free(sanctum->cathedral_remembrance);
 }
 
 /*
