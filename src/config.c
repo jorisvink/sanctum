@@ -298,7 +298,8 @@ sanctum_config_load(const char *file)
 }
 
 /*
- * Free all config resources.
+ * Free all config resources, this is done so we don't get spammed with
+ * false positives when running under sanitizers.
  */
 void
 sanctum_config_release(void)
