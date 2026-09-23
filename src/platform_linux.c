@@ -61,7 +61,7 @@ static void	linux_rt_sin(struct nlmsghdr *, void *, u_int16_t,
 #define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_X86_64
 #elif defined(__aarch64__)
 #define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_AARCH64
-#elif defined(__arm)
+#elif defined(__arm__)
 #define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_ARM
 #elif defined(__riscv)
 #define SECCOMP_AUDIT_ARCH		AUDIT_ARCH_RISCV64
@@ -113,6 +113,12 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(restart_syscall),
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
 	KORE_SYSCALL_ALLOW_ARG(writev, 0, STDOUT_FILENO),
+#if defined(SYS_sigreturn)
+	KORE_SYSCALL_ALLOW(sigreturn),
+#endif
+#if defined(SYS_clock_gettime64)
+	KORE_SYSCALL_ALLOW(clock_gettime64),
+#endif
 
 #if defined(SYS_mmap)
 	KORE_SYSCALL_DENY_WITH_FLAG(mmap, 2, PROT_EXEC, EPERM),
@@ -127,7 +133,6 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_READ),
 	KORE_SYSCALL_ALLOW_WITH_FLAG(mmap2, 2, PROT_WRITE),
 #endif
-
 	KORE_SYSCALL_DENY_WITH_FLAG(mprotect, 2, PROT_EXEC, EPERM),
 	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_NONE),
 	KORE_SYSCALL_ALLOW_WITH_FLAG(mprotect, 2, PROT_READ),
@@ -168,6 +173,9 @@ static struct sock_filter keying_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(fstat),
 	KORE_SYSCALL_ALLOW(fcntl),
+#if defined(SYS_statx)
+	KORE_SYSCALL_ALLOW(statx),
+#endif
 #if defined(SYS_unlink)
 	KORE_SYSCALL_ALLOW(unlink),
 #endif
@@ -188,7 +196,9 @@ static struct sock_filter keying_seccomp_filter[] = {
 #endif
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(getrandom),
+#if defined(SYS_newfstatat)
 	KORE_SYSCALL_ALLOW(newfstatat),
+#endif
 };
 
 static struct sock_filter control_seccomp_filter[] = {
@@ -203,7 +213,9 @@ static struct sock_filter control_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(openat),
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(recvfrom),
+#if defined(SYS_newfstatat)
 	KORE_SYSCALL_ALLOW(newfstatat),
+#endif
 };
 
 /* If we are doing seccomp tracing (set via SANCTUM_SECCOMP_TRACE). */

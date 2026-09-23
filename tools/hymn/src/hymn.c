@@ -270,8 +270,8 @@ static void		hymn_ip_mask_parse(struct addr *, const char *);
 
 static int		hymn_split_string(char *, const char *,
 			    char **, size_t);
-static unsigned long	hymn_number(const char *, int, unsigned long,
-			    unsigned long);
+static unsigned long	hymn_number(const char *, int,
+			    unsigned long long, unsigned long long);
 
 static const struct {
 	const char	*name;
@@ -1808,13 +1808,14 @@ hymn_ip_port_str(struct addr *addr)
 }
 
 static unsigned long
-hymn_number(const char *nptr, int base, unsigned long min, unsigned long max)
+hymn_number(const char *nptr, int base, unsigned long long min,
+    unsigned long long max)
 {
-	unsigned long	ret;
-	char		*ep;
+	unsigned long long	ret;
+	char			*ep;
 
 	errno = 0;
-	ret = strtoul(nptr, &ep, base);
+	ret = strtoull(nptr, &ep, base);
 	if (errno != 0 || nptr == ep || *ep != '\0')
 		fatal("not a number: %s", nptr);
 
