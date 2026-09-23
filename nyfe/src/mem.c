@@ -17,6 +17,7 @@
 #include <sys/types.h>
 
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "nyfe.h"
 #include "queue.h"
@@ -70,8 +71,8 @@ nyfe_zeroize_warn(void)
 	struct zeroize		*z;
 
 	LIST_FOREACH(z, &zeroize_list, list) {
-		printf("WARN: %p (%zu bytes) was still on zeroize list\n",
-		    z->ptr, z->length);
+		printf("WARN: %p (%zu bytes) was still on zeroize list (%d)\n",
+		    z->ptr, z->length, getpid());
 	}
 }
 
