@@ -103,6 +103,9 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(munmap),
 	KORE_SYSCALL_ALLOW(close),
 	KORE_SYSCALL_ALLOW(futex),
+#if defined(SYS_send)
+	KORE_SYSCALL_ALLOW(send),
+#endif
 	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),
 	KORE_SYSCALL_ALLOW(exit_group),
