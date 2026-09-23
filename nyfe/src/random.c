@@ -19,7 +19,7 @@
 
 #if defined(NYFE_PLATFORM_IOS)
 #include <Security/SecRandom.h>
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(__linux__)
 #include <sys/random.h>
 #endif
 
