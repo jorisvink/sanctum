@@ -81,17 +81,47 @@ sanctum_logv(int prio, const char *fmt, va_list args)
 		(void)clock_gettime(CLOCK_REALTIME, &ts);
 		t = gmtime(&ts.tv_sec);
 
-		if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0)
-			printf("%s.%03ld UTC ", tbuf, ts.tv_nsec / 1000000);
+		if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0) {
+			printf("\33[2;37m%s.%03ldZ\33[m ",
+			    tbuf, ts.tv_nsec / 1000000);
+		}
 
+		switch (prio) {
+		case LOG_INFO:
+			printf("\33[32m  INFO\33[m ");
+			break;
+		case LOG_NOTICE:
+			printf("\33[33mNOTICE\33[m ");
+			break;
+		case LOG_ERR:
+			printf("\33[31m ERROR\33[m ");
+			break;
+		default:
+			printf("%d ", prio);
+			break;
+		}
+
+		printf("[\33[2;36m");
 		if ((proc = sanctum_process()) != NULL)
-			printf("[%s]: ", proc->name);
+			printf("%s", proc->name);
 		else
-			printf("[guardian]: ");
+			printf("guardian");
+		printf("\33[m]: ");
+
+		switch (prio) {
+		case LOG_NOTICE:
+			printf("\33[33m");
+			break;
+		case LOG_ERR:
+			printf("\33[31m");
+			break;
+		}
 
 		vprintf(fmt, args);
 		printf("\n");
 		fflush(stdout);
+
+		printf("\33[m");
 	}
 }
 
