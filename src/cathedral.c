@@ -1905,8 +1905,8 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_INFO);
 
 	info = &op->data.offer.info;
-	info->local_port = tun->ip;
-	info->local_ip = tun->port;
+	info->local_ip = tun->ip;
+	info->local_port = tun->port;
 
 	if (now >= tun->p2p_cooldown && now >= peer->p2p_cooldown)
 		p2p_cooldown = 0;
