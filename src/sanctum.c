@@ -106,6 +106,9 @@ main(int argc, char *argv[])
 	if (config == NULL)
 		usage();
 
+	if (setenv("TZ", "UTC", 1) == -1)
+		fatal("failed to set TZ environment variable");
+
 	nyfe_fatal_callback(fatalv);
 	nyfe_selftest_kmac256();
 
