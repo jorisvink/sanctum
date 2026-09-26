@@ -298,7 +298,8 @@ sanctum_config_load(const char *file)
 }
 
 /*
- * Free all config resources.
+ * Free all config resources, this is done so we don't get spammed with
+ * false positives when running under sanitizers.
  */
 void
 sanctum_config_release(void)
@@ -310,8 +311,15 @@ sanctum_config_release(void)
 		free(sanctum->runas[type]);
 	}
 
+	free(sanctum->kek);
 	free(sanctum->secret);
 	free(sanctum->pidfile);
+	free(sanctum->secretdir);
+	free(sanctum->settings);
+	free(sanctum->cathedral_cosk);
+	free(sanctum->cathedral_name);
+	free(sanctum->cathedral_secret);
+	free(sanctum->cathedral_remembrance);
 }
 
 /*

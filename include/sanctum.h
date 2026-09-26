@@ -94,7 +94,7 @@ extern const char	*sanctum_build_date;
  * we are in a spinloop hopefully avoiding a memory order violation
  * which would incur a performance hit.
  */
-#if defined(__arm64__) || defined(__aarch64__)
+#if defined(__arm__) || defined(__arm64__) || defined(__aarch64__)
 #define sanctum_cpu_pause()					\
 	do {							\
 		__asm__ volatile("yield" ::: "memory");		\
@@ -516,8 +516,8 @@ struct sanctum_shroud_hdr {
  * Maximum packet sizes we can receive from the interfaces.
  */
 #if defined(SANCTUM_JUMBO_FRAMES)
-#define SANCTUM_MTU_SIZE_MAX		9200
-#define SANCTUM_PACKET_DATA_LEN		9216
+#define SANCTUM_MTU_SIZE_MAX		8192
+#define SANCTUM_PACKET_DATA_LEN		8208
 #else
 #define SANCTUM_MTU_SIZE_MAX		1500
 #define SANCTUM_PACKET_DATA_LEN		1522
@@ -853,9 +853,9 @@ void	sanctum_sa_clear(struct sanctum_sa *);
 void	sanctum_inet_addr(void *, const char *);
 int	sanctum_bind_local(struct sockaddr_in *);
 void	sanctum_peer_update(u_int32_t, u_int16_t);
-int	sanctum_unix_socket(struct sanctum_sun *);
 void	sanctum_stat_clear(struct sanctum_ifstat *);
 char	*sanctum_config_read(FILE *, char *, size_t);
+int	sanctum_unix_socket(struct sanctum_sun *, mode_t);
 int	sanctum_traffic_kdf(struct sanctum_kex *, u_int8_t *, size_t);
 int	sanctum_key_install(struct sanctum_key *, struct sanctum_sa *);
 void	sanctum_shroud_install(struct sanctum_shroud *, u_int8_t *, size_t);

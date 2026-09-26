@@ -106,6 +106,9 @@ main(int argc, char *argv[])
 	if (config == NULL)
 		usage();
 
+	if (setenv("TZ", "UTC", 1) == -1)
+		fatal("failed to set TZ environment variable");
+
 	nyfe_fatal_callback(fatalv);
 	nyfe_selftest_kmac256();
 
@@ -335,7 +338,7 @@ sanctum_pidfile_grab(void)
 	if (sanctum->pidfile == NULL)
 		return;
 
-	pid_fd = open(sanctum->pidfile, O_CREAT | O_EXCL | O_WRONLY, 0400);
+	pid_fd = open(sanctum->pidfile, O_CREAT | O_EXCL | O_WRONLY, 0444);
 	if (pid_fd == -1) {
 		fatal("failed to grab pidfile '%s': %s",
 		    sanctum->pidfile, errno_s);

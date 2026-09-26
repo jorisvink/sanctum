@@ -890,6 +890,12 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	lit = &op->data.offer.liturgy;
 	group = be16toh(lit->group);
 
+	if (lit->id == 0 || lit->id >= SANCTUM_PEERS_PER_FLOCK) {
+		sanctum_log(LOG_NOTICE, "%s sent an invalid liturgy id",
+		    cathedral_tunnel_name(flock, flock, lit->id));
+		return;
+	}
+
 	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
 		sanctum_log(LOG_NOTICE, "%s is not tied to %08x",
 		    cathedral_tunnel_name(flock, flock, lit->id), id);
@@ -1454,12 +1460,9 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	pkt->addr.sin_port = tunnel->port;
 	pkt->addr.sin_addr.s_addr = tunnel->ip;
 
-	if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
-	    federation_count > 0) {
-		if ((srv = cathedral_commixtion_packet(tunnel, pkt)) != NULL) {
-			pkt->addr.sin_port = srv->port;
-			pkt->addr.sin_addr.s_addr = srv->ip;
-		}
+	if ((srv = cathedral_commixtion_packet(tunnel, pkt)) != NULL) {
+		pkt->addr.sin_port = srv->port;
+		pkt->addr.sin_addr.s_addr = srv->ip;
 	}
 
 	cathedral_shroud_packet(pkt, tunnel->shroud);
@@ -1590,11 +1593,14 @@ cathedral_commixtion_init(struct tunnel *tun, struct flockent *flock)
 }
 
 /*
- * Attempt to mix a packet by sending it to another cathedral first.
+ * If commixtion is enabled, attempt to mix a packet by sending it to
+ * another cathedral first.
  *
  * What cathedral we send it to is taken from the tunnel its hops member
  * for the given hop index. This is stable for the entire duration of
  * the tunnel its alive time in the cathedral.
+ *
+ * If commixtion is not enabled, we do not return a next-hop.
  */
 static struct federated *
 cathedral_commixtion_packet(struct tunnel *tun, struct sanctum_packet *pkt)
@@ -1603,13 +1609,19 @@ cathedral_commixtion_packet(struct tunnel *tun, struct sanctum_packet *pkt)
 	u_int8_t			hop;
 	struct sanctum_proto_hdr	*hdr;
 	u_int32_t			count;
+	int				can_hop;
 	struct federated		*cathedral;
 
 	PRECOND(tun != NULL);
 	PRECOND(pkt != NULL);
-	VERIFY(federation_count > 0);
-	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
-	VERIFY(sanctum->flags & SANCTUM_FLAG_COMMIXTION);
+
+	if (!(sanctum->flags & SANCTUM_FLAG_SHROUD) ||
+	    !(sanctum->flags & SANCTUM_FLAG_COMMIXTION) ||
+	    federation_count == 0) {
+		can_hop = 0;
+	} else {
+		can_hop = 1;
+	}
 
 	hdr = sanctum_packet_head(pkt);
 	pn = be64toh(hdr->pn);
@@ -1621,22 +1633,30 @@ cathedral_commixtion_packet(struct tunnel *tun, struct sanctum_packet *pkt)
 	if (hop > SANCTUM_CATHEDRAL_HOPS)
 		hop = SANCTUM_CATHEDRAL_HOPS;
 
-	hop--;
+	if (can_hop == 0)
+		hop = 0;
+	else
+		hop--;
+
 	pn = (pn & CATHEDRAL_HOP_MASK) | (u_int64_t)hop << CATHEDRAL_HOP_BITS;
 	hdr->pn = htobe64(pn);
 
-	count = 0;
-	LIST_FOREACH(cathedral, &federations, list) {
-		if (count == tun->hops[hop])
-			break;
-		count++;
-	}
+	if (can_hop) {
+		count = 0;
+		LIST_FOREACH(cathedral, &federations, list) {
+			if (count == tun->hops[hop])
+				break;
+			count++;
+		}
 
-	if (cathedral == NULL) {
-		sanctum_log(LOG_NOTICE,
-		    "commixtion: failed to select a cathedral (%u/%u)",
-		    tun->hops[hop], federation_count);
-		return (NULL);
+		if (cathedral == NULL) {
+			sanctum_log(LOG_NOTICE,
+			    "commixtion: failed to select a cathedral (%u/%u)",
+			    tun->hops[hop], federation_count);
+			return (NULL);
+		}
+	} else {
+		cathedral = NULL;
 	}
 
 	return (cathedral);
@@ -1885,8 +1905,8 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_INFO);
 
 	info = &op->data.offer.info;
-	info->local_port = tun->ip;
-	info->local_ip = tun->port;
+	info->local_ip = tun->ip;
+	info->local_port = tun->port;
 
 	if (now >= tun->p2p_cooldown && now >= peer->p2p_cooldown)
 		p2p_cooldown = 0;
@@ -2042,6 +2062,9 @@ cathedral_p2pinfo_send(struct flockent *flock, struct flockent *dst,
 	PRECOND(flock != NULL);
 	PRECOND(dst != NULL);
 	PRECOND(tun != NULL);
+
+	if (tun->peerinfo == 0)
+		return;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;

@@ -81,17 +81,47 @@ sanctum_logv(int prio, const char *fmt, va_list args)
 		(void)clock_gettime(CLOCK_REALTIME, &ts);
 		t = gmtime(&ts.tv_sec);
 
-		if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0)
-			printf("%s.%03ld UTC ", tbuf, ts.tv_nsec / 1000000);
+		if (strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", t) > 0) {
+			printf("\33[2;37m%s.%03ldZ\33[m ",
+			    tbuf, ts.tv_nsec / 1000000);
+		}
 
+		switch (prio) {
+		case LOG_INFO:
+			printf("\33[32m  INFO\33[m ");
+			break;
+		case LOG_NOTICE:
+			printf("\33[33mNOTICE\33[m ");
+			break;
+		case LOG_ERR:
+			printf("\33[31m ERROR\33[m ");
+			break;
+		default:
+			printf("%d ", prio);
+			break;
+		}
+
+		printf("[\33[2;36m");
 		if ((proc = sanctum_process()) != NULL)
-			printf("[%s]: ", proc->name);
+			printf("%s", proc->name);
 		else
-			printf("[guardian]: ");
+			printf("guardian");
+		printf("\33[m]: ");
+
+		switch (prio) {
+		case LOG_NOTICE:
+			printf("\33[33m");
+			break;
+		case LOG_ERR:
+			printf("\33[31m");
+			break;
+		}
 
 		vprintf(fmt, args);
 		printf("\n");
 		fflush(stdout);
+
+		printf("\33[m");
 	}
 }
 
@@ -312,10 +342,10 @@ sanctum_stat_clear(struct sanctum_ifstat *ifc)
 
 /*
  * Create a new UNIX socket at the given path, owned by the supplied
- * uid and gid and with 0700 permissions.
+ * uid and gid and with the given permissions.
  */
 int
-sanctum_unix_socket(struct sanctum_sun *cfg)
+sanctum_unix_socket(struct sanctum_sun *cfg, mode_t mode)
 {
 	struct sockaddr_un	sun;
 	int			fd, len, flags;
@@ -341,7 +371,7 @@ sanctum_unix_socket(struct sanctum_sun *cfg)
 	if (chown(sun.sun_path, cfg->uid, cfg->gid) == -1)
 		fatal("chown(%s): %s", sun.sun_path, errno_s);
 
-	if (chmod(sun.sun_path, S_IRWXU) == -1)
+	if (chmod(sun.sun_path, mode) == -1)
 		fatal("chmod(%s): %s", sun.sun_path, errno_s);
 
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1)

@@ -157,6 +157,7 @@ confess_clear_state(void)
 	sanctum_sa_clear(&state.active);
 	sanctum_sa_clear(&state.pending);
 	sanctum_stat_clear(&sanctum->rx);
+	sanctum_atomic_write(&sanctum->last_pn, 0);
 	sanctum_atomic_write(&sanctum->rx_pending, 0);
 
 	nyfe_mem_zero(&state, sizeof(state));
@@ -175,6 +176,7 @@ confess_key_management(void)
 	if (sanctum_key_erase("RX", io->rx,
 	    &state.active, &state.pending) != -1) {
 		sanctum_stat_clear(&sanctum->rx);
+		sanctum_atomic_write(&sanctum->last_pn, 0);
 		sanctum_atomic_write(&sanctum->rx_pending, 0);
 		nyfe_mem_zero(&state, sizeof(state));
 	}
