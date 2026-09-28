@@ -3,77 +3,168 @@
 <html lang="en">
 
 <head>
-<title>Sanctum || Traffic Protection</title>
-<link rel="stylesheet" href="/sanctum.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic Analysis — Sanctum</title>
+<meta name="description" content="Shroud masks every Sanctum packet, including protocol metadata, so it looks like uniform random noise to a passive observer.">
+<link rel="stylesheet" href="sanctum.css?v=1790547490">
 </head>
 
 <body>
 
-<div class="nav">
-    <div class="menu">
-        <h3>Introduction</h3>
-        <a href="/">About</a>
-        <br>
-        <a href="/topologies.html">Topologies</a>
-        <h3>Releases</h3>
-        <a href="/releases.html">Getting Sanctum</a>
-        <br>
-        <a href="/building.html">Building Sanctum</a>
-        <h3>Security</h3>
-        <a href="/errata.html">Errata</a>
-        <br>
-        <a href="/crypto.html">Cryptography</a>
-        <br>
-        <a href="/shroud.html">Traffic Analysis</a>
-        <br>
-        <a href="/privsep.html">Privilege Separation</a>
-        <h3>Resources</h3>
-        <a href="/guide.html">Setup Guide</a>
-        <br>
-        <a href="/liturgy.html">Liturgy Guide</a>
-        <br>
-        <a href="/cathedral.html">Cathedral Guide</a>
-        <h3>Community</h3>
-        <a href="/contributing.html">Contributing</a>
-        <br>
-        <a href="https://reliquary.se">The Reliquary</a>
-        <br>
-        <a href="https://conclave.se">The Conclave</a>
-        <br>
-        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
-        <br>
-        <br>
-        <small>Made in Sweden</small>
-    </div>
+<header class="topbar">
+<div class="wrap topbar-inner">
+<a href="index.html" class="brand">SANCTUM</a>
+
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+
+<nav class="primary">
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+
+<details class="nav-drop" name="navmenu">
+<summary>Security <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
+<div class="nav-drop-panel">
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+</details>
+
+<details class="nav-drop" name="navmenu">
+<summary>Docs <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
+<div class="nav-drop-panel">
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+</details>
+
+<details class="nav-drop" name="navmenu">
+<summary>Community <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
+<div class="nav-drop-panel">
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+</div>
+</details>
+</nav>
+
+<div class="nav-right">
+<a class="icon-link" href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub">
+<svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+</a>
+<a class="icon-link" href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener" aria-label="Discord">
+<svg viewBox="0 0 24 24"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.09-.32 13.68.099 18.213a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.246.198.373.292a.077.077 0 0 1-.006.128 12.3 12.3 0 0 1-1.873.891.076.076 0 0 0-.04.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.001-3.03.077.077 0 0 0 .031-.055c.5-5.177-.838-9.73-3.548-13.816a.062.062 0 0 0-.03-.028zM8.02 15.278c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/></svg>
+</a>
+<a class="btn btn-primary" href="releases.html"><span class="label">Get Sanctum</span></a>
 </div>
 
-<div class="content">
-    <div class="release">
-    Latest release: <a href="/releases/sanctum-1.4.1.tgz">sanctum 1.4.1</a>
-    </div>
-
-    <div class="sep"></div>
-
-    <h2>Traffic Analysis protection</h2>
-
-    <p>
-        Sanctum offers very strong traffic analysis protection, being able
-        to make each packet look distinct from its original packet for each
-        hop it takes (even across cathedrals). It masks away the entire packet,
-        including all of the protocol meta-data and makes the packets look
-        like random data on the wire.
-    </p>
-
-    <p>
-        This feature is called <strong>shroud</strong>.
-    </p>
-
-    <p>
-        Shroud is off by default as it increases overhead and affects
-        performance by about 45% as it has to shroud/unshroud each individual
-        packet with additional unique per-packet masks.
-    </p>
+<label for="nav-toggle" class="nav-burger" aria-label="Menu"><span></span><span></span><span></span></label>
 </div>
+</header>
+
+<main>
+
+<div class="page-head">
+<div class="wrap">
+<div class="crumb"><a href="index.html">Sanctum</a> / Security / Traffic Analysis</div>
+<div class="page-head-top">
+<h1>Traffic Analysis protection</h1>
+<div class="release-pill"><span class="dot"></span>Latest release: <a href="releases/sanctum-1.4.1.tgz">sanctum 1.4.1</a></div>
+</div>
+</div>
+</div>
+
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
+
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#how-it-works">How shroud works</a>
+</aside>
+
+<div class="prose">
+
+<h2 id="how-it-works">How shroud works</h2>
+
+<p>
+Sanctum offers very strong traffic analysis protection, being able to make
+each packet look distinct from its original packet for each hop it takes
+(even across cathedrals). It masks away the entire packet, including all of
+the protocol meta-data and makes the packets look like random data on the wire.
+</p>
+
+<p>
+This feature is called shroud and is available in sanctum since version 1.1.0.
+</p>
+
+<div class="callout warn">
+Shroud is off by default as it increases overhead and affects performance by
+about 45% becuse it has to shroud/unshroud each individual packet with
+additional unique per-packet masks. 
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A small, reviewable, fully privilege-separated, post-quantum secure
+VPN daemon and protocol. Free and open, forever, under the ISC license.</p>
+</div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
 
 </body>
 </html>

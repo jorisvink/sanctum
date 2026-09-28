@@ -3,105 +3,129 @@
 <html lang="en">
 
 <head>
-<title>Sanctum || Cathedral Guide</title>
-<link rel="stylesheet" href="/sanctum.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cathedral Guide — Sanctum</title>
+<meta name="description" content="How to set up your own Sanctum cathedral: discovery, relay, flock and key configuration, NAT hole punching and federation.">
+<link rel="stylesheet" href="sanctum.css?v=1790547490">
 </head>
 
 <body>
 
-<div class="nav">
-    <div class="menu">
-        <h3>Introduction</h3>
-        <a href="/">About</a>
-        <br>
-        <a href="/topologies.html">Topologies</a>
-        <h3>Releases</h3>
-        <a href="/releases.html">Getting Sanctum</a>
-        <br>
-        <a href="/building.html">Building Sanctum</a>
-        <h3>Security</h3>
-        <a href="/errata.html">Errata</a>
-        <br>
-        <a href="/crypto.html">Cryptography</a>
-        <br>
-        <a href="/shroud.html">Traffic Analysis</a>
-        <br>
-        <a href="/privsep.html">Privilege Separation</a>
-        <h3>Resources</h3>
-        <a href="/guide.html">Setup Guide</a>
-        <br>
-        <a href="/liturgy.html">Liturgy Guide</a>
-        <br>
-        <a href="/cathedral.html">Cathedral Guide</a>
-        <h3>Community</h3>
-        <a href="/contributing.html">Contributing</a>
-        <br>
-        <a href="https://reliquary.se">The Reliquary</a>
-        <br>
-        <a href="https://conclave.se">The Conclave</a>
-        <br>
-        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
-        <br>
-        <br>
-        <small>Made in Sweden</small>
-    </div>
+<header class="topbar">
+<div class="wrap topbar-inner">
+<a href="index.html" class="brand">SANCTUM</a>
+
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+
+<nav class="primary">
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+
+<details class="nav-drop" name="navmenu">
+<summary>Security <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
+<div class="nav-drop-panel">
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+</details>
+
+<details class="nav-drop" name="navmenu">
+<summary>Docs <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
+<div class="nav-drop-panel">
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+</details>
+
+<details class="nav-drop" name="navmenu">
+<summary>Community <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
+<div class="nav-drop-panel">
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+</div>
+</details>
+</nav>
+
+<div class="nav-right">
+<a class="icon-link" href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub">
+<svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+</a>
+<a class="icon-link" href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener" aria-label="Discord">
+<svg viewBox="0 0 24 24"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.09-.32 13.68.099 18.213a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.246.198.373.292a.077.077 0 0 1-.006.128 12.3 12.3 0 0 1-1.873.891.076.076 0 0 0-.04.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.001-3.03.077.077 0 0 0 .031-.055c.5-5.177-.838-9.73-3.548-13.816a.062.062 0 0 0-.03-.028zM8.02 15.278c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/></svg>
+</a>
+<a class="btn btn-primary" href="releases.html"><span class="label">Get Sanctum</span></a>
 </div>
 
-<div class="content">
+<label for="nav-toggle" class="nav-burger" aria-label="Menu"><span></span><span></span><span></span></label>
+</div>
+</header>
 
-<div class="release">
-Latest release: <a href="/releases/sanctum-1.4.1.tgz">sanctum 1.4.1</a>
+<main>
+
+<div class="page-head">
+<div class="wrap">
+<div class="crumb"><a href="index.html">Sanctum</a> / Docs / Cathedral Guide</div>
+<div class="page-head-top">
+<h1>How to setup a cathedral</h1>
+<div class="release-pill"><span class="dot"></span>Latest release: <a href="releases/sanctum-1.4.1.tgz">sanctum 1.4.1</a></div>
+</div>
+</div>
 </div>
 
-<div class="sep"></div>
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
 
-<h2>How to setup a cathedral</h2>
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#prerequisites">Prerequisites</a>
+<a href="#cathedral-setup">Cathedral setup</a>
+<a href="#cathedral-configuration">Cathedral configuration</a>
+<a href="#flock-configuration">Flock configuration</a>
+<a href="#peer-configuration">Peer configuration</a>
+<a href="#nat-discovery">NAT discovery &amp; hole punching</a>
+<a href="#federation">Federation</a>
+</aside>
 
+<div class="prose">
+
+<h2 id="prerequisites">Prerequisites</h2>
 <p>
-    This guide will help you setup your own cathedral that can be used as a
-    discovery and key distribution point for your own flocks and peers. This
-    guide assumes that you are familiar with your system and networking.
+You should have compiled and installed Sanctum according to the
+<a href="guide.html" target="_blank">tunnel setup guide</a>.
 </p>
 
-<h3>Prerequisites</h3>
-
+<h2 id="cathedral-setup">Cathedral setup</h2>
 <p>
-    You should have compiled and installed sanctum according to the
-    <a href="https://sanctorum.se/guide.html" target="_blank">
-    tunnel setup guide</a>.
+You should create three system accounts that will be used by the
+cathedral to properly privilege separate the control, cathedral and
+purgatory processes.
 </p>
-
-<h3>Cathedral setup</h3>
-
 <p>
-    You should create three system accounts that will be used by the
-    cathedral to properly privilege separate the control, cathedral and
-    purgatory processes.
+How you do that is left as an exercise for the reader, as that depends
+on your OS. A suggestion on what to name the accounts could be as
+follows:
 </p>
+<ul>
+<li><code>_purgatory-rx</code></li>
+<li><code>_purgatory-tx</code></li>
+<li><code>_cathedral</code></li>
+</ul>
 
+<h2 id="cathedral-configuration">Cathedral configuration</h2>
 <p>
-    How you do that is left as an excercise for the reader as that depends
-    on your OS. A suggestion on what to name the accounts could be as
-    follows:
-
-    <ul>
-        <li>_purgatory-rx</li>
-        <li>_purgatory-tx</li>
-        <li>_cathedral</li>
-    </ul>
+You use the sanctum binary in cathedral mode to run a cathedral. Here
+is a minimal example configuration:
 </p>
-
-<h3>Cathedral configuration</h3>
-
-<p>
-    You use the sanctum binary in cathedral mode to run a cathedral.
-</p>
-
-<p>
-    Here is a minimal example configuration:
-
-<pre>
-mode cathedral
+<pre>mode cathedral
 instance cathedral-test
 
 mtu 1372
@@ -115,243 +139,256 @@ settings /home/cathedral/shared/settings.conf
 run control as root
 run cathedral as _cathedral
 run purgatory-rx as _purgatory-rx
-run purgatory-tx as _purgatory-tx
-</pre>
-</p>
+run purgatory-tx as _purgatory-tx</pre>
 
 <p>
-    Besides the paths that are explicitly mentioned in the configuration file,
-    in the secretdir you have to create a directory for each flock that you
-    will serve with the cathedral.
-
-<pre>
-$ mkdir -p /home/cathedral/shared/identities
-$ mkdir /home/cathedral/shared/identities/flock-&lt;flock&gt;
-</pre>
-
+Besides the paths explicitly mentioned in the configuration file, in
+the secretdir you have to create a directory for each flock that you
+will serve with the cathedral.
 </p>
+<pre>$ mkdir -p /home/cathedral/shared/identities
+$ mkdir /home/cathedral/shared/identities/flock-&lt;flock&gt;</pre>
 
 <p>
-    The format for their name should be flock-&lt;flock id&gt;. In a flock
-    directory, you place all peers in that flock their cathedral secrets
-    and their cosk public keys These are used for traffic protection and offer
-    authentication between the client and cathedral, never for normal traffic.
+The format for their name should be <code>flock-&lt;flock id&gt;</code>.
+In a flock directory, you place all peers in that flock their cathedral
+secrets and their cosk public keys. These are used for traffic
+protection and offer authentication between the client and cathedral,
+never for normal traffic.
+</p>
+<p>
+The cathedral secrets are 256-bit symmetrical keys shared between the
+cathedral and client and are stored on the cathedral in the format of
+<code>&lt;peer id&gt;.key</code>. The cosk public key is an ed25519
+public key generated using the ambry tool on the client side. The cosk
+public key is stored in this directory as <code>&lt;peer id&gt;.pub</code>.
+The peer id is the id you will define later in settings.conf.
 </p>
 
+<div class="callout warn">
+<p>These keys have to be distributed to the peers that will use the
+cathedral in a secure way — exactly how is left as an exercise to the
+reader, since it's out of scope for this guide.</p>
+</div>
+
 <p>
-    The cathedral secrets are 256-bit symmetrical keys shared between the
-    cathedral and client and is stored on the cathedral in the format of
-    &lt;peer id&gt;.key. The cosk public key is an ed25519 public key
-    generated using ambry tool on the client side. The cosk public key
-    is stored in this directory as &lt;peer id&gt;.pub. The peer id
-    is the id you will define later in settings.conf
+The synchronization key used for communication between cathedrals
+during federation can be generated as follows:
+</p>
+<pre>$ dd if=/dev/urandom of=/home/cathedral/sync.secret bs=32 count=1</pre>
+
+<h2 id="flock-configuration">Flock configuration</h2>
+<p>
+To create one or several flocks, they have to be defined in the file
+pointed to by the <code>settings</code> option in the cathedral
+configuration.
 </p>
 
+<h3>Key management</h3>
 <p>
-    These keys have to be distributed to the peers that will use the cathedral
-    in a secure way, but that is left as an excercise to the reader because
-    that is out of scope for this guide.
+Each flock needs to receive an ambry file — these are wrapped shared
+secrets that will be securely distributed to your peers via the
+cathedral.
 </p>
-
 <p>
-    The synchronization key used for communication between cathedrals when
-    federation data can be generated as follows:
-<pre>
-$ dd if=/dev/urandom of=/home/cathedral/sync.secret bs=32 count=1
-</pre>
+Use the ambry tool to generate keys for the flocks you are configuring.
 </p>
+<pre>$ ambry generate cafebabe
+$ ambry export cafebabe cafebabe 120 /path/to/ambry.bundle</pre>
 
-<h3>Flock configuration</h3>
-
+<h3>Flock definition</h3>
 <p>
-    To create one or several flocks, they have to be defined in the file
-    pointed to by the settings option in the cathedral configuration.
+In our example configuration, that path is
+<strong>/home/cathedral/shared/settings.conf</strong>. The format for a
+flock defined in settings is as follows:
 </p>
-
-<h4>Key management</h4>
-
-<p>
-    Each flock needs to receive an ambry file, these are wrapped shared
-    secrets that will be securely distributed to your peers, via the cathedral.
-</p>
-
-<p>
-    Use the ambry tool to generate keys for the flocks you are configuring.
-<pre>
-$ ambry generate cafebabe
-$ ambry export cafebabe cafebabe 120 /path/to/ambry.bundle
-</pre>
-
-</p>
-
-<h4>Flock configuration</h4>
-
-<p>
-    In our example configuration, that path is
-    <strong>/home/cathedral/shared/settings.conf</strong>.
-    The format for a flock defined in settings is as follows:
-
-<pre>
-flock &lt;flock id&gt; {
+<pre>flock &lt;flock id&gt; {
     allow &lt;peer id 1&gt; spi &lt;kek id 1&gt; &lt;bandwidth limit&gt;
     allow &lt;peer id 2&gt; spi &lt;kek id 2&gt; &lt;bandwidth limit&gt;
 
     ambry /path/to/ambry.bundle
-}
-</pre>
-</p>
+}</pre>
 
 <p>
-    The format for the flock name is a 64-bit hex value. The peer
-    ids are 32-bit hex strings. The kek ids is the hex number of
-    the kek associated with the peer, prefixed with 0x.
+The format for the flock name is a 64-bit hex value. The peer ids are
+32-bit hex strings. The kek id is the hex number of the kek associated
+with the peer, prefixed with <code>0x</code>.
 </p>
-
 <p>
-    The bandwidth limit is a unsigned integer that represents the limit in
-    Mbit per second that the peer will be limited to. A value of 0 is the
-    equivalent to unlimited bandwidth.
+The bandwidth limit is an unsigned integer representing the limit in
+Mbit per second the peer will be limited to. A value of 0 is
+equivalent to unlimited bandwidth.
 </p>
-
 <p>
-    An example flock, with two peers defined could look like this:
-
-<pre>
-flock cafebabe {
+An example flock, with two peers defined, could look like this:
+</p>
+<pre>flock cafebabe {
     allow deadbeef spi 0x1 0
     allow deadbabe spi 0x2 0
 
     ambry /home/cathedral/shared/ambries/ambry-cafebabe
-}
-</pre>
+}</pre>
 
 <p>
-    Using an ambry bundle is not strictly required for a flock, if there
-    already is a shared secret distributed to all the peers. The cathedral
-    would then only be used to relay the traffic but this is left as an
-    excercise to the reader.
+Using an ambry bundle is not strictly required for a flock if there is
+already a shared secret distributed to all the peers. The cathedral
+would then only be used to relay the traffic, but this is left as an
+exercise to the reader.
 </p>
 
-<h3>Peer configuration</h3>
-
+<h2 id="peer-configuration">Peer configuration</h2>
 <p>
-    The easiest way to configure a tunnel that uses the cathedral and flock
-    that just was setup is to use the hymn tool.
+The easiest way to configure a tunnel that uses the cathedral and flock
+that was just set up is to use the hymn tool.
 </p>
-
 <p>
-    Several keys must be generated on the client-side or distributed in
-    a secret way to the client. For example, a cosk can be generated
-    using the ambry tool:
-<pre>
-$ ambry cosk-pair /tmp/cosk-private /tmp/cosk-public
-</pre>
-
-    While the cathedral secret may be generated from /dev/urandom for
-    example after which you distribute it to your cathedrals in a safe way.
-
-<pre>
-$ dd if=/dev/urandom of=/tmp/cs-deadbeef bs=32 count=1
-</pre>
-
-    The KEK comes from your key management, using the ambry tool and can
-    be found under the kek-data directory for said flock.
+Several keys must be generated on the client side or distributed in a
+secret way to the client. For example, a cosk can be generated using
+the ambry tool:
 </p>
-
+<pre>$ ambry cosk-pair /tmp/cosk-private /tmp/cosk-public</pre>
 <p>
-    If we were configuring the peer deadbeef, with kek id 1 to use the
-    cathedral with hymn:
-
-<pre>
-$ hymn add cafebabe-01-02 tunnel 172.31.253.1/24 mtu 1422 \
+While the cathedral secret may be generated from <code>/dev/urandom</code>,
+for example, after which you distribute it to your cathedrals in a
+safe way.
+</p>
+<pre>$ dd if=/dev/urandom of=/tmp/cs-deadbeef bs=32 count=1</pre>
+<p>
+The KEK comes from your key management, using the ambry tool, and can
+be found under the kek-data directory for said flock.
+</p>
+<p>
+If we were configuring the peer <code>deadbeef</code>, with kek id 1,
+to use the cathedral with hymn:
+</p>
+<pre>$ hymn add cafebabe-01-02 tunnel 172.31.253.1/24 mtu 1422 \
     kek /tmp/kek-0x01 cathedral 1.2.3.4:4469 shroud yes \
-    identity deadbeef:/tmp/cs-deadbeef cosk /tmp/cosk-private
-</pre>
-
-    Note that you need /tmp/kek-0x01, /tmp/cs-deadbeef and /tmp/cosk-private
-    on that system.
-</p>
-
+    identity deadbeef:/tmp/cs-deadbeef cosk /tmp/cosk-private</pre>
 <p>
-    Likewise, configuring the peer deadbabe to connect to deadbeef with
-    hymn looks similar:
-
-<pre>
-$ hymn add cafebabe-02-01 tunnel 172.31.253.2/24 mtu 1422 \
+Note that you need <code>/tmp/kek-0x01</code>, <code>/tmp/cs-deadbeef</code>
+and <code>/tmp/cosk-private</code> on that system.
+</p>
+<p>
+Likewise, configuring the peer <code>deadbabe</code> to connect to
+<code>deadbeef</code> with hymn looks similar:
+</p>
+<pre>$ hymn add cafebabe-02-01 tunnel 172.31.253.2/24 mtu 1422 \
     kek /tmp/kek-0x02 cathedral 1.2.3.4:4469 shroud yes \
-    identity deadbabe:/tmp/cs-deadbabe cosk /tmp/cosk-private
-</pre>
-
-    Note that you need /tmp/kek-0x02, /tmp/cs-deadbabe and /tmp/cosk-private
-    on that system.
-</p>
-
-<h3>NAT discovery and hole punching</h3>
-
+    identity deadbabe:/tmp/cs-deadbabe cosk /tmp/cosk-private</pre>
 <p>
-    The cathedral mode has the possibility of detecting if its possible for
-    peers to connect directly to eachother to get a peer-to-peer connection.
+Note that you need <code>/tmp/kek-0x02</code>, <code>/tmp/cs-deadbabe</code>
+and <code>/tmp/cosk-private</code> on that system.
 </p>
 
+<h2 id="nat-discovery">NAT discovery and hole punching</h2>
 <p>
-    To setup the cathedral to listen for traffic from the client to
-    determine its NAT type, specify the following configuration:
-
-<pre>
-cathedral_p2p_sync yes
-cathedral_nat_port 4470
-</pre>
+Cathedral mode can detect whether it's possible for peers to connect
+directly to each other to get a peer-to-peer connection.
 </p>
-
 <p>
-    The option cathedral_p2p_sync enables the cathedral to sync p2p states
-    with other cathedrals. This allows p2p discovery even if each client
-    is connected to a different cathedral in the setup.
+To set up the cathedral to listen for traffic from the client to
+determine its NAT type, specify the following configuration:
 </p>
-
+<pre>cathedral_p2p_sync yes
+cathedral_nat_port 4470</pre>
 <p>
-    The option cathedral_nat_port configures on which port the cathedral will
-    listen to additional peer traffic to determine its NAT type.
+The option <code>cathedral_p2p_sync</code> enables the cathedral to
+sync p2p states with other cathedrals. This allows p2p discovery even
+if each client is connected to a different cathedral in the setup.
 </p>
-
 <p>
-    If the cathedral learns that both peers are behind a NAT type that
-    allows hole punching it will inform both sides with the relevant
-    information to do this.
+The option <code>cathedral_nat_port</code> configures on which port the
+cathedral will listen for additional peer traffic to determine its NAT
+type.
 </p>
-
-<h3>Federation</h3>
-
 <p>
-    The cathedral mode also has the possibilty of federating with other
-    cathedrals which allows you to truly build distributed infrastructure.
+If the cathedral learns that both peers are behind a NAT type that
+allows hole punching, it will inform both sides with the relevant
+information to do this.
 </p>
 
+<h2 id="federation">Federation</h2>
 <p>
-    For that to work all cathedrals that want to federate with each other
-    need the same federation secret. How this federation secret is distributed
-    between the cathedrals is left as an excercise to the reader.
+Cathedral mode also has the possibility of federating with other
+cathedrals, which allows you to truly build distributed infrastructure.
 </p>
-
 <p>
-    To enable federation for a cathedral, use the following configuration
-    in the cathedral configuration:
-
-<pre>
-secret /path/to/federation.secret
-</pre>
+For that to work, all cathedrals that want to federate with each other
+need the same federation secret.
 </p>
-
+<div class="callout warn">
+<p>How this federation secret is distributed between the cathedrals is
+left as an exercise to the reader — treat it with the same care as any
+other long-lived shared secret.</p>
+</div>
 <p>
-    Then add the federated cathedrals in the <i>settings.conf</i> file:
-<pre>
-federate &ltip address&gt; &lt;port&gt;
-</pre>
+To enable federation for a cathedral, use the following configuration
+in the cathedral configuration:
+</p>
+<pre>secret /path/to/federation.secret</pre>
+<p>
+Then add the federated cathedrals in the <em>settings.conf</em> file:
+</p>
+<pre>federate &lt;ip address&gt; &lt;port&gt;</pre>
+<p>
+You can federate to up to <strong>32</strong> other cathedrals.
 </p>
 
-<p>
-    You can federate to up to 32 other cathedrals.
-</p>
+</div>
+</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A small, reviewable, fully privilege-separated, post-quantum secure
+VPN daemon and protocol. Free and open, forever, under the ISC license.</p>
+</div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
 
 </body>
 </html>
