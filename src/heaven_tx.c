@@ -244,6 +244,14 @@ heaven_tx_grace_mtu_probe(struct sanctum_packet *pkt)
 	probe = sanctum_packet_data(pkt);
 	VERIFY(probe->grace.type == SANCTUM_GRACE_TYPE_MTU_PROBE);
 
+	if (probe->size < SANCTUM_MTU_SIZE_MIN ||
+	    probe->size > SANCTUM_PACKET_DATA_LEN) {
+		sanctum_log(LOG_NOTICE,
+		    "peer sent an MTU probe with an invalid size (%u)",
+		    probe->size);
+		return;
+	}
+
 	sanctum_atomic_cas_simple(&sanctum->mtu_probe_ack, 0, probe->size);
 }
 
