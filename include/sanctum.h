@@ -210,6 +210,7 @@ struct sanctum_grace_mtu {
  *	5) A remembrance offering (from cathedral to us)
  *	6) A key exchange offering (between peers)
  *	7) A p2p info offer (between cathedrals only).
+ *	8) A federated offer (between cathedrals only).
  *
  * All offers are confidentiality and integrity protected using
  * some form of key, be it the peers shared secret, or a peer
@@ -222,6 +223,7 @@ struct sanctum_grace_mtu {
 #define SANCTUM_OFFER_TYPE_REMEMBRANCE	5
 #define SANCTUM_OFFER_TYPE_EXCHANGE	6
 #define SANCTUM_OFFER_TYPE_P2P_INFO	7
+#define SANCTUM_OFFER_TYPE_FEDERATED	8
 
 struct sanctum_offer_hdr {
 	u_int64_t		magic;
@@ -327,6 +329,17 @@ struct sanctum_liturgy_offer {
 	u_int32_t		flags;
 } __attribute__((packed));
 
+struct sanctum_federated_offer {
+	u_int8_t		hops;
+	u_int8_t		type;
+
+	union {
+		struct sanctum_info_offer	info;
+		struct sanctum_p2p_info_offer	p2pinfo;
+		struct sanctum_liturgy_offer	liturgy;
+	} data;
+} __attribute__((packed));
+
 struct sanctum_offer_data {
 	u_int8_t		type;
 	u_int64_t		timestamp;
@@ -338,6 +351,7 @@ struct sanctum_offer_data {
 		struct sanctum_liturgy_offer		liturgy;
 		struct sanctum_p2p_info_offer		p2pinfo;
 		struct sanctum_exchange_offer		exchange;
+		struct sanctum_federated_offer		federated;
 		struct sanctum_remembrance_offer	remembrance;
 	} offer;
 } __attribute__((packed));
