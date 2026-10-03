@@ -32,11 +32,13 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <inttypes.h>
+#include <paths.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -59,6 +61,7 @@
 #define HYMN_DIR_PERMISSIONS	(S_IWUSR | S_IRUSR | S_IXUSR | S_IRGRP | \
 				 S_IXGRP | S_IROTH | S_IXOTH)
 
+#define HYMN_PSK_KDF_LABEL	"HYMN.PSK.DERIVE.KDF"
 #define HYMN_HOST_SEP		"# Hymn hosts below, do not touch the divine"
 
 #define HYMN_TUNNEL		(1 << 1)
@@ -156,6 +159,7 @@ static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
 static void	usage_mtu(void) __attribute__((noreturn));
 static void	usage_nat(void) __attribute__((noreturn));
+static void	usage_psk(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_shroud(void) __attribute__((noreturn));
@@ -164,6 +168,8 @@ static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
 static void	usage_cathedral(void) __attribute__((noreturn));
 static void	usage_remembrance(void) __attribute__((noreturn));
+
+static size_t	hymn_psk_fill(int, u_int8_t *, size_t);
 
 static int	hymn_dir_exists(const char *);
 static void	hymn_mkdir(const char *, int, mode_t);
@@ -196,6 +202,7 @@ static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
 static int	hymn_mtu(int, char **);
 static int	hymn_nat(int, char **);
+static int	hymn_psk(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
@@ -283,6 +290,7 @@ static const struct {
 	{ "del",		hymn_del, 		1 },
 	{ "mtu",		hymn_mtu, 		1 },
 	{ "nat",		hymn_nat, 		1 },
+	{ "psk",		hymn_psk,		0 },
 	{ "status",		hymn_status, 		0 },
 	{ "list",		hymn_list, 		0 },
 	{ "down",		hymn_down, 		1 },
@@ -291,7 +299,7 @@ static const struct {
 	{ "shroud",		hymn_shroud, 		1 },
 	{ "bridge",		hymn_bridge, 		1 },
 	{ "accept",		hymn_accept, 		1 },
-	{ "keygen",		hymn_keygen, 		1 },
+	{ "keygen",		hymn_keygen, 		0 },
 	{ "liturgy",		hymn_liturgy, 		1 },
 	{ "resolve",		hymn_resolve, 		1 },
 	{ "refresh",		hymn_refresh,		1 },
@@ -365,6 +373,7 @@ usage(void)
 	fprintf(stderr, "  list           - list all configured tunnels\n");
 	fprintf(stderr, "  liturgy        - configure a liturgy\n");
 	fprintf(stderr, "  name           - sets the name for a tunnel\n");
+	fprintf(stderr, "  psk            - derive a secret from a psk\n");
 	fprintf(stderr, "  status         - show a specific tunnel its info\n");
 	fprintf(stderr, "  shroud         - toggle shroud for a tunnel\n");
 	fprintf(stderr, "  remembrance    - toggle remembrance for a tunnel\n");
@@ -421,6 +430,7 @@ main(int argc, char *argv[])
 	if (cmds[idx].name == NULL)
 		fatal("unknown command '%s'", argv[0]);
 
+	nyfe_zeroize_warn();
 	nyfe_zeroize_all();
 
 	return (ret);
@@ -985,6 +995,109 @@ hymn_nat(int argc, char *argv[])
 
 	printf("%s-%02x-%02x nat has been turned %s\n",
 	    flock, config.src, config.dst, (port == 0) ? "off" : "on");
+
+	return (0);
+}
+
+static void
+usage_psk(void)
+{
+	fprintf(stderr, "usage: hymn psk [out]\n");
+	exit(1);
+}
+
+static size_t
+hymn_psk_fill(int fd, u_int8_t *passphrase, size_t len)
+{
+	size_t		off;
+
+	off = 0;
+
+	while (off != len) {
+		if (read(fd, &passphrase[off], 1) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("%s: read failed: %s", __func__, errno_s);
+		}
+
+		if (passphrase[off] == '\n')
+			break;
+
+		off++;
+	}
+
+	return (off);
+}
+
+static int
+hymn_psk(int argc, char *argv[])
+{
+	int			fd;
+	struct termios		cur, old;
+	u_int8_t		zeroes[32];
+	size_t			len_0, len_1;
+	u_int8_t		okm[64], passphrase[256], verify[256];
+
+	if (argc != 1)
+		usage_psk();
+
+	if ((fd = open(_PATH_TTY, O_RDWR)) == -1)
+		fatal("open(%s): %s", _PATH_TTY, strerror(errno));
+
+	if (tcgetattr(fd, &old) == -1)
+		fatal("tcgetattr: %s", strerror(errno));
+
+	cur = old;
+	cur.c_lflag &= ~(ECHO | ECHONL);
+
+	if (tcsetattr(fd, TCSAFLUSH, &cur) == -1) {
+		(void)tcsetattr(fd, TCSANOW, &old);
+		fatal("tcsetattr: %s", strerror(errno));
+	}
+
+	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(verify, sizeof(verify));
+	nyfe_zeroize_register(passphrase, sizeof(passphrase));
+
+	nyfe_mem_zero(zeroes, sizeof(zeroes));
+	nyfe_mem_zero(verify, sizeof(verify));
+	nyfe_mem_zero(passphrase, sizeof(passphrase));
+
+	fprintf(stderr, "passphrase: ");
+	fflush(stderr);
+
+	len_0 = hymn_psk_fill(fd, passphrase, sizeof(passphrase));
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "repeat passphrase: ");
+	fflush(stderr);
+
+	len_1 = hymn_psk_fill(fd, verify, sizeof(verify));
+
+	if (tcsetattr(fd, TCSANOW, &old) == -1)
+		fatal("tcsetattr: %s", strerror(errno));
+
+	fprintf(stderr, "\n");
+	(void)close(fd);
+
+	if (len_0 != len_1 || nyfe_mem_cmp(passphrase, verify, len_0))
+		fatal("passphrases do not match");
+
+	if (len_0 == 0)
+		fatal("no passphrase specified");
+
+	nyfe_passphrase_kdf(passphrase, sizeof(passphrase),
+	    zeroes, sizeof(zeroes), okm, sizeof(okm),
+	    HYMN_PSK_KDF_LABEL, sizeof(HYMN_PSK_KDF_LABEL) - 1);
+
+	nyfe_zeroize(verify, sizeof(verify));
+	nyfe_zeroize(passphrase, sizeof(passphrase));
+
+	fd = nyfe_file_open(argv[0], NYFE_FILE_CREATE);
+	nyfe_file_write(fd, okm, sizeof(okm));
+	nyfe_file_close(fd);
+
+	nyfe_zeroize(okm, sizeof(okm));
 
 	return (0);
 }
