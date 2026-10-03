@@ -644,7 +644,7 @@ static void
 cathedral_offer_seen(struct offerdb *db, struct federated *cathedral,
     u_int64_t now)
 {
-	PRECOND(db!= NULL);
+	PRECOND(db != NULL);
 	PRECOND(cathedral != NULL);
 	VERIFY(cathedral->index < SANCTUM_CATHEDRALS_MAX);
 
@@ -827,7 +827,7 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 			    sizeof(p2pinfo));
 			break;
 		default:
-			sanctum_log(LOG_NOTICE, "invalid CATACOMB offer %02x",
+			sanctum_log(LOG_NOTICE, "invalid federated offer %02x",
 			    op->data.type);
 			return (-1);
 		}
@@ -842,7 +842,7 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 	if (sanctum_offer_verify(path, op) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "signature verification failed for %" PRIx64 ":%08x",
-		    flock->id, id);
+		    flock->id | flock->domain, id);
 		return (-1);
 	}
 
@@ -2851,6 +2851,7 @@ cathedral_settings_reload(void)
 
 	flock = NULL;
 	federation_count = 0;
+	federation_changed = 0;
 
 	while ((kw = sanctum_config_read(fp, buf, sizeof(buf))) != NULL) {
 		if (strlen(kw ) == 0)
