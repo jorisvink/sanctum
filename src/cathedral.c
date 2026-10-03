@@ -842,7 +842,7 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 	if (sanctum_offer_verify(path, op) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "signature verification failed for %" PRIx64 ":%08x",
-		    flock->id | flock->domain, id);
+		    flock->id | flock->domain->id, id);
 		return (-1);
 	}
 
