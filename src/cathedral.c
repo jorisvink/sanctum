@@ -346,11 +346,14 @@ static void	cathedral_tunnel_expire(struct flockent *, u_int64_t);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
 		    u_int8_t, u_int32_t, u_int32_t *);
 
-static int	cathedral_forward_offer(struct sanctum_packet *, u_int32_t);
+static int	cathedral_forward_offer(struct sanctum_packet *,
+		    u_int32_t, u_int64_t);
 static int	cathedral_forward_data(struct sanctum_packet *,
 		    u_int32_t, u_int64_t);
 static int	cathedral_forward_allowed(u_int64_t, u_int64_t,
 		    struct flockent **, struct flockent **);
+static int	cathedral_forward_throttle(struct tunnel *,
+		    struct sanctum_packet *, u_int64_t);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -567,7 +570,7 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 			offer = sanctum_packet_head(pkt);
 			spi = be32toh(offer->spi);
 
-			if (cathedral_forward_offer(pkt, spi) == -1)
+			if (cathedral_forward_offer(pkt, spi, now) == -1)
 				sanctum_packet_release(pkt);
 		} else {
 			if (cathedral_forward_data(pkt, spi, now) == -1)
@@ -1333,7 +1336,8 @@ cathedral_tunnel_update_allowed(struct flockent *flock, u_int8_t tid,
  * smarter about it, but until then this is fine.
  */
 static int
-cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
+cathedral_forward_offer(struct sanctum_packet *pkt,
+    u_int32_t spi, u_int64_t now)
 {
 	u_int16_t			tid;
 	struct sanctum_offer_hdr	*hdr;
@@ -1369,6 +1373,9 @@ cathedral_forward_offer(struct sanctum_packet *pkt, u_int32_t spi)
 		    cathedral_tunnel_name(dst, src, tid));
 		return (-1);
 	}
+
+	if (cathedral_forward_throttle(tunnel, pkt, now) == -1)
+		return (-1);
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->addr.sin_port = tunnel->port;
@@ -1406,8 +1413,6 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	u_int16_t			tid;
 	struct sanctum_proto_hdr	*hdr;
 	struct federated		*srv;
-	u_int32_t			drain;
-	u_int64_t			delta;
 	struct tunnel			*tunnel;
 	struct flockent			*dst, *src;
 	u_int64_t			flock_src, flock_dst;
@@ -1436,23 +1441,8 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 		return (-1);
 	}
 
-	if (tunnel->limit != 0) {
-		delta = now - tunnel->last_drain;
-		if (delta >= 1) {
-			tunnel->last_drain = now;
-			drain = tunnel->drain_per_ms * delta;
-			if (drain <= tunnel->current) {
-				tunnel->current -= drain;
-			} else {
-				tunnel->current = 0;
-			}
-		}
-
-		if (tunnel->current >= tunnel->limit)
-			return (-1);
-
-		tunnel->current += pkt->length;
-	}
+	if (cathedral_forward_throttle(tunnel, pkt, now) == -1)
+		return (-1);
 
 	pkt->addr.sin_family = AF_INET;
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
@@ -1474,6 +1464,41 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	traffic.bytes += pkt->length;
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
+
+	return (0);
+}
+
+/*
+ * Apply a leaky-bucket bw limit to the tunnel traffic for the incoming packet.
+ */
+static int
+cathedral_forward_throttle(struct tunnel *tunnel,
+    struct sanctum_packet *pkt, u_int64_t now)
+{
+	u_int32_t	drain;
+	u_int64_t	delta;
+
+	PRECOND(tunnel != NULL);
+	PRECOND(pkt != NULL);
+
+	if (tunnel->limit == 0)
+		return (0);
+
+	delta = now - tunnel->last_drain;
+	if (delta >= 1) {
+		tunnel->last_drain = now;
+		drain = tunnel->drain_per_ms * delta;
+		if (drain <= tunnel->current) {
+			tunnel->current -= drain;
+		} else {
+			tunnel->current = 0;
+		}
+	}
+
+	if (tunnel->current >= tunnel->limit)
+		return (-1);
+
+	tunnel->current += pkt->length;
 
 	return (0);
 }
