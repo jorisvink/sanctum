@@ -1197,6 +1197,8 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 		if (xchg->id != peer_id && offer != NULL) {
 			chapel_offer_clear();
 			chapel_offer_create(now, "peer restarted");
+			if (offer == NULL)
+				return;
 		} else {
 			return;
 		}
