@@ -275,6 +275,8 @@ sanctum_config_load(const char *file)
 			fatal("tfc is enabled but no mtu has been set");
 		if (sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY)
 			fatal("tfc is enabled but mtu discovery is active");
+		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+			fatal("tfc is enabled but using tap device");
 	}
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
