@@ -135,6 +135,7 @@ struct tunnel {
 	u_int32_t		ip;
 	u_int16_t		port;
 	u_int64_t		age;
+	u_int64_t		last;
 	u_int64_t		update;
 	u_int64_t		instance;
 	int			peerinfo;
@@ -209,6 +210,7 @@ struct shroud {
 struct liturgy {
 	u_int64_t		at;
 	u_int64_t		age;
+	u_int64_t		last;
 	u_int16_t		id;
 	u_int32_t		flags;
 	u_int16_t		group;
@@ -877,8 +879,8 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	struct tunnel			*tun;
 	u_int8_t			hops;
 	struct sanctum_info_offer	*info;
-	u_int64_t			flock_dst;
 	int				update, idx;
+	u_int64_t			flock_dst, timestamp;
 
 	PRECOND(pkt != NULL);
 	PRECOND(flock != NULL);
@@ -904,6 +906,15 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	tun = cathedral_tunnel_entry(flock, dst, info, id, now, nat, catacomb);
 	if (tun == NULL)
 		return;
+
+	timestamp = be64toh(op->data.timestamp);
+	if (timestamp <= tun->last) {
+		sanctum_log(LOG_NOTICE, "%s duplicated info offer",
+		    cathedral_tunnel_name(flock, dst, tid));
+		return;
+	}
+
+	tun->last = timestamp;
 
 	if (info->instance != tun->instance && nat == 0) {
 		tun->peerinfo = 0;
@@ -1035,7 +1046,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	u_int16_t			group;
 	const char			*mode;
 	struct liturgy			*entry;
-	u_int64_t			flock_dst;
+	u_int64_t			flock_dst, timestamp;
 
 	PRECOND(pkt != NULL);
 	PRECOND(flock != NULL);
@@ -1059,6 +1070,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	id = be32toh(op->hdr.spi);
 	lit = &op->data.offer.liturgy;
 	group = be16toh(lit->group);
+	timestamp = be64toh(op->data.timestamp);
 
 	if (lit->id == 0 || lit->id >= SANCTUM_PEERS_PER_FLOCK) {
 		sanctum_log(LOG_NOTICE, "%s sent an invalid liturgy id",
@@ -1092,6 +1104,12 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 		cathedral_peerstat_inc(&liturgies, entry->federated);
 		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
+	} else {
+		if (timestamp <= entry->last) {
+			sanctum_log(LOG_NOTICE, "%s duplicated liturgy offer",
+			    cathedral_tunnel_name(flock, flock, lit->id));
+			return;
+		}
 	}
 
 	if (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
@@ -1108,6 +1126,7 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 
 	entry->age = now;
 	entry->group = group;
+	entry->last = timestamp;
 	entry->hidden = lit->hidden;
 
 	memcpy(entry->peers, lit->peers, sizeof(lit->peers));
