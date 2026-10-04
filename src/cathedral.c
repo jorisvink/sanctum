@@ -760,6 +760,7 @@ static int
 cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
     u_int32_t id, struct federated *catacomb)
 {
+	u_int16_t			hops;
 	struct sanctum_federated_offer	*fdr;
 	struct sanctum_info_offer	info;
 	struct sanctum_key		cipher;
@@ -806,14 +807,15 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 		fdr = &op->data.offer.federated;
 
 		op->data.type = fdr->type;
-		catacomb->hops = fdr->hops + 1;
+		hops = fdr->hops + 1;
 
-		if (catacomb->hops >= CATHEDRAL_FEDERATION_HOPS_MAX) {
+		if (hops >= CATHEDRAL_FEDERATION_HOPS_MAX) {
 			sanctum_log(LOG_INFO,
-			    "rejecting CATACOMB offer with %u hops",
-			    catacomb->hops);
+			    "rejecting CATACOMB offer with %u hops", hops);
 			return (-1);
 		}
+
+		catacomb->hops = hops;
 
 		switch (op->data.type) {
 		case SANCTUM_OFFER_TYPE_INFO:
