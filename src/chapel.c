@@ -729,6 +729,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
 		sanctum_cipher_cleanup(cipher.ctx);
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_log(LOG_NOTICE, "ambry integrity check failed");
 		return;
 	}
