@@ -159,7 +159,7 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	op->hdr.spi = be32toh(op->hdr.spi);
-	if (op->hdr.spi == last_spi)
+	if (op->hdr.spi == 0 || op->hdr.spi == last_spi)
 		return;
 
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
