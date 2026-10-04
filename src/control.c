@@ -73,7 +73,6 @@ sanctum_control(struct sanctum_proc *proc)
 
 		if (pfd.revents & POLLIN)
 			control_handle_request(pfd.fd);
-
 	}
 
 	sanctum_config_release();
@@ -103,6 +102,8 @@ control_handle_request(int fd)
 	for (;;) {
 		if ((ret = recvfrom(fd, &ctl, sizeof(ctl), 0,
 		    (struct sockaddr *)&peer, &socklen)) == -1) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				break;
 			if (errno == EINTR)
 				continue;
 			fatal("recvfrom: %s", errno_s);
