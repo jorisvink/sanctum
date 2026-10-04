@@ -121,6 +121,7 @@ struct config {
 	int			tap;
 	int			new;
 	int			shroud;
+	int			commixtion;
 	int			is_liturgy;
 	int			remembrance;
 	int			peer_cathedral;
@@ -167,6 +168,7 @@ static void	usage_bridge(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
 static void	usage_cathedral(void) __attribute__((noreturn));
+static void	usage_commixtion(void) __attribute__((noreturn));
 static void	usage_remembrance(void) __attribute__((noreturn));
 
 static size_t	hymn_psk_fill(int, u_int8_t *, size_t);
@@ -217,6 +219,7 @@ static int	hymn_refresh(int, char **);
 static int	hymn_liturgy(int, char **);
 static int	hymn_restart(int, char **);
 static int	hymn_cathedral(int, char **);
+static int	hymn_commixtion(int, char **);
 static int	hymn_remembrance(int, char **);
 
 static void	hymn_config_init(struct config *);
@@ -244,10 +247,12 @@ static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_shroud(struct config *, char *);
 
+
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_cosk(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
+static void	hymn_config_parse_cathedral_mixing(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
@@ -305,6 +310,7 @@ static const struct {
 	{ "refresh",		hymn_refresh,		1 },
 	{ "restart",		hymn_restart, 		1 },
 	{ "cathedral",		hymn_cathedral, 	1 },
+	{ "commixtion",		hymn_commixtion, 	1 },
 	{ "remembrance",	hymn_remembrance, 	1 },
 	{ NULL,			NULL, 			1 },
 };
@@ -313,29 +319,30 @@ static const struct {
 	const char		*option;
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
-	{ "run",		hymn_config_parse_run },
-	{ "tap",		hymn_config_parse_tap },
-	{ "kek",		hymn_config_parse_kek },
-	{ "mode",		hymn_config_parse_mode },
-	{ "peer",		hymn_config_parse_peer },
-	{ "descr",		hymn_config_parse_descr },
-	{ "local",		hymn_config_parse_local },
-	{ "route",		hymn_config_parse_route },
-	{ "bridge",		hymn_config_parse_bridge },
-	{ "accept",		hymn_config_parse_accept },
-	{ "tunnel",		hymn_config_parse_tunnel },
-	{ "secret",		hymn_config_parse_secret },
-	{ "shroud",		hymn_config_parse_shroud },
-	{ "cathedral",		hymn_config_parse_cathedral },
-	{ "cathedral_id",	hymn_config_parse_cathedral_id },
-	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
-	{ "cathedral_cosk",	hymn_config_parse_cathedral_cosk },
-	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
-	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
-	{ "cathedral_flock_dst",hymn_config_parse_cathedral_flock_dst },
-	{ "liturgy_group",	hymn_config_parse_liturgy_group },
-	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix },
-	{ NULL,			NULL },
+	{ "run",			hymn_config_parse_run },
+	{ "tap",			hymn_config_parse_tap },
+	{ "kek",			hymn_config_parse_kek },
+	{ "mode",			hymn_config_parse_mode },
+	{ "peer",			hymn_config_parse_peer },
+	{ "descr",			hymn_config_parse_descr },
+	{ "local",			hymn_config_parse_local },
+	{ "route",			hymn_config_parse_route },
+	{ "bridge",			hymn_config_parse_bridge },
+	{ "accept",			hymn_config_parse_accept },
+	{ "tunnel",			hymn_config_parse_tunnel },
+	{ "secret",			hymn_config_parse_secret },
+	{ "shroud",			hymn_config_parse_shroud },
+	{ "cathedral",			hymn_config_parse_cathedral },
+	{ "cathedral_id",		hymn_config_parse_cathedral_id },
+	{ "cathedral_flock",		hymn_config_parse_cathedral_flock },
+	{ "cathedral_cosk",		hymn_config_parse_cathedral_cosk },
+	{ "cathedral_secret",		hymn_config_parse_cathedral_secret },
+	{ "cathedral_nat_port",		hymn_config_parse_cathedral_nat_port },
+	{ "cathedral_flock_dst",	hymn_config_parse_cathedral_flock_dst },
+	{ "cathedral_commixtion",	hymn_config_parse_cathedral_mixing },
+	{ "liturgy_group",		hymn_config_parse_liturgy_group },
+	{ "liturgy_prefix",		hymn_config_parse_liturgy_prefix },
+	{ NULL,				NULL },
 };
 
 static const struct {
@@ -366,6 +373,7 @@ usage(void)
 	fprintf(stderr, "  add            - add a new tunnel\n");
 	fprintf(stderr, "  bridge         - attach to a bridge interface\n");
 	fprintf(stderr, "  cathedral      - change cathedral for a tunnel\n");
+	fprintf(stderr, "  commixtion     - toggle commixtion for a tunnel\n");
 	fprintf(stderr, "  del            - delete an existing tunnel\n");
 	fprintf(stderr, "  down           - brings down the tunnel\n");
 	fprintf(stderr, "  nat            - change NAT detection port\n");
@@ -1568,6 +1576,58 @@ hymn_cathedral(int argc, char *argv[])
 }
 
 static void
+usage_commixtion(void)
+{
+	fprintf(stderr,
+	    "usage: hymn commixtion [name | [<flock>-]<src>-<dst>] [on|off]\n");
+	exit(1);
+}
+
+static int
+hymn_commixtion(int argc, char *argv[])
+{
+	struct config		config;
+	const char		*flock;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_commixtion();
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_commixtion();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	if (config.peer_cathedral != 1)
+		fatal("commixtion only makes sense on cathedral tunnels");
+
+	if (config.cathedral_nat_port != 0)
+		fatal("commixtion only makes sense if p2p is disabled");
+
+	if (config.shroud != 1)
+		fatal("commixtion only makes sense if shroud is enabled");
+
+	if (!strcmp(argv[1], "on"))
+		config.commixtion = 1;
+	else if (!strcmp(argv[1], "off"))
+		config.commixtion = 0;
+	else
+		fatal("unknown option '%s', please use on|off", argv[1]);
+
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x commixtion has been turned %s\n",
+	    flock, config.src, config.dst,
+	    (config.commixtion == 0) ? "off" : "on");
+
+	return (0);
+}
+
+static void
 usage_remembrance(void)
 {
 	fprintf(stderr, "usage: hymn remembrance ");
@@ -2391,7 +2451,6 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		}
 	}
 
-
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
 
@@ -2407,6 +2466,9 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  shroud\tyes\n");
 	else
 		printf("  shroud\tno\n");
+
+	if (config.commixtion)
+		printf("  commixtion\tyes\n");
 
 	if (config.tap && config.bridge != NULL)
 		printf("  bridge\t%s\n", config.bridge);
@@ -2716,6 +2778,9 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 			    flock, cfg->src, cfg->dst);
 		}
 
+		if (cfg->commixtion)
+			hymn_config_write(fd, "cathedral_commixtion yes\n");
+
 		hymn_config_write(fd, "cathedral_nat_port %u\n",
 		    cfg->cathedral_nat_port);
 		hymn_config_write(fd, "cathedral %s\n", cfg->cathedral);
@@ -2993,6 +3058,18 @@ static void
 hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
 {
 	cfg->cathedral_nat_port = hymn_number(natport, 10, 0, USHRT_MAX);
+}
+
+static void
+hymn_config_parse_cathedral_mixing(struct config *cfg, char *opt)
+{
+	if (!strcmp(opt, "yes")) {
+		cfg->commixtion = 1;
+	} else if (!strcmp(opt, "no")) {
+		cfg->commixtion = 0;
+	} else {
+		fatal("invalid commixtion option '%s'", opt);
+	}
 }
 
 static void
