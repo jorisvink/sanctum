@@ -207,11 +207,9 @@ struct shroud {
  * A client that will receive a liturgy update inside of a flock.
  */
 struct liturgy {
-	u_int32_t		ip;
 	u_int64_t		at;
 	u_int64_t		age;
 	u_int16_t		id;
-	u_int16_t		port;
 	u_int32_t		flags;
 	u_int16_t		group;
 	u_int8_t		hidden;
@@ -1111,9 +1109,6 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	entry->age = now;
 	entry->group = group;
 	entry->hidden = lit->hidden;
-
-	entry->port = pkt->addr.sin_port;
-	entry->ip = pkt->addr.sin_addr.s_addr;
 
 	memcpy(entry->peers, lit->peers, sizeof(lit->peers));
 
