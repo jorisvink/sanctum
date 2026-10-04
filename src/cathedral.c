@@ -2985,8 +2985,12 @@ cathedral_settings_reload(void)
 		LIST_FOREACH(flock, &flocks, list) {
 			LIST_FOREACH(domain, &flock->domains, list) {
 				LIST_FOREACH(entry, &domain->tunnels, list) {
-					if (entry->shroud == shroud)
-						fatal("lingering shroud entry");
+					/* XXX */
+					if (entry->shroud == shroud) {
+						sanctum_log(LOG_NOTICE,
+						    "lingering shroud entry");
+						entry->shroud = NULL;
+					}
 				}
 			}
 		}
