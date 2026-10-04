@@ -1896,12 +1896,8 @@ cathedral_commixtion_init(struct tunnel *tun, struct flockent *flock)
 
 	sanctum_random_bytes(tun->hops, sizeof(tun->hops));
 
-	for (idx = SANCTUM_CATHEDRAL_HOPS - 1; idx >= 0; idx--) {
+	for (idx = SANCTUM_CATHEDRAL_HOPS - 1; idx >= 0; idx--)
 		tun->hops[idx] = tun->hops[idx] % federation_count;
-		sanctum_log(LOG_INFO, "%s hop %d = %u",
-		    cathedral_tunnel_name(flock, flock, tun->id), idx,
-		    tun->hops[idx]);
-	}
 }
 
 /*
@@ -2821,12 +2817,12 @@ cathedral_settings_reload(void)
 	struct stat		st;
 	int			fd;
 	FILE			*fp;
-	struct tunnel		*entry;
 	struct flockdom		*domain;
 	struct xflock		*xfl, *xnext;
 	struct flockent		*flock, *fnext;
 	struct federated	*srv, *srvnext;
 	struct shroud		*shroud, *snext;
+	struct tunnel		*tunnel, *tnext;
 	char			buf[256], *kw, *option;
 
 	if (sanctum->settings == NULL)
@@ -2984,12 +2980,15 @@ cathedral_settings_reload(void)
 
 		LIST_FOREACH(flock, &flocks, list) {
 			LIST_FOREACH(domain, &flock->domains, list) {
-				LIST_FOREACH(entry, &domain->tunnels, list) {
-					/* XXX */
-					if (entry->shroud == shroud) {
-						sanctum_log(LOG_NOTICE,
-						    "lingering shroud entry");
-						entry->shroud = NULL;
+				for (tunnel = LIST_FIRST(&domain->tunnels);
+				    tunnel != NULL; tunnel = tnext) {
+					tnext = LIST_NEXT(tunnel, list);
+
+					if (tunnel->shroud == shroud) {
+						cathedral_peerstat_dec(&peers,
+						    tunnel->federated);
+						LIST_REMOVE(tunnel, list);
+						free(tunnel);
 					}
 				}
 			}
