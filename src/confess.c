@@ -240,8 +240,6 @@ confess_packet_process(struct sanctum_packet *pkt)
 		return;
 	}
 
-	state.active.seqnr = 0;
-	state.active.bitmap = 0;
 	sanctum_atomic_write(&sanctum->last_pn, 0);
 	sanctum_atomic_write(&sanctum->rx_pending, 0);
 
@@ -251,6 +249,7 @@ confess_packet_process(struct sanctum_packet *pkt)
 	state.active.salt = state.pending.salt;
 	state.active.seqnr = state.pending.seqnr;
 	state.active.cipher = state.pending.cipher;
+	state.active.bitmap = state.pending.bitmap;
 	state.active.pending = state.pending.pending;
 
 	nyfe_mem_zero(&state.pending, sizeof(state.pending));
