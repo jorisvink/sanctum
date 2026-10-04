@@ -1145,8 +1145,8 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		}
 
 		entry->federated = 1;
-		cathedral_offer_seen(&entry->offerdb, catacomb, now);
 
+		cathedral_offer_seen(&entry->offerdb, catacomb, now);
 		if (cathedral_offer_repack(flock, flock, pkt, catacomb) == -1)
 			return;
 
@@ -1222,7 +1222,6 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 	info->tunnel = htobe16(info->tunnel);
 
 	cathedral_offer_seen(&tun->p2pdb, catacomb, now);
-
 	if (cathedral_offer_repack(flock, flock, pkt, catacomb) == -1)
 		return;
 
