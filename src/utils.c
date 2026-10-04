@@ -1066,6 +1066,8 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 	sanctum->cathedral_idx = 0;
 	list = &op->data.offer.remembrance;
 
+	nyfe_mem_zero(sanctum->cathedrals, sizeof(sanctum->cathedrals));
+
 	for (i = 0; i < SANCTUM_CATHEDRALS_MAX; i++) {
 		if (list->ips[i] == 0 || list->ports[i] == 0)
 			break;
