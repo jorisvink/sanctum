@@ -999,6 +999,11 @@ hymn_nat(int argc, char *argv[])
 
 	config.cathedral_nat_port = port;
 
+	if (config.cathedral_nat_port != 0 && config.commixtion == 1) {
+		printf("turning off commixtion, makes no sense with p2p\n");
+		config.commixtion = 0;
+	}
+
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x nat has been turned %s\n",
@@ -1201,6 +1206,11 @@ hymn_shroud(int argc, char *argv[])
 		config.shroud = 0;
 	else
 		fatal("unknown option '%s', please use on|off", argv[1]);
+
+	if (config.shroud == 0 && config.commixtion == 1) {
+		printf("turning off commixtion as it requires shroud\n");
+		config.commixtion = 0;
+	}
 
 	hymn_config_save(path, flock, &config);
 
@@ -1605,18 +1615,19 @@ hymn_commixtion(int argc, char *argv[])
 	if (config.peer_cathedral != 1)
 		fatal("commixtion only makes sense on cathedral tunnels");
 
-	if (config.cathedral_nat_port != 0)
-		fatal("commixtion only makes sense if p2p is disabled");
+	if (!strcmp(argv[1], "on")) {
+		if (config.cathedral_nat_port != 0)
+			fatal("commixtion only makes sense if p2p is disabled");
 
-	if (config.shroud != 1)
-		fatal("commixtion only makes sense if shroud is enabled");
+		if (config.shroud != 1)
+			fatal("commixtion only makes sense with shroud");
 
-	if (!strcmp(argv[1], "on"))
 		config.commixtion = 1;
-	else if (!strcmp(argv[1], "off"))
+	} else if (!strcmp(argv[1], "off")) {
 		config.commixtion = 0;
-	else
+	} else {
 		fatal("unknown option '%s', please use on|off", argv[1]);
+	}
 
 	hymn_config_save(path, flock, &config);
 
