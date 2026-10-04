@@ -245,7 +245,7 @@ heaven_tx_grace_mtu_probe(struct sanctum_packet *pkt)
 	VERIFY(probe->grace.type == SANCTUM_GRACE_TYPE_MTU_PROBE);
 
 	if (probe->size < SANCTUM_MTU_SIZE_MIN ||
-	    probe->size > SANCTUM_PACKET_DATA_LEN) {
+	    probe->size > sanctum->tun_mtu) {
 		sanctum_log(LOG_NOTICE,
 		    "peer sent an MTU probe with an invalid size (%u)",
 		    probe->size);
@@ -276,8 +276,7 @@ heaven_tx_grace_mtu_ack(struct sanctum_packet *pkt)
 	ack = sanctum_packet_data(pkt);
 	VERIFY(ack->grace.type == SANCTUM_GRACE_TYPE_MTU_ACK);
 
-	if (ack->size < SANCTUM_MTU_SIZE_MIN ||
-	    ack->size > SANCTUM_PACKET_DATA_LEN) {
+	if (ack->size < SANCTUM_MTU_SIZE_MIN || ack->size > sanctum->tun_mtu) {
 		sanctum_log(LOG_NOTICE,
 		    "peer sent an MTU ack with an invalid size (%u)",
 		    ack->size);
