@@ -44,6 +44,9 @@
 /* The number of seconds before consider a link stale for offer federation. */
 #define CATHEDRAL_OFFER_TIMEOUT		(15 * 1000)
 
+/* The number of hops a federated offer can make before we reject it. */
+#define CATHEDRAL_FEDERATION_HOPS_MAX	8
+
 /* The interval at which we recalculate commixtions. */
 #define CATHEDRAL_COMMIXTION_NEXT	(300 * 1000)
 
@@ -805,6 +808,13 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 		op->data.type = fdr->type;
 		catacomb->hops = fdr->hops + 1;
 
+		if (catacomb->hops >= CATHEDRAL_FEDERATION_HOPS_MAX) {
+			sanctum_log(LOG_INFO,
+			    "rejecting CATACOMB offer with %u hops",
+			    catacomb->hops);
+			return (-1);
+		}
+
 		switch (op->data.type) {
 		case SANCTUM_OFFER_TYPE_INFO:
 			memcpy(&info, &fdr->data.info,
@@ -1211,8 +1221,8 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 	tun->p2p_port = info->port;
 	tun->peerinfo = info->flags;
 
-	info->flags = be32toh(info->flags);
-	info->tunnel = be16toh(info->tunnel);
+	info->flags = htobe32(info->flags);
+	info->tunnel = htobe16(info->tunnel);
 
 	cathedral_offer_seen(&tun->p2pdb, catacomb, now);
 
@@ -1295,7 +1305,7 @@ cathedral_offer_repack(struct flockent *flock, struct flockent *dst,
 		memcpy(&fdr->data.p2pinfo, &p2pinfo, sizeof(p2pinfo));
 		break;
 	default:
-		fatal("unknown offer type %u for federation", fdr->type);
+		fatal("unknown offer type %u for federation", type);
 	}
 
 	fdr->type = type;
@@ -3042,6 +3052,9 @@ cathedral_settings_federate(const char *option)
 		federation_changed++;
 		sanctum_log(LOG_INFO, "federating to %s:%u", ip, port);
 		LIST_INSERT_HEAD(&federations, cathedral, list);
+	} else {
+		if (cathedral->index != federation_count)
+			federation_changed++;
 	}
 
 	cathedral->index = federation_count++;
