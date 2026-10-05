@@ -1559,33 +1559,23 @@ cathedral_unshroud_packet(struct sanctum_packet *pkt)
 {
 	struct federated		*srv;
 	struct shroud			*shroud;
-	int				cathedral;
 
 	PRECOND(pkt != NULL);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
 
+	LIST_FOREACH(srv, &federations, list) {
+		if (srv->ip == pkt->addr.sin_addr.s_addr &&
+		    srv->port == pkt->addr.sin_port) {
+			if (sanctum_packet_unshroud(pkt, shroud_cathedral,
+			    sizeof(shroud_cathedral)) == -1)
+				return (-1);
+			return (0);
+		}
+	}
+
 	if ((shroud = cathedral_shroud_find(pkt)) == NULL) {
-		cathedral = 0;
-
-		LIST_FOREACH(srv, &federations, list) {
-			if (srv->ip == pkt->addr.sin_addr.s_addr &&
-			    srv->port == pkt->addr.sin_port) {
-				cathedral = 1;
-				break;
-			}
-		}
-
-		if (cathedral == 0) {
-			sanctum_log(LOG_NOTICE,
-			    "received unknown shroud identity");
-			return (-1);
-		}
-
-		if (sanctum_packet_unshroud(pkt, shroud_cathedral,
-		    sizeof(shroud_cathedral)) == -1)
-			return (-1);
-
-		return (0);
+		sanctum_log(LOG_NOTICE, "received unknown shroud identity");
+		return (-1);
 	}
 
 	shroud_last = shroud;
