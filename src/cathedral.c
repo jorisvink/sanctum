@@ -1994,8 +1994,11 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 		return (NULL);
 	}
 
-	if ((tun = cathedral_tunnel_lookup(flock, dst, info->tunnel)) != NULL)
+	if ((tun = cathedral_tunnel_lookup(flock, dst, info->tunnel)) != NULL) {
+		tun->limit = (bw / 8) * 1024 * 1024;
+		tun->drain_per_ms = tun->limit / 1000;
 		return (tun);
+	}
 
 	if (nat) {
 		sanctum_log(LOG_INFO, "%s NAT but no tunnel",
