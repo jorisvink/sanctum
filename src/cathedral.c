@@ -3051,6 +3051,8 @@ cathedral_settings_federate(const char *option)
 	LIST_FOREACH(cathedral, &federations, list) {
 		if (cathedral->port == htobe16(port) &&
 		    cathedral->ip == sin.sin_addr.s_addr) {
+			if (cathedral->retain)
+				return;
 			cathedral->retain = 1;
 			break;
 		}
