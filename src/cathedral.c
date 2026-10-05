@@ -1227,7 +1227,7 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 	info->tunnel = htobe16(info->tunnel);
 
 	cathedral_offer_seen(&tun->p2pdb, catacomb, now);
-	if (cathedral_offer_repack(flock, flock, pkt, catacomb) == -1)
+	if (cathedral_offer_repack(flock, dst, pkt, catacomb) == -1)
 		return;
 
 	cathedral_offer_federate_unseen(pkt, &tun->p2pdb);
@@ -2392,7 +2392,7 @@ cathedral_p2pinfo_send(struct flockent *flock, struct flockent *dst,
 	PRECOND(dst != NULL);
 	PRECOND(tun != NULL);
 
-	if (tun->peerinfo == 0)
+	if (!(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC))
 		return;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
@@ -2404,7 +2404,7 @@ cathedral_p2pinfo_send(struct flockent *flock, struct flockent *dst,
 	info = &op->data.offer.p2pinfo;
 	info->tunnel = htobe16(tun->id);
 
-	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC) {
+	if (tun->peerinfo != 0) {
 		info->ip = tun->ip;
 		info->port = tun->port;
 		info->flags = htobe32(tun->peerinfo);
