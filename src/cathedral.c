@@ -2094,10 +2094,36 @@ cathedral_tunnel_prune(struct flockent *flock)
 	struct allow		*allow;
 	struct flockdom		*domain;
 	struct tunnel		*tun, *next;
+	struct liturgy		*liturgy, *liturgy_next;
 
 	PRECOND(flock != NULL);
 
 	LIST_FOREACH(domain, &flock->domains, list) {
+		for (liturgy = LIST_FIRST(&domain->liturgies);
+		    liturgy != NULL; liturgy = liturgy_next) {
+			liturgy_next = LIST_NEXT(liturgy, list);
+
+			LIST_FOREACH(allow, &flock->allows, list) {
+				if (allow->spi == liturgy->id)
+					break;
+			}
+
+			name = cathedral_tunnel_name_id(flock->id | domain->id,
+			    flock->id | domain->id, liturgy->id);
+
+			if (allow == NULL) {
+				cathedral_peerstat_dec(&liturgies,
+				    liturgy->federated);
+				sanctum_log(LOG_INFO,
+				    "liturgy %s removed", name);
+				LIST_REMOVE(liturgy, list);
+				free(liturgy);
+			} else {
+				sanctum_log(LOG_INFO,
+				    "liturgy %s retained", name);
+			}
+		}
+
 		for (tun = LIST_FIRST(&domain->tunnels);
 		    tun != NULL; tun = next) {
 			next = LIST_NEXT(tun, list);
@@ -2108,7 +2134,7 @@ cathedral_tunnel_prune(struct flockent *flock)
 			}
 
 			name = cathedral_tunnel_name_id(tun->src,
-			    tun->dst, tun->id >> 8);
+			    tun->dst, tun->id);
 
 			if (allow == NULL) {
 				sanctum_log(LOG_INFO, "%s deleted", name);
