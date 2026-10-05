@@ -712,6 +712,7 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 	struct sanctum_key		cipher;
 
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(secret != NULL);
 	PRECOND(pkt != NULL);
 	PRECOND(sin != NULL);
@@ -769,6 +770,7 @@ cathedral_offer_validate(struct flockent *flock, struct sanctum_offer *op,
 	char				*secret, path[1024];
 
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(op != NULL);
 
 	if (catacomb) {
@@ -883,6 +885,7 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 
 	PRECOND(pkt != NULL);
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(pkt->length >= sizeof(*op));
 
 	op = sanctum_packet_head(pkt);
@@ -1176,6 +1179,7 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 
 	PRECOND(pkt != NULL);
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(pkt->length >= sizeof(*op));
 	PRECOND(catacomb != NULL);
 
@@ -1246,7 +1250,9 @@ cathedral_offer_repack(struct flockent *flock, struct flockent *dst,
 	struct sanctum_liturgy_offer	liturgy;
 
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(dst != NULL);
+	PRECOND(dst->domain != NULL);
 	PRECOND(update != NULL);
 
 	if (update->length < sizeof(*op))
@@ -1985,7 +1991,9 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	struct shroud		*shroud;
 
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(dst != NULL);
+	PRECOND(dst->domain != NULL);
 	PRECOND(info != NULL);
 	PRECOND(nat == 0 || nat == 1);
 
@@ -2067,8 +2075,9 @@ cathedral_tunnel_lookup(struct flockent *flock, struct flockent *target,
 	u_int64_t		src, dst;
 
 	PRECOND(flock != NULL);
-	PRECOND(target != NULL);
 	PRECOND(flock->domain != NULL);
+	PRECOND(target != NULL);
+	PRECOND(target->domain != NULL);
 
 	src = flock->id | flock->domain->id;
 	dst = target->id | target->domain->id;
@@ -2146,11 +2155,12 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 			else
 				mode = "discovery";
 
+			name = cathedral_tunnel_name_id(flock->id | dom->id,
+			    flock->id | dom->id, liturgy->id);
+
 			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
 				cathedral_peerstat_dec(&liturgies,
 				    liturgy->federated);
-				name = cathedral_tunnel_name(flock,
-				    flock, liturgy->id);
 				sanctum_log(LOG_INFO,
 				    "%s liturgy %s (%02x) removed",
 				    mode, name, liturgy->group);
@@ -2178,6 +2188,8 @@ cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
 
 		if (LIST_EMPTY(&dom->tunnels) &&
 		    LIST_EMPTY(&dom->liturgies)) {
+			if (flock->domain == dom)
+				flock->domain = NULL;
 			LIST_REMOVE(dom, list);
 			free(dom);
 		}
@@ -2277,6 +2289,7 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	int				visible, wanted;
 
 	PRECOND(flock != NULL);
+	PRECOND(flock->domain != NULL);
 	PRECOND(src != NULL);
 	PRECOND(sin != NULL);
 
@@ -2555,6 +2568,8 @@ cathedral_flock_domains_clear(struct flockent *flock)
 	}
 
 	LIST_INIT(&flock->domains);
+
+	flock->domain = NULL;
 }
 
 /*
