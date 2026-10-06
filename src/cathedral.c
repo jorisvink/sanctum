@@ -131,6 +131,7 @@ struct offer_entry {
 struct offer_link {
 	struct {
 		u_int64_t		age;
+		u_int64_t		sent;
 		int			hops;
 		int			seen;
 	} db[SANCTUM_CATHEDRALS_MAX];
@@ -350,6 +351,9 @@ static void	cathedral_offer_remember(struct sanctum_offer *,
 static void	cathedral_offer_link_reset(struct flockent *);
 static void	cathedral_offer_link_seen(struct offer_link *,
 		    struct federated *, u_int64_t);
+static void	cathedral_offer_link_notify(struct flockent *,
+		    struct flockent *, struct sanctum_packet *,
+		    struct federated *, struct offer_link *, u_int64_t);
 static int	cathedral_offer_repack(struct flockent *, struct flockent *,
 		    struct sanctum_packet *, struct federated *);
 static void	cathedral_offer_federate(struct federated *,
@@ -743,6 +747,31 @@ cathedral_offer_link_seen(struct offer_link *db, struct federated *cathedral,
 }
 
 /*
+ * Notify a link by simply sending the offer back to it, which ends up
+ * recording us in their link db, even if this was a duplicate.
+ */
+static void
+cathedral_offer_link_notify(struct flockent *flock, struct flockent *dst,
+    struct sanctum_packet *pkt, struct federated *catacomb,
+    struct offer_link *db, u_int64_t now)
+{
+	PRECOND(flock != NULL);
+	PRECOND(dst != NULL);
+	PRECOND(pkt != NULL);
+	PRECOND(catacomb != NULL);
+	PRECOND(db != NULL);
+
+	if (catacomb->hops == 1)
+		return;
+
+	if ((now - db->db[catacomb->index].sent) >= CATHEDRAL_OFFER_TIMEOUT) {
+		if (cathedral_offer_repack(flock, dst, pkt, catacomb) != -1)
+			cathedral_offer_federate(catacomb, pkt);
+		db->db[catacomb->index].sent = now;
+	}
+}
+
+/*
  * Attempt to verify and decrypt an incoming offer message from a client
  * or from another cathedral federating with us.
  */
@@ -774,6 +803,8 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
 
 	if (cathedral_offer_recall(op, nat) == -1) {
 		dupe = 1;
+		sanctum_log(LOG_NOTICE, "duplicate from %s",
+		    sanctum_inet_string(&pkt->addr));
 	} else {
 		dupe = 0;
 		cathedral_offer_remember(op, nat, now);
@@ -1011,7 +1042,16 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		if (catacomb == NULL)
 			return;
 
+		info->tunnel = htobe16(info->tunnel);
+		info->instance = htobe64(info->instance);
+		info->ambry_generation = htobe32(info->ambry_generation);
+
 		cathedral_offer_link_seen(&tun->offerdb, catacomb, now);
+
+		if (tun->federated == 1) {
+			cathedral_offer_link_notify(flock, dst, pkt,
+			    catacomb, &tun->offerdb, now);
+		}
 
 		if (tun->federated == 1 && catacomb->hops < tun->distance) {
 			sanctum_log(LOG_INFO, "%s distance updated (%d -> %d)",
@@ -1234,10 +1274,16 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	memcpy(entry->peers, lit->peers, sizeof(lit->peers));
 
 	if (dupe) {
-		if (catacomb != NULL) {
-			cathedral_offer_link_seen(&entry->offerdb,
-			    catacomb, now);
+		if (catacomb == NULL)
+			return;
+
+		cathedral_offer_link_seen(&entry->offerdb, catacomb, now);
+
+		if (entry->federated == 1) {
+			cathedral_offer_link_notify(flock, flock, pkt,
+			    catacomb, &entry->offerdb, now);
 		}
+
 		return;
 	}
 
@@ -1345,7 +1391,16 @@ cathedral_offer_p2pinfo(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (dupe) {
+		info->flags = htobe32(info->flags);
+		info->tunnel = htobe16(info->tunnel);
+
 		cathedral_offer_link_seen(&tun->p2pdb, catacomb, now);
+
+		if (tun->federated == 1) {
+			cathedral_offer_link_notify(flock, dst, pkt,
+			    catacomb, &tun->p2pdb, now);
+		}
+
 		return;
 	}
 
@@ -1466,8 +1521,6 @@ cathedral_offer_federate_all(struct sanctum_packet *orig)
 
 	LIST_FOREACH(srv, &federations, list)
 		cathedral_offer_federate(srv, orig);
-
-	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 }
 
 /*
@@ -1491,18 +1544,18 @@ cathedral_offer_federate_unseen(struct sanctum_packet *pkt,
 		VERIFY(srv->index < SANCTUM_CATHEDRALS_MAX);
 
 		if (db->db[srv->index].seen == 0) {
+			db->db[srv->index].sent = now;
 			cathedral_offer_federate(srv, pkt);
 			continue;
 		}
 
 		if ((now - db->db[srv->index].age) >= CATHEDRAL_OFFER_TIMEOUT) {
-			cathedral_offer_federate(srv, pkt);
 			db->db[srv->index].seen = 0;
+			db->db[srv->index].sent = now;
+			cathedral_offer_federate(srv, pkt);
 			continue;
 		}
 	}
-
-	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 }
 
 /*
@@ -1544,6 +1597,8 @@ cathedral_offer_federate(struct federated *dst, struct sanctum_packet *orig)
 		sanctum_log(LOG_NOTICE,
 		    "no CATACOMB update possible, failed to queue");
 		sanctum_packet_release(pkt);
+	} else {
+		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 	}
 }
 
