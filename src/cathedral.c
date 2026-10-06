@@ -1008,8 +1008,21 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		return;
 
 	if (dupe) {
-		if (catacomb != NULL)
-			cathedral_offer_link_seen(&tun->offerdb, catacomb, now);
+		if (catacomb == NULL)
+			return;
+
+		cathedral_offer_link_seen(&tun->offerdb, catacomb, now);
+
+		if (tun->federated == 1 && catacomb->hops < tun->distance) {
+			sanctum_log(LOG_INFO, "%s distance updated (%d -> %d)",
+			    cathedral_tunnel_name(flock, dst, tid),
+			    tun->distance, catacomb->hops);
+
+			tun->distance = catacomb->hops;
+			tun->port = pkt->addr.sin_port;
+			tun->ip = pkt->addr.sin_addr.s_addr;
+		}
+
 		return;
 	}
 
