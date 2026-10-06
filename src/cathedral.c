@@ -803,8 +803,6 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
 
 	if (cathedral_offer_recall(op, nat) == -1) {
 		dupe = 1;
-		sanctum_log(LOG_NOTICE, "duplicate from %s",
-		    sanctum_inet_string(&pkt->addr));
 	} else {
 		dupe = 0;
 		cathedral_offer_remember(op, nat, now);
