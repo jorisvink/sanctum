@@ -1497,7 +1497,7 @@ cathedral_offer_federate_unseen(struct sanctum_packet *pkt,
 
 		if ((now - db->db[srv->index].age) >= CATHEDRAL_OFFER_TIMEOUT) {
 			cathedral_offer_federate(srv, pkt);
-			db->db[srv->index].age = now;
+			db->db[srv->index].seen = 0;
 			continue;
 		}
 	}
