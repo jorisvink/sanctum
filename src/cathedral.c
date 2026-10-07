@@ -792,7 +792,6 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
 		return;
 
 	op = sanctum_packet_head(pkt);
-
 	id = be32toh(op->hdr.spi);
 	fid = be64toh(op->hdr.flock_src);
 
