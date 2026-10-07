@@ -45,7 +45,7 @@
 #define CATHEDRAL_OFFER_TIMEOUT		(30 * 1000)
 
 /* The number of seconds before we prune an entry from offerdb list */
-#define CATHEDRAL_OFFERDB_MAX_AGE	(10 * 1000)
+#define CATHEDRAL_OFFERDB_MAX_AGE	(20 * 1000)
 
 /* The number of hops a federated offer can make before we reject it. */
 #define CATHEDRAL_FEDERATION_HOPS_MAX	8
@@ -665,7 +665,8 @@ cathedral_offer_prune(u_int64_t now)
 		}
 	}
 
-	sanctum_log(LOG_INFO, "removed %u offers from cache", removed);
+	if (removed > 0)
+		sanctum_log(LOG_INFO, "pruned %u cached offers", removed);
 }
 
 /*
