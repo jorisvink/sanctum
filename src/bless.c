@@ -154,7 +154,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 	struct sanctum_proto_tail	*tail;
 	struct sanctum_cipher		cipher;
 	struct sanctum_proto_hdr	*hdr, aad;
-	size_t				overhead, offset;
+	size_t				overhead, offset, length;
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH], *data;
 
 	PRECOND(pkt != NULL);
@@ -257,13 +257,14 @@ bless_packet_process(struct sanctum_packet *pkt)
 	}
 
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+	length = pkt->length;
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
 	} else {
 		tx_wakeup = 1;
 		sanctum_atomic_add(&sanctum->tx.pkt, 1);
-		sanctum_atomic_add(&sanctum->tx.bytes, pkt->length);
+		sanctum_atomic_add(&sanctum->tx.bytes, length);
 		sanctum_atomic_write(&sanctum->tx.last, sanctum->uptime);
 	}
 }

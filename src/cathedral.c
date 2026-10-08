@@ -1929,6 +1929,7 @@ cathedral_forward_offer(struct sanctum_packet *pkt,
 {
 	u_int16_t			tid;
 	struct sanctum_offer_hdr	*hdr;
+	size_t				length;
 	struct tunnel			*tunnel;
 	struct flockent			*src, *dst;
 	u_int8_t			src_id, dst_id;
@@ -1971,12 +1972,13 @@ cathedral_forward_offer(struct sanctum_packet *pkt,
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
 	cathedral_shroud_packet(pkt, tunnel->shroud);
+	length = pkt->length;
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
 	offers.pkts_out++;
-	offers.bytes += pkt->length;
+	offers.bytes += length;
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
@@ -2001,6 +2003,7 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	u_int16_t			tid;
 	struct sanctum_proto_hdr	*hdr;
 	struct federated		*srv;
+	size_t				length;
 	struct tunnel			*tunnel;
 	struct flockent			*dst, *src;
 	u_int64_t			flock_src, flock_dst;
@@ -2044,12 +2047,13 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	}
 
 	cathedral_shroud_packet(pkt, tunnel->shroud);
+	length = pkt->length;
 
 	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
 	traffic.pkts_out++;
-	traffic.bytes += pkt->length;
+	traffic.bytes += length;
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
