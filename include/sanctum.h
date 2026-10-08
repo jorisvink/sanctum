@@ -514,7 +514,7 @@ struct sanctum_shroud_hdr {
  * The maximum mask length for a shroud operation, which covers
  * the entire packet.
  */
-#define SANCTUM_SHROUD_MASK_MAX		SANCTUM_PACKET_DATA_LEN
+#define SANCTUM_SHROUD_MASK_MAX		SANCTUM_PACKET_MAX_LEN
 
 /* The length of the shroud trailer, after the data. */
 #define SANCTUM_SHROUD_TRAIL_LEN	1
