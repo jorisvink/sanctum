@@ -1654,6 +1654,7 @@ cathedral_shroud_alloc(u_int64_t flock_src, u_int64_t flock_dst, u_int32_t id)
 	shroud->identity = id;
 	shroud->flock_src = flock_src;
 	shroud->flock_dst = flock_dst;
+	sanctum_random_bytes(shroud->cached, sizeof(shroud->cached));
 
 	cathedral_secret_path(path, sizeof(path), flock_src, id);
 
