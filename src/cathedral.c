@@ -875,6 +875,11 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 	op = sanctum_packet_head(pkt);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
+	if (sanctum_offer_sign(op) == -1) {
+		sanctum_log(LOG_NOTICE, "discarding offer, failed to sign");
+		return (-1);
+	}
+
 	if (sanctum_offer_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    flock->id | flock->domain->id, 0) == -1) {
@@ -1485,17 +1490,7 @@ cathedral_offer_repack(struct flockent *flock, struct flockent *dst,
 	op->hdr.flock_src = htobe64(flock->id | flock->domain->id);
 	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
-
-	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CATHEDRAL_CATACOMB_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
-	    flock->id | flock->domain->id, 0) == -1) {
-		nyfe_zeroize(&cipher, sizeof(cipher));
-		return (-1);
-	}
-
 	fdr = &op->data.offer.federated;
-
 	type = op->data.type;
 	op->data.type = SANCTUM_OFFER_TYPE_FEDERATED;
 
@@ -1523,11 +1518,18 @@ cathedral_offer_repack(struct flockent *flock, struct flockent *dst,
 	}
 
 	fdr->type = type;
-
 	if (catacomb != NULL)
 		fdr->hops = catacomb->hops;
 	else
 		fdr->hops = 0;
+
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CATHEDRAL_CATACOMB_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
+	    flock->id | flock->domain->id, 0) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return (-1);
+	}
 
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
@@ -2298,7 +2300,7 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	}
 
 	if ((tun = cathedral_tunnel_lookup(flock, dst, info->tunnel)) != NULL) {
-		tun->limit = (bw / 8) * 1024 * 1024;
+		tun->limit = (bw * 1024 * 1024) /  8;
 		tun->drain_per_ms = tun->limit / 1000;
 		return (tun);
 	}
