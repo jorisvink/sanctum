@@ -1044,8 +1044,9 @@ sanctum_offer_install(struct sanctum_key *state, struct sanctum_offer *op)
 void
 sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 {
-	int					fd, i;
 	struct sanctum_remembrance_offer	*list;
+	char					path[1024];
+	int					fd, i, len;
 
 	PRECOND(op != NULL);
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
@@ -1056,11 +1057,22 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 		return;
 	}
 
-	if ((fd = open(sanctum->cathedral_remembrance,
-	    O_CREAT | O_TRUNC | O_WRONLY, 0400)) == -1) {
-		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
-		    sanctum->cathedral_remembrance, errno_s);
-		return;
+	fd = -1;
+
+	len = snprintf(path, sizeof(path), "%s.new",
+	    sanctum->cathedral_remembrance);
+	if (len < 0 || (size_t)len >= sizeof(path))
+		fatal("failed to create tmp remembrance path");
+
+	if (unlink(path) == -1 && errno != ENOENT) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to remove tmp file %s (%s)", path, errno_s);
+	} else {
+		if ((fd = open(path,
+		    O_CREAT | O_TRUNC | O_WRONLY, 0400)) == -1) {
+			sanctum_log(LOG_NOTICE,
+			    "failed to open '%s': %s", path, errno_s);
+		}
 	}
 
 	sanctum->cathedral_idx = 0;
@@ -1075,12 +1087,25 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 		sanctum->cathedrals[i].sin_addr.s_addr = list->ips[i];
 	}
 
-	nyfe_file_write(fd, list->ips, sizeof(list->ips));
-	nyfe_file_write(fd, list->ports, sizeof(list->ports));
+	if (fd != -1) {
+		nyfe_file_write(fd, list->ips, sizeof(list->ips));
+		nyfe_file_write(fd, list->ports, sizeof(list->ports));
 
-	if (close(fd) == -1) {
-		sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
-		    sanctum->cathedral_remembrance, errno_s);
+		if (close(fd) == -1) {
+			sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
+			    path, errno_s);
+			(void)unlink(path);
+		} else {
+			if (rename(path,
+			    sanctum->cathedral_remembrance) == -1) {
+				sanctum_log(LOG_NOTICE,
+				    "failed to rename remembrance file: %s",
+				    errno_s);
+				(void)unlink(path);
+			}
+		}
+	} else {
+		sanctum_log(LOG_NOTICE, "remembrance not saved");
 	}
 }
 
