@@ -53,8 +53,6 @@ sanctum_packet_get(void)
 	if ((pkt = sanctum_pool_get(pktpool)) == NULL)
 		return (NULL);
 
-	nyfe_mem_zero(pkt, sizeof(*pkt));
-
 	return (pkt);
 }
 
@@ -67,6 +65,7 @@ sanctum_packet_release(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
 
+	nyfe_mem_zero(pkt, sizeof(*pkt));
 	sanctum_pool_put(pktpool, pkt);
 }
 
