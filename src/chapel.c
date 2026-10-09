@@ -548,7 +548,7 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_recall(&offer_cache, op, 0) == -1) {
-		sanctum_log(LOG_INFO, "dropping duplicate cathedral offer");
+		sanctum_log(LOG_NOTICE, "dropping duplicate cathedral offer");
 		return;
 	}
 
@@ -1119,7 +1119,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	if (sanctum_offer_recall(&offer_cache, op, 0) == -1) {
-		sanctum_log(LOG_INFO, "dropping duplicate exchange offer");
+		sanctum_log(LOG_NOTICE, "dropping duplicate exchange offer");
 		return;
 	}
 
