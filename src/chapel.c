@@ -182,8 +182,6 @@ sanctum_chapel(struct sanctum_proc *proc)
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
 
-	LIST_INIT(&offer_cache);
-
 	sanctum_random_init();
 	sanctum_random_bytes(&local_id, sizeof(local_id));
 
@@ -198,6 +196,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 	last_rtime = 0;
 	last_prune = 0;
 	delay_check = 0;
+	LIST_INIT(&offer_cache);
 
 	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
 
@@ -483,6 +482,7 @@ chapel_cathedral_send_info(u_int64_t magic)
 		return;
 	}
 
+	sanctum_offer_record(&offer_cache, op, 0);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
