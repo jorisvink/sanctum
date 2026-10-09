@@ -299,6 +299,9 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	data = sanctum_packet_data(pkt);
 	mtu = sanctum_atomic_read(&sanctum->mtu_size);
 
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		mtu += sizeof(struct sanctum_ether) + 4;
+
 	return (read(fd, data, mtu));
 }
 

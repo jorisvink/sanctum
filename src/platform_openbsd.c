@@ -142,6 +142,10 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 
 	iov[cnt].iov_base = data;
 	iov[cnt].iov_len = sanctum_atomic_read(&sanctum->mtu_size);
+
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		iov[cnt].iov_len += sizeof(struct sanctum_ether) + 4;
+
 	cnt++;
 
 	/*
