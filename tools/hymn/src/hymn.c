@@ -260,6 +260,7 @@ static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
 
 static void	hymn_config_parse_liturgy_group(struct config *, char *);
 static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
+static void	hymn_config_parse_liturgy_discover(struct config *, char *);
 
 static int	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
@@ -344,6 +345,7 @@ static const struct {
 	{ "cathedral_commixtion",	hymn_config_parse_cathedral_mixing },
 	{ "liturgy_group",		hymn_config_parse_liturgy_group },
 	{ "liturgy_prefix",		hymn_config_parse_liturgy_prefix },
+	{ "liturgy_discoverable",	hymn_config_parse_liturgy_discover },
 	{ NULL,				NULL },
 };
 
@@ -3105,6 +3107,17 @@ hymn_config_parse_liturgy_prefix(struct config *cfg, char *prefix)
 
 	if ((cfg->prefix = strdup(prefix)) == NULL)
 		fatal("strdup");
+}
+
+static void
+hymn_config_parse_liturgy_discover(struct config *cfg, char *opt)
+{
+	if (!strcmp(opt, "yes"))
+		cfg->liturgy_hidden = 0;
+	else if (!strcmp(opt, "no"))
+		cfg->liturgy_hidden = 1;
+	else
+		fatal("unknown liturgy_discoverable option '%s'", opt);
 }
 
 static void
