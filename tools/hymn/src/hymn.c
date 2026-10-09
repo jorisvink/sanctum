@@ -51,6 +51,7 @@
 
 #define HYMN_HOSTS_PATH		"/etc/hosts"
 #define HYMN_HOSTS_TMP_PATH	"/etc/hosts.sanctum"
+#define HYMN_HOSTS_LOCK		"/var/run/hymn/hosts.lock"
 
 #define HYMN_BASE_PATH		"/etc/hymn"
 #define HYMN_RUN_PATH		"/var/run/hymn"
@@ -3365,7 +3366,7 @@ static void
 hymn_hosts_load(struct hosts *hosts)
 {
 	FILE		*fp;
-	int		fd, orig;
+	int		orig, fd;
 	struct host	*host, *next;
 	char		*line, buf[1024];
 
@@ -3374,13 +3375,16 @@ hymn_hosts_load(struct hosts *hosts)
 	TAILQ_INIT(&hosts->ours);
 	TAILQ_INIT(&hosts->current);
 
-	if ((fp = fopen(HYMN_HOSTS_PATH, "r")) == NULL)
-		fatal("failed to open %s: %s", HYMN_HOSTS_PATH, errno_s);
-
-	fd = fileno(fp);
+	if ((fd = open(HYMN_HOSTS_LOCK, O_CREAT | O_RDWR, 0600)) == -1)
+		fatal("failed to open %s: %s", HYMN_HOSTS_LOCK, errno_s);
 
 	if (flock(fd, LOCK_EX) == -1)
 		fatal("failed to grab hosts lock: %s", errno_s);
+
+	if ((fp = fopen(HYMN_HOSTS_PATH, "r")) == NULL)
+		fatal("failed to open %s: %s", HYMN_HOSTS_PATH, errno_s);
+
+	host = NULL;
 
 	while ((line = hymn_config_read(fp, buf, sizeof(buf), orig)) != NULL) {
 		if (orig == 1 && !strcmp(line, HYMN_HOST_SEP)) {
@@ -3408,7 +3412,11 @@ hymn_hosts_load(struct hosts *hosts)
 			break;
 	}
 
-	host = TAILQ_NEXT(host, list);
+	if (host == NULL)
+		host = TAILQ_FIRST(&hosts->current);
+	else
+		host = TAILQ_NEXT(host, list);
+
 	while (host != NULL) {
 		next = TAILQ_NEXT(host, list);
 		TAILQ_REMOVE(&hosts->current, host, list);
@@ -3418,9 +3426,10 @@ hymn_hosts_load(struct hosts *hosts)
 	}
 
 	/*
-	 * We do not close the hosts file on purpose, we want the flock
+	 * We do not close the hosts lock file on purpose, we want the flock
 	 * to stick around until we exit. This is by design.
 	 */
+	(void)fclose(fp);
 }
 
 static void
