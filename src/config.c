@@ -1183,6 +1183,9 @@ config_mtu_check(void)
 		overhead += SANCTUM_SHROUD_TRAIL_LEN;
 	}
 
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		overhead += sizeof(struct sanctum_ether) + 4;
+
 	VERIFY(SANCTUM_MTU_SIZE_MAX > overhead);
 
 	if (sanctum->tun_mtu == 0) {

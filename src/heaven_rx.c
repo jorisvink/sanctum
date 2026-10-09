@@ -368,6 +368,9 @@ heaven_rx_grace_mtu(void)
 			overhead += SANCTUM_SHROUD_TRAIL_LEN;
 		}
 
+		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+			overhead += sizeof(struct sanctum_ether) + 4;
+
 		if (mtu_step < MTU_DISCOVERY_FIRST_PROBES) {
 			if (mtu_step == 0) {
 				mtu_step++;
@@ -458,6 +461,9 @@ heaven_rx_grace_mtu_probe(u_int16_t mtu)
 	pkt->length = mtu;
 	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
+
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		pkt->length += sizeof(struct sanctum_ether) + 4;
 
 	if (sanctum_ring_queue(io->bless, pkt) == -1)
 		sanctum_packet_release(pkt);
