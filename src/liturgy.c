@@ -38,10 +38,13 @@ static void	liturgy_offer_send(void);
 static void	liturgy_offer_recv(struct sanctum_packet *, u_int64_t);
 
 /* The local queues. */
-static struct sanctum_proc_io	*io = NULL;
+static struct sanctum_proc_io		*io = NULL;
 
 /* Our own id for tunnel mapping. */
-static u_int16_t		local_id;
+static u_int16_t			local_id;
+
+/* Our local offer cache for offers from our peer. */
+static struct sanctum_offer_cache	offer_cache;
 
 /*
  * Liturgy - Automatic peer discovery via cathedrals.
@@ -74,6 +77,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 	next_liturgy = 0;
 	local_id = sanctum->tun_spi & 0xff;
 
+	LIST_INIT(&offer_cache);
 	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
 
 	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
@@ -98,6 +102,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 		if (now >= next_liturgy) {
 			next_liturgy = now + 5;
 			liturgy_offer_send();
+			sanctum_offer_prune(&offer_cache);
 		}
 
 		sanctum_cathedral_timeout(now);
@@ -154,6 +159,7 @@ liturgy_offer_send(void)
 		return;
 	}
 
+	sanctum_offer_record(&offer_cache, op, 0);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
@@ -220,6 +226,13 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	}
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	if (sanctum_offer_recall(&offer_cache, op, 0) == -1) {
+		sanctum_log(LOG_NOTICE, "dropping duplicate cathedral offer");
+		return;
+	}
+
+	sanctum_offer_record(&offer_cache, op, 0);
 
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi != sanctum->cathedral_id)
