@@ -636,6 +636,7 @@ hymn_add(int argc, char *argv[])
 	const char		*flock;
 	char			secret[PATH_MAX];
 	char			confpath[PATH_MAX];
+	u_int64_t 		flock_src, flock_dst;
 
 	if (argc < 5)
 		usage_add();
@@ -749,8 +750,6 @@ hymn_add(int argc, char *argv[])
 		if (config.peer_cathedral == 0)
 			fatal("a flock is only relevant for a cathedral");
 
-		u_int64_t flock_src, flock_dst;
-
 		flock_dst = 0;
 		flock_src = 0;
 
@@ -764,6 +763,9 @@ hymn_add(int argc, char *argv[])
 
 		config.cathedral_flock = flock_src;
 		config.cathedral_flock_dst = flock_dst;
+	} else {
+		if (config.peer_cathedral == 1)
+			fatal("a cathedral tunnel requires a flock");
 	}
 
 	if (which & HYMN_KEK) {
