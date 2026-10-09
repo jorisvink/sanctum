@@ -254,6 +254,7 @@ static void	hymn_config_parse_cathedral_cosk(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
 static void	hymn_config_parse_cathedral_mixing(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
+static void	hymn_config_parse_cathedral_remember(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
 
@@ -337,6 +338,7 @@ static const struct {
 	{ "cathedral_flock",		hymn_config_parse_cathedral_flock },
 	{ "cathedral_cosk",		hymn_config_parse_cathedral_cosk },
 	{ "cathedral_secret",		hymn_config_parse_cathedral_secret },
+	{ "cathedral_remembrance",	hymn_config_parse_cathedral_remember },
 	{ "cathedral_nat_port",		hymn_config_parse_cathedral_nat_port },
 	{ "cathedral_flock_dst",	hymn_config_parse_cathedral_flock_dst },
 	{ "cathedral_commixtion",	hymn_config_parse_cathedral_mixing },
@@ -3053,6 +3055,12 @@ hymn_config_parse_cathedral_secret(struct config *cfg, char *secret)
 
 	if ((cfg->identity_path = strdup(secret)) == NULL)
 		fatal("strdup");
+}
+
+static void
+hymn_config_parse_cathedral_remember(struct config *cfg, char *path)
+{
+	cfg->remembrance = 1;
 }
 
 static void
