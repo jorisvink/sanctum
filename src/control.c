@@ -97,9 +97,9 @@ control_handle_request(int fd)
 
 	PRECOND(fd >= 0);
 
-	socklen = sizeof(peer);
-
 	for (;;) {
+		socklen = sizeof(peer);
+
 		if ((ret = recvfrom(fd, &ctl, sizeof(ctl), 0,
 		    (struct sockaddr *)&peer, &socklen)) == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
