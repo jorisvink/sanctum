@@ -368,8 +368,8 @@ struct sanctum_offer {
 	u_int8_t			tag[SANCTUM_TAG_LENGTH];
 } __attribute__((packed));
 
-/* The number of seconds before we prune an entry from offerdb list */
-#define SANCTUM_OFFER_CACHE_MAX_AGE	(20 * 1000)
+/* The number of ms before we prune an entry from offerdb list */
+#define SANCTUM_OFFER_CACHE_MAX_AGE	(((SANCTUM_OFFER_VALID * 2) + 5) * 1000)
 
 /*
  * Data structures to keep track of received offers on a tunnel
