@@ -164,6 +164,7 @@ main(int argc, char *argv[])
 	if (sanctum_last_signal() == SIGCHLD) {
 		if (sanctum_proc_reap()) {
 			sanctum_proc_shutdown();
+			sanctum_pidfile_unlink();
 			return (0);
 		}
 	}
