@@ -419,6 +419,7 @@ openbsd_configure_bridge(const char *dev)
 	PRECOND(dev != NULL);
 	PRECOND(sanctum->bridge != NULL);
 
+	memset(&ifr, 0, sizeof(ifr));
 	memset(&ifbr, 0, sizeof(ifbr));
 
 	if (strlcpy(ifr.ifr_name, sanctum->bridge,
@@ -443,6 +444,9 @@ openbsd_configure_bridge(const char *dev)
 		if (errno != EEXIST)
 			fatal("ioctl(SIOCBRDGADD): %s", errno_s);
 	}
+
+	if (ioctl(fd, SIOCGIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCGIFFLAGS): %s", errno_s);
 
 	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)
