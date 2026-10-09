@@ -3250,7 +3250,8 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 		    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
 			if (errno == EINTR)
 				continue;
-			if (errno == EACCES)
+			if (errno == EACCES || errno == ENOENT ||
+			    errno == ECONNREFUSED)
 				return (-1);
 			fatal("%s: %s", path, errno_s);
 		}
