@@ -240,6 +240,7 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 			}
 			fatal("sendto: %s", errno_s);
 		}
+
 		break;
 	}
 

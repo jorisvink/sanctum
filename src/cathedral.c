@@ -44,9 +44,6 @@
 /* The number of seconds before consider a link stale for offer federation. */
 #define CATHEDRAL_OFFER_TIMEOUT		(30 * 1000)
 
-/* The number of seconds before we prune an entry from offerdb list */
-#define CATHEDRAL_OFFERDB_MAX_AGE	(20 * 1000)
-
 /* The number of hops a federated offer can make before we reject it. */
 #define CATHEDRAL_FEDERATION_HOPS_MAX	8
 
@@ -123,17 +120,8 @@ struct federated {
 };
 
 /*
- * Data structures to keep track of received offers on a tunnel
- * based on the unique signature each client offer has and from
- * where they came (cathedrals or clients).
+ * Keep track of which cathedrals sent us some offer.
  */
-struct offer_entry {
-	int				nat;
-	u_int64_t			age;
-	u_int8_t			sig[SANCTUM_ED25519_SIGN_LENGTH];
-	LIST_ENTRY(offer_entry)		list;
-};
-
 struct offer_link {
 	struct {
 		u_int64_t		age;
@@ -316,7 +304,6 @@ struct xflock {
 	LIST_ENTRY(xflock)	list;
 };
 
-static u_int64_t	cathedral_ms(void);
 static void		cathedral_status_log(void);
 static void		cathedral_status_reset(void);
 static struct flockent	*cathedral_flock_lookup(u_int64_t);
@@ -365,11 +352,6 @@ static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
 static void	cathedral_pubkey_path(char *, size_t, u_int64_t, u_int32_t);
-
-static void	cathedral_offer_prune(u_int64_t);
-static int	cathedral_offer_recall(struct sanctum_offer *, int);
-static void	cathedral_offer_remember(struct sanctum_offer *,
-		    int, u_int64_t);
 
 static void	cathedral_offer_link_reset(struct flockent *);
 static void	cathedral_offer_link_seen(struct offer_link *,
@@ -457,10 +439,10 @@ static LIST_HEAD(, shroud_reject)	shroud_rejects;
 
 /*
  * List of recently received offers. We currently do a global lookup
- * on this per offer, if this becomes a bottleneck we can slightly
- * alter how we do these lookups to save time.
+ * on this per offer received, if this becomes a bottleneck we can
+ * update how the caching works internally.
  */
-static LIST_HEAD(, offer_entry)		offerdb;
+static struct sanctum_offer_cache	offer_cache;
 
 /* The last modified time of the settings file. */
 static time_t				settings_last_mtime = -1;
@@ -522,8 +504,8 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	LIST_INIT(&flocks);
 	LIST_INIT(&xflocks);
 	LIST_INIT(&shrouds);
-	LIST_INIT(&offerdb);
 	LIST_INIT(&federations);
+	LIST_INIT(&offer_cache);
 	LIST_INIT(&shroud_rejects);
 
 	sanctum_platform_sandbox(proc);
@@ -554,7 +536,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
-		now = cathedral_ms();
+		now = sanctum_ms();
 
 		if (now >= next_settings) {
 			next_settings = now + CATHEDRAL_SETTINGS_RELOAD_NEXT;
@@ -578,8 +560,8 @@ sanctum_cathedral(struct sanctum_proc *proc)
 		if (now >= next_status) {
 			next_status = now + CATHEDRAL_STATUS_NEXT;
 			cathedral_status_log();
-			cathedral_offer_prune(now);
 			cathedral_shroud_miss_prune();
+			sanctum_offer_prune(&offer_cache);
 		}
 
 		while ((pkt = sanctum_ring_dequeue(io->chapel))) {
@@ -670,68 +652,6 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 				sanctum_packet_release(pkt);
 		}
 	}
-}
-
-/*
- * Prune old offers from our global offer list.
- */
-static void
-cathedral_offer_prune(u_int64_t now)
-{
-	u_int32_t		removed;
-	struct offer_entry	*entry, *next;
-
-	removed = 0;
-
-	for (entry = LIST_FIRST(&offerdb); entry != NULL; entry = next) {
-		next = LIST_NEXT(entry, list);
-
-		if ((now - entry->age) >= CATHEDRAL_OFFERDB_MAX_AGE) {
-			removed++;
-			LIST_REMOVE(entry, list);
-			free(entry);
-		}
-	}
-
-	if (removed > 0)
-		sanctum_log(LOG_INFO, "pruned %u cached offers", removed);
-}
-
-/*
- * Recall if the given offer has been seen before.
- */
-static int
-cathedral_offer_recall(struct sanctum_offer *op, int nat)
-{
-	struct offer_entry	*entry;
-
-	PRECOND(op != NULL);
-
-	LIST_FOREACH(entry, &offerdb, list) {
-		if (entry->nat == nat &&
-		    !memcmp(op->extra.sig, entry->sig, sizeof(entry->sig)))
-			return (-1);
-	}
-
-	return (0);
-}
-
-/*
- * Remember an offer that we just received for up to 10 seconds.
- */
-static void
-cathedral_offer_remember(struct sanctum_offer *op, int nat, u_int64_t now)
-{
-	struct offer_entry	*entry;
-
-	if ((entry = calloc(1, sizeof(*entry))) == NULL)
-		fatal("calloc: failed to allocate offer entry");
-
-	entry->nat = nat;
-	entry->age = now;
-	memcpy(entry->sig, op->extra.sig, sizeof(op->extra.sig));
-
-	LIST_INSERT_HEAD(&offerdb, entry, list);
 }
 
 /*
@@ -829,11 +749,11 @@ cathedral_offer_handle(struct sanctum_packet *pkt, u_int64_t now,
 	if (cathedral_offer_validate(flock, op, id, catacomb) == -1)
 		return;
 
-	if (cathedral_offer_recall(op, nat) == -1) {
+	if (sanctum_offer_recall(&offer_cache, op, nat) == -1) {
 		dupe = 1;
 	} else {
 		dupe = 0;
-		cathedral_offer_remember(op, nat, now);
+		sanctum_offer_record(&offer_cache, op, nat);
 	}
 
 	switch (op->data.type) {
@@ -874,11 +794,6 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 
 	op = sanctum_packet_head(pkt);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
-
-	if (sanctum_offer_sign(op) == -1) {
-		sanctum_log(LOG_NOTICE, "discarding offer, failed to sign");
-		return (-1);
-	}
 
 	if (sanctum_offer_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
@@ -1490,7 +1405,17 @@ cathedral_offer_repack(struct flockent *flock, struct flockent *dst,
 	op->hdr.flock_src = htobe64(flock->id | flock->domain->id);
 	sanctum_random_bytes(op->hdr.seed, sizeof(op->hdr.seed));
 
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
+	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CATHEDRAL_CATACOMB_LABEL,
+	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
+	    flock->id | flock->domain->id, 0) == -1) {
+		nyfe_zeroize(&cipher, sizeof(cipher));
+		return (-1);
+	}
+
 	fdr = &op->data.offer.federated;
+
 	type = op->data.type;
 	op->data.type = SANCTUM_OFFER_TYPE_FEDERATED;
 
@@ -1518,18 +1443,11 @@ cathedral_offer_repack(struct flockent *flock, struct flockent *dst,
 	}
 
 	fdr->type = type;
+
 	if (catacomb != NULL)
 		fdr->hops = catacomb->hops;
 	else
 		fdr->hops = 0;
-
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
-	if (sanctum_offer_kdf(sanctum->secret, SANCTUM_CATHEDRAL_CATACOMB_LABEL,
-	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
-	    flock->id | flock->domain->id, 0) == -1) {
-		nyfe_zeroize(&cipher, sizeof(cipher));
-		return (-1);
-	}
 
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
@@ -1566,7 +1484,7 @@ cathedral_offer_federate_unseen(struct sanctum_packet *pkt,
 	PRECOND(pkt != NULL);
 	PRECOND(db != NULL);
 
-	now = cathedral_ms();
+	now = sanctum_ms();
 
 	LIST_FOREACH(srv, &federations, list) {
 		VERIFY(srv->index < SANCTUM_CATHEDRALS_MAX);
@@ -3571,19 +3489,6 @@ cathedral_settings_ambry(const char *file, struct flockent *flock)
 	}
 
 	cathedral_ambry_cache(file, &flock->ambries);
-}
-
-/*
- * Returns the current monotonic timestamp as milliseconds.
- */
-static u_int64_t
-cathedral_ms(void)
-{
-	struct timespec		ts;
-
-	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
-
-	return ((u_int64_t)(ts.tv_sec * 1000 + (ts.tv_nsec / 1000000)));
 }
 
 /*

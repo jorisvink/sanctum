@@ -1110,6 +1110,74 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 }
 
 /*
+ * Prune an offer cache of entries that should be expired.
+ */
+void
+sanctum_offer_prune(struct sanctum_offer_cache *cache)
+{
+	u_int64_t			now;
+	struct sanctum_offer_entry	*entry, *next;
+
+	PRECOND(cache != NULL);
+
+	now = sanctum_ms();
+
+	for (entry = LIST_FIRST(cache); entry != NULL; entry = next) {
+		next = LIST_NEXT(entry, list);
+
+		if ((now - entry->age) >= SANCTUM_OFFER_CACHE_MAX_AGE) {
+			LIST_REMOVE(entry, list);
+			free(entry);
+		}
+	}
+}
+
+/*
+ * Recall if the given offer has been seen before from a cached list.
+ */
+int
+sanctum_offer_recall(struct sanctum_offer_cache *cache,
+    struct sanctum_offer *op, int nat)
+{
+	struct sanctum_offer_entry	*entry;
+
+	PRECOND(cache != NULL);
+	PRECOND(op != NULL);
+	PRECOND(nat == 0 || nat == 1);
+
+	LIST_FOREACH(entry, cache, list) {
+		if (entry->nat == nat &&
+		    !memcmp(op->extra.sig, entry->sig, sizeof(entry->sig)))
+			return (-1);
+	}
+
+	return (0);
+}
+
+/*
+ * Record an offer that we just received in the given offer cache.
+ */
+void
+sanctum_offer_record(struct sanctum_offer_cache *cache,
+    struct sanctum_offer *op, int nat)
+{
+	struct sanctum_offer_entry	*entry;
+
+	PRECOND(cache != NULL);
+	PRECOND(op != NULL);
+	PRECOND(nat == 0 || nat == 1);
+
+	if ((entry = calloc(1, sizeof(*entry))) == NULL)
+		fatal("calloc: failed to allocate offer entry");
+
+	entry->nat = nat;
+	entry->age = sanctum_ms();
+	memcpy(entry->sig, op->extra.sig, sizeof(op->extra.sig));
+
+	LIST_INSERT_HEAD(cache, entry, list);
+}
+
+/*
  * Calculate a shroud key using the given secret and other information.
  */
 void
@@ -1373,6 +1441,19 @@ sanctum_ambry_expired(u_int16_t days)
 		return (-1);
 
 	return (0);
+}
+
+/*
+ * Returns the current monotonic timestamp as milliseconds.
+ */
+u_int64_t
+sanctum_ms(void)
+{
+	struct timespec		ts;
+
+	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	return ((u_int64_t)(ts.tv_sec * 1000 + (ts.tv_nsec / 1000000)));
 }
 
 /*

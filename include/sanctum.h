@@ -368,6 +368,22 @@ struct sanctum_offer {
 	u_int8_t			tag[SANCTUM_TAG_LENGTH];
 } __attribute__((packed));
 
+/* The number of seconds before we prune an entry from offerdb list */
+#define SANCTUM_OFFER_CACHE_MAX_AGE	(20 * 1000)
+
+/*
+ * Data structures to keep track of received offers on a tunnel
+ * based on the unique signature each client offer has.
+ */
+struct sanctum_offer_entry {
+	int				nat;
+	u_int64_t			age;
+	u_int8_t			sig[SANCTUM_ED25519_SIGN_LENGTH];
+	LIST_ENTRY(sanctum_offer_entry)	list;
+};
+
+LIST_HEAD(sanctum_offer_cache, sanctum_offer_entry);
+
 /*
  * Data structure passed between liturgy<>bishop to convey the
  * starting or stopping of sanctum instances when in liturgy mode.
@@ -889,6 +905,12 @@ void	sanctum_offer_install(struct sanctum_key *, struct sanctum_offer *);
 int	sanctum_offer_decrypt(struct sanctum_key *,
 	    struct sanctum_offer *, int);
 
+int	sanctum_offer_recall(struct sanctum_offer_cache *,
+	    struct sanctum_offer *, int);
+void	sanctum_offer_record(struct sanctum_offer_cache *,
+	    struct sanctum_offer *, int);
+void	sanctum_offer_prune(struct sanctum_offer_cache *);
+
 void	sanctum_shroud_key(const char *, int, u_int8_t *, size_t);
 void	sanctum_shroud_identity_base(u_int64_t, u_int64_t, u_int32_t,
 	    u_int8_t *, size_t);
@@ -900,6 +922,7 @@ void	sanctum_install_key_material(struct sanctum_key *, u_int32_t,
 int	sanctum_base_key(const char *, u_int64_t, u_int64_t,
 	    u_int32_t, void *, size_t);
 
+u_int64_t		sanctum_ms(void);
 const char		*sanctum_inet_string(struct sockaddr_in *);
 struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
 			    u_int32_t, u_int64_t, u_int8_t);
