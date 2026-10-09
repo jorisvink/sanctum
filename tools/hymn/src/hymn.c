@@ -1330,7 +1330,7 @@ hymn_up(int argc, char *argv[])
 	case 1:
 	case 2:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
-			usage_simple("status");
+			usage_simple("[up | down]");
 
 		if (argc == 1 && dst != 0 &&
 		    hymn_tunnel_auto_configured(flock, src, &name) != -1) {
