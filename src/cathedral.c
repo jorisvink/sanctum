@@ -2267,7 +2267,7 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 	tun->shroud = shroud;
 	tun->id = info->tunnel;
 	tun->instance = info->instance;
-	tun->limit = (bw / 8) * 1024 * 1024;
+	tun->limit = (bw * 1024 * 1024) /  8;
 	tun->drain_per_ms = tun->limit / 1000;
 	tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
 
