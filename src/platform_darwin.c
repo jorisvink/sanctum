@@ -172,9 +172,6 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	iov[1].iov_base = data;
 	iov[1].iov_len = sanctum_atomic_read(&sanctum->mtu_size);
 
-	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
-		iov[1].iov_len += sizeof(struct sanctum_ether) + 4;
-
 	/*
 	 * We have to adjust the total data read with the protocol
 	 * information we read, otherwise the size makes no sense
