@@ -605,7 +605,7 @@ config_parse_tunnel(char *opt)
 		sanctum->tun_mtu = 0;
 		sanctum->mtu_size = 0;
 	} else {
-		if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+		if (mtu > SANCTUM_MTU_SIZE_MAX || mtu < 576)
 			fatal("mtu (%u) invalid", mtu);
 
 		sanctum->tun_mtu = mtu;
@@ -834,7 +834,7 @@ config_parse_cathedral_mtu(char *opt)
 	if (sscanf(opt, "%hu", &mtu) != 1)
 		fatal("invalid cathedral_mtu specified (%s)", opt);
 
-	if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+	if (mtu > SANCTUM_MTU_SIZE_MAX || mtu < 576)
 		fatal("cathedral_mtu (%u) invalid", mtu);
 
 	sanctum->tun_mtu = mtu;
@@ -1183,7 +1183,7 @@ config_mtu_check(void)
 		overhead += SANCTUM_SHROUD_TRAIL_LEN;
 	}
 
-	VERIFY(SANCTUM_PACKET_DATA_LEN > overhead);
+	VERIFY(SANCTUM_MTU_SIZE_MAX > overhead);
 
 	if (sanctum->tun_mtu == 0) {
 		if (sanctum->mode != SANCTUM_MODE_TUNNEL)
