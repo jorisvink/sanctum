@@ -518,9 +518,10 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	next_settings = 0;
 	next_commixtion = 0;
 
-	sanctum_base_key(sanctum->secret, CATHEDRAL_CATACOMB_MAGIC,
+	if (sanctum_base_key(sanctum->secret, CATHEDRAL_CATACOMB_MAGIC,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
-	    shroud_cathedral, sizeof(shroud_cathedral));
+	    shroud_cathedral, sizeof(shroud_cathedral)) == -1)
+		fatal("failed to calculate cathedral shroud key");
 
 	while (running) {
 		if ((sig = sanctum_last_signal()) != -1) {
@@ -1562,32 +1563,37 @@ cathedral_shroud_alloc(u_int64_t flock_src, u_int64_t flock_dst, u_int32_t id)
 		if (shroud->flock_src == flock_src &&
 		    shroud->flock_dst == flock_dst &&
 		    shroud->identity == id) {
-			shroud->retain = 1;
-			return;
+			break;
 		}
 	}
 
-	if ((shroud = calloc(1, sizeof(*shroud))) == NULL)
-		fatal("calloc: failed to allocate shroud entry");
+	if (shroud == NULL) {
+		if ((shroud = calloc(1, sizeof(*shroud))) == NULL)
+			fatal("calloc: failed to allocate shroud entry");
+
+		shroud->identity = id;
+		shroud->flock_src = flock_src;
+		shroud->flock_dst = flock_dst;
+
+		sanctum_random_bytes(shroud->key, sizeof(shroud->key));
+		sanctum_random_bytes(shroud->cached, sizeof(shroud->cached));
+
+		LIST_INSERT_HEAD(&shrouds, shroud, list);
+	}
 
 	shroud->retain = 1;
-	shroud->identity = id;
-	shroud->flock_src = flock_src;
-	shroud->flock_dst = flock_dst;
-	sanctum_random_bytes(shroud->cached, sizeof(shroud->cached));
-
-	cathedral_secret_path(path, sizeof(path), flock_src, id);
-
-	sanctum_base_key(path, flock_src, flock_dst,
-	    SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
-	    shroud->key, sizeof(shroud->key));
-
 	sanctum_shroud_identity_base(flock_src, flock_dst,
 	    id, shroud->base, sizeof(shroud->base));
 
-	LIST_INSERT_HEAD(&shrouds, shroud, list);
+	cathedral_secret_path(path, sizeof(path), flock_src, id);
 
-	sanctum_log(LOG_INFO, "shroud %" PRIx64 "-%08x created", flock_src, id);
+	if (sanctum_base_key(path, flock_src, flock_dst,
+	    SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
+	    shroud->key, sizeof(shroud->key)) == -1) {
+		sanctum_log(LOG_NOTICE,
+		    "shroud for %" PRIx64 "-%08x was not updated",
+		    flock_src, id);
+	}
 }
 
 /*
@@ -3227,13 +3233,8 @@ cathedral_settings_reload(void)
 	for (shroud = LIST_FIRST(&shrouds); shroud != NULL; shroud = snext) {
 		snext = LIST_NEXT(shroud, list);
 
-		if (shroud->retain) {
-			sanctum_log(LOG_INFO,
-			    "shroud %" PRIx64 "-%" PRIx64 "-%08x retained",
-			    shroud->flock_src, shroud->flock_dst,
-			    shroud->identity);
+		if (shroud->retain)
 			continue;
-		}
 
 		sanctum_log(LOG_INFO,
 		    "shroud %" PRIx64 "-%" PRIx64 "-%08x is gone",
