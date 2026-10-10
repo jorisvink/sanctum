@@ -997,6 +997,8 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	}
 
 	if (info->instance != tun->instance && nat == 0) {
+		tun->p2p_ip = 0;
+		tun->p2p_port = 0;
 		tun->peerinfo = 0;
 		tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
 		sanctum_log(LOG_INFO, "%s peer restart detected",
@@ -1054,6 +1056,10 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		if (tun->federated == 0) {
 			cathedral_peerstat_dec(&peers, 0);
 			cathedral_peerstat_inc(&peers, 1);
+			tun->p2p_ip = 0;
+			tun->p2p_port = 0;
+			tun->peerinfo = 0;
+			tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
 		}
 
 		tun->federated = 1;
@@ -2366,10 +2372,6 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 	tunnel = htobe16(info->tunnel);
 
 	if ((peer = cathedral_tunnel_lookup(dst, flock, tunnel)) == NULL)
-		return;
-
-	if (peer->federated &&
-	    !(sanctum->flags & SANCTUM_FLAG_CATHEDRAL_P2P_SYNC))
 		return;
 
 	if ((pkt = sanctum_packet_get()) == NULL)
