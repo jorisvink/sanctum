@@ -1189,8 +1189,6 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
 		return;
 	}
-
-	peer_id = exchange->id;
 }
 
 /*
@@ -1264,7 +1262,9 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 	offer->remote.salt = xchg->salt;
 	offer->flags |= OFFER_INCLUDE_KEM_CT;
 
+	peer_id = xchg->id;
 	last_spi = xchg->spi;
+
 	sanctum_mlkem1024_encapsulate(&offer->remote.kem);
 	chapel_session_key_derive(op, SANCTUM_KEY_DIRECTION_RX);
 }
@@ -1298,6 +1298,9 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 	}
 
 	if (offer->remote.spi == 0)
+		return;
+
+	if (op->hdr.spi != offer->remote.spi)
 		return;
 
 	if (!(offer->flags & OFFER_INCLUDE_KEM_PK))
