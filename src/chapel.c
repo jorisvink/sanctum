@@ -81,6 +81,7 @@ struct exchange_offer {
 	u_int64_t			pulse;
 	u_int32_t			flags;
 
+	u_int32_t			pk_spi;
 	u_int8_t			pk_frag;
 	u_int8_t			ct_frag;
 };
@@ -295,8 +296,10 @@ sanctum_chapel(struct sanctum_proc *proc)
 			if (spi == offer->local.spi &&
 			    sanctum_atomic_read(&sanctum->rx.pkt) > 0) {
 				offer->flags &= ~OFFER_INCLUDE_KEM_CT;
-				if (offer->flags == 0)
-					chapel_offer_clear();
+			}
+
+			if (offer->flags == 0) {
+				chapel_offer_clear();
 			} else {
 				if (now >= offer->pulse)
 					chapel_offer_send(now);
@@ -1233,6 +1236,15 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 		    xchg->fragment);
 		return;
 	}
+
+	if (offer->pk_frag != 0 && xchg->spi != offer->pk_spi) {
+		offer->pk_frag = 0;
+		sanctum_log(LOG_NOTICE,
+		    "new exchange from peer, resetting pk fragments");
+	}
+
+	if (offer->pk_frag == 0)
+		offer->pk_spi = xchg->spi;
 
 	if (offer->pk_frag & (1 << xchg->fragment)) {
 		sanctum_log(LOG_INFO, "pk fragment %u already seen",
