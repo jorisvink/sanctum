@@ -154,6 +154,7 @@ main(int argc, char *argv[])
 	sigdelset(&sigset, SIGINT);
 	sigdelset(&sigset, SIGHUP);
 	sigdelset(&sigset, SIGCHLD);
+	sigdelset(&sigset, SIGSEGV);
 	sigdelset(&sigset, SIGTERM);
 	sigdelset(&sigset, SIGQUIT);
 	(void)sigprocmask(SIG_BLOCK, &sigset, NULL);
