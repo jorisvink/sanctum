@@ -321,8 +321,7 @@ static struct ambry	*cathedral_ambry_find(struct ambries *,
 static struct shroud	*cathedral_shroud_find(struct sanctum_packet *);
 static void		cathedral_shroud_packet(struct sanctum_packet *,
 			    struct shroud *);
-static int		cathedral_unshroud_packet(struct sanctum_packet *,
-			    u_int64_t);
+static int		cathedral_unshroud_packet(struct sanctum_packet *);
 static void		cathedral_shroud_alloc(u_int64_t, u_int64_t, u_int32_t);
 
 static void		cathedral_commixtion_init(struct tunnel *,
@@ -583,7 +582,7 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 	PRECOND(pkt != NULL);
 
 	if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
-		if (cathedral_unshroud_packet(pkt, now) == -1) {
+		if (cathedral_unshroud_packet(pkt) == -1) {
 			sanctum_packet_release(pkt);
 			return;
 		}
@@ -1681,7 +1680,7 @@ cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
  * message from another cathedral.
  */
 static int
-cathedral_unshroud_packet(struct sanctum_packet *pkt, u_int64_t now)
+cathedral_unshroud_packet(struct sanctum_packet *pkt)
 {
 	struct federated		*srv;
 	struct shroud			*shroud;
