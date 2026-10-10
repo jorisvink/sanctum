@@ -2408,7 +2408,8 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 		info->peer_ip = peer->p2p_ip;
 		info->peer_port = peer->p2p_port;
 	} else {
-		if (p2p_cooldown == 0 && tun->p2p_ip == peer->p2p_ip)
+		if (p2p_cooldown == 0 && tun->p2p_ip != 0 &&
+		    tun->p2p_ip == peer->p2p_ip)
 			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
 
 		info->peer_port = sanctum->cathedral.sin_port;
