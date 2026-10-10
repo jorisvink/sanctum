@@ -47,12 +47,6 @@
 /* The number of hops a federated offer can make before we reject it. */
 #define CATHEDRAL_FEDERATION_HOPS_MAX	8
 
-/* The number of shroud identity lookup misses before we block a sender. */
-#define CATHEDRAL_SHROUD_MISS_THROTTLE	5
-
-/* The number of seconds in between logs for rejected packets. */
-#define CATHEDRAL_SHROUD_MISS_LOG_TIME	(5 * 1000)
-
 /* The interval at which we recalculate commixtions. */
 #define CATHEDRAL_COMMIXTION_NEXT	(300 * 1000)
 
@@ -324,11 +318,6 @@ static void		cathedral_ambry_cache(const char *, struct ambries *);
 static struct ambry	*cathedral_ambry_find(struct ambries *,
 			    u_int64_t, u_int16_t);
 
-static void 		cathedral_shroud_miss_prune(void);
-static void 		cathedral_shroud_miss(struct sanctum_packet *);
-static int		cathedral_shroud_reject(struct sanctum_packet *,
-			    u_int64_t);
-
 static struct shroud	*cathedral_shroud_find(struct sanctum_packet *);
 static void		cathedral_shroud_packet(struct sanctum_packet *,
 			    struct shroud *);
@@ -434,9 +423,6 @@ static LIST_HEAD(, xflock)		xflocks;
 /* List of shrouds. */
 static LIST_HEAD(, shroud)		shrouds;
 
-/* List of rejected shroud packets. */
-static LIST_HEAD(, shroud_reject)	shroud_rejects;
-
 /*
  * List of recently received offers. We currently do a global lookup
  * on this per offer received, if this becomes a bottleneck we can
@@ -506,7 +492,6 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	LIST_INIT(&shrouds);
 	LIST_INIT(&federations);
 	LIST_INIT(&offer_cache);
-	LIST_INIT(&shroud_rejects);
 
 	sanctum_platform_sandbox(proc);
 	cathedral_settings_reload();
@@ -561,7 +546,6 @@ sanctum_cathedral(struct sanctum_proc *proc)
 		if (now >= next_status) {
 			next_status = now + CATHEDRAL_STATUS_NEXT;
 			cathedral_status_log();
-			cathedral_shroud_miss_prune();
 			sanctum_offer_prune(&offer_cache);
 		}
 
@@ -1633,10 +1617,8 @@ cathedral_shroud_find(struct sanctum_packet *pkt)
 			break;
 	}
 
-	if (shroud == NULL) {
-		cathedral_shroud_miss(pkt);
+	if (shroud == NULL)
 		return (NULL);
-	}
 
 	nyfe_memcpy(shroud->cached, identity, SANCTUM_SHROUD_ID_LENGTH);
 	nyfe_memcpy(shroud->seed, hdr->seed_id, SANCTUM_SHROUD_SEED_LENGTH);
@@ -1693,86 +1675,6 @@ cathedral_shroud_packet(struct sanctum_packet *pkt, struct shroud *shroud)
 }
 
 /*
- * Prune entries from our shroud_rejects list by reducing the misses
- * by exactly one. If we fall to 0 we remove the entry.
- */
-static void
-cathedral_shroud_miss_prune(void)
-{
-	struct shroud_reject		*entry, *next;
-
-	for (entry = LIST_FIRST(&shroud_rejects); entry != NULL; entry = next) {
-		next = LIST_NEXT(entry, list);
-
-		entry->misses--;
-		if (entry->misses == 0) {
-			LIST_REMOVE(entry, list);
-			free(entry);
-		}
-	}
-}
-
-/*
- * Record that we have a miss on a shroud identity. Eventually this will
- * trigger a reject if we reach a threshold of misses.
- */
-static void
-cathedral_shroud_miss(struct sanctum_packet *pkt)
-{
-	struct shroud_reject		*entry;
-
-	LIST_FOREACH(entry, &shroud_rejects, list) {
-		if (entry->ip == pkt->addr.sin_addr.s_addr &&
-		    entry->port == pkt->addr.sin_port)
-			break;
-	}
-
-	if (entry == NULL) {
-		if ((entry = calloc(1, sizeof(*entry))) == NULL)
-			fatal("calloc: failed to allocate shroud miss entry");
-
-		entry->port = pkt->addr.sin_port;
-		entry->ip = pkt->addr.sin_addr.s_addr;
-		LIST_INSERT_HEAD(&shroud_rejects, entry, list);
-	} else {
-		LIST_REMOVE(entry, list);
-		LIST_INSERT_HEAD(&shroud_rejects, entry, list);
-	}
-
-	entry->misses++;
-}
-
-/*
- * Check if we need to reject a shrouded packet by the ip:port of
- * the sender in the packet. If this is the case they've sent us
- * too many unknown shroud identities.
- */
-static int
-cathedral_shroud_reject(struct sanctum_packet *pkt, u_int64_t now)
-{
-	struct shroud_reject		*entry;
-
-	LIST_FOREACH(entry, &shroud_rejects, list) {
-		if (entry->ip == pkt->addr.sin_addr.s_addr &&
-		    entry->port == pkt->addr.sin_port) {
-			if (entry->misses >= CATHEDRAL_SHROUD_MISS_THROTTLE) {
-				if ((now - entry->last) >=
-				    CATHEDRAL_SHROUD_MISS_LOG_TIME) {
-					entry->last = now;
-					sanctum_log(LOG_NOTICE,
-					    "rejected shrouded packet from %s",
-					    sanctum_inet_string(&pkt->addr));
-				}
-				return (-1);
-			}
-			break;
-		}
-	}
-
-	return (0);
-}
-
-/*
  * Attempts to unshroud a packet by looking up the correct device based
  * on the id that has been given in the packet. If we do not find a match
  * we simply use our internal cathedral shroud key in case it was a CATACOMB
@@ -1787,11 +1689,6 @@ cathedral_unshroud_packet(struct sanctum_packet *pkt, u_int64_t now)
 	PRECOND(pkt != NULL);
 	VERIFY(sanctum->flags & SANCTUM_FLAG_SHROUD);
 
-	if (cathedral_shroud_reject(pkt, now) == -1) {
-		cathedral_shroud_miss(pkt);
-		return (-1);
-	}
-
 	LIST_FOREACH(srv, &federations, list) {
 		if (srv->ip == pkt->addr.sin_addr.s_addr &&
 		    srv->port == pkt->addr.sin_port) {
@@ -1802,10 +1699,8 @@ cathedral_unshroud_packet(struct sanctum_packet *pkt, u_int64_t now)
 		}
 	}
 
-	if ((shroud = cathedral_shroud_find(pkt)) == NULL) {
-		sanctum_log(LOG_NOTICE, "received unknown shroud identity");
+	if ((shroud = cathedral_shroud_find(pkt)) == NULL)
 		return (-1);
-	}
 
 	shroud_last = shroud;
 
