@@ -609,9 +609,6 @@ cathedral_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
 		}
 
 		if (srv == NULL) {
-			sanctum_log(LOG_INFO,
-			    "CATACOMB update from unknown cathedral %s",
-			    sanctum_inet_string(&pkt->addr));
 			sanctum_packet_release(pkt);
 			return;
 		}
