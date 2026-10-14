@@ -2832,12 +2832,10 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 	struct sanctum_ambry_head	hdr;
 	struct sanctum_ambry_entry	entry;
 	struct ambry			*ambry;
-	int				fd, expected_len, remove;
+	int				fd, expected_len;
 
 	PRECOND(file != NULL);
 	PRECOND(ambries != NULL);
-
-	remove = 0;
 
 	if ((fd = sanctum_file_open(file, &st)) == -1) {
 		sanctum_log(LOG_NOTICE,
@@ -2851,7 +2849,6 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 		expected_len = CATHEDRAL_AMBRY_INTERFLOCK_LEN;
 
 	if (st.st_size != expected_len) {
-		remove = 1;
 		sanctum_log(LOG_NOTICE,
 		    "ambry file '%s' has an abnormal size", file);
 		goto out;
@@ -2861,7 +2858,6 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 		goto out;
 
 	if (nyfe_file_read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
-		remove = 1;
 		sanctum_log(LOG_NOTICE,
 		    "ambry file '%s' failed to read header", file);
 		goto out;
@@ -2876,7 +2872,6 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 	cathedral_ambry_purge(ambries);
 
 	if (sanctum_ambry_expired(hdr.expires) == -1) {
-		remove = 1;
 		sanctum_log(LOG_NOTICE, "ambry file '%s' has expired", file);
 		goto out;
 	}
@@ -2925,13 +2920,6 @@ cathedral_ambry_cache(const char *file, struct ambries *ambries)
 
 out:
 	(void)close(fd);
-
-	if (remove) {
-		if (unlink(file) == -1) {
-			sanctum_log(LOG_NOTICE, "failed to remove '%s': %s",
-			    file, errno_s);
-		}
-	}
 }
 
 /*
