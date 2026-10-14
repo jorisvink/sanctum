@@ -531,7 +531,10 @@ bishop_instance_alive(u_int8_t src, u_int8_t dst)
 	}
 
 	now = sanctum_atomic_read(&sanctum->uptime);
-	last = now - resp.rx.last;
+	if (now > resp.rx.last)
+		last = now - resp.rx.last;
+	else
+		last = 0;
 
 	if (resp.tx.spi != 0 && resp.rx.spi != 0 &&
 	    resp.rx.last > 0 && last < BISHOP_INSTANCE_TIMEOUT) {

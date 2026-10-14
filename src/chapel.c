@@ -357,7 +357,7 @@ chapel_peer_check(u_int64_t now)
 	if ((hb = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
 		return;
 
-	if ((now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * 8)
+	if (now < hb || (now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * 8)
 		return;
 
 	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
@@ -863,13 +863,15 @@ chapel_offer_check(u_int64_t now)
 		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
 		hb = sanctum_atomic_read(&sanctum->heartbeat);
 
-		if ((now - hb) >= SANCTUM_GRACE_HEARTBEAT_INTERVAL * 2) {
+		if (now > hb &&
+		    (now - hb) >= SANCTUM_GRACE_HEARTBEAT_INTERVAL * 2) {
 			offer_now = 1;
 			reason = "grace heartbeat timeout";
 		} else if (pkt >= SANCTUM_SA_PACKET_SOFT) {
 			offer_now = 1;
 			reason = "SA packet limit";
-		} else  if (now - age >= SANCTUM_SA_LIFETIME_SOFT) {
+		} else  if (now > age &&
+		    (now - age) >= SANCTUM_SA_LIFETIME_SOFT) {
 			offer_now = 1;
 			reason = "SA age limit";
 		}
