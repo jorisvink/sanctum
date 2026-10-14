@@ -1164,7 +1164,6 @@ hymn_route(int argc, char *argv[])
 
 	if (!strcmp(argv[0], "add")) {
 		hymn_netlist_add("route", &config.routes, net);
-		hymn_netlist_add("accept", &config.accepts, net);
 	} else if (!strcmp(argv[0], "del")) {
 		hymn_netlist_del("route", &config.routes, net);
 		hymn_netlist_del("accept", &config.accepts, net);
@@ -2639,8 +2638,8 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 {
 	time_t		now;
 	struct tm	*tm;
-	struct addr	*net;
 	const char	*user;
+	struct addr	*net, *rt;
 	int		fd, len, saved_errno;
 	char		tmp[PATH_MAX], tbuf[64];
 
@@ -2814,8 +2813,20 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	LIST_FOREACH(net, &cfg->routes, list)
 		hymn_config_write(fd, "route %s\n", hymn_ip_mask_str(net));
 
-	LIST_FOREACH(net, &cfg->accepts, list)
+	LIST_FOREACH(net, &cfg->routes, list)
 		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(net));
+
+	LIST_FOREACH(net, &cfg->accepts, list) {
+		LIST_FOREACH(rt, &cfg->routes, list) {
+			if (rt->ip == net->ip && rt->mask == net->mask)
+				break;
+		}
+
+		if (rt == NULL) {
+			hymn_config_write(fd,
+			    "accept %s\n", hymn_ip_mask_str(net));
+		}
+	}
 
 	hymn_config_write(fd, "\n");
 
