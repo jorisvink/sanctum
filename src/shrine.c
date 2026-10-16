@@ -38,8 +38,9 @@ static void	shrine_offer_decrypt(struct sanctum_packet *, u_int64_t);
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
 
-/* Last received verified offer its SPI. */
+/* Last received verified offer its SPI and timestamp. */
 static u_int32_t		last_spi = 0;
+static u_int64_t		last_timestamp = 0;
 
 /*
  * Shrine - A keying process that only receives offers from a pilgrim.
@@ -159,7 +160,10 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 
 	op->hdr.spi = be32toh(op->hdr.spi);
-	if (op->hdr.spi == 0 || op->hdr.spi == last_spi)
+	op->data.timestamp = be64toh(op->data.timestamp);
+
+	if (op->hdr.spi == 0 || op->hdr.spi == last_spi ||
+	    op->data.timestamp < last_timestamp)
 		return;
 
 	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
@@ -168,4 +172,5 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
 	last_spi = op->hdr.spi;
+	last_timestamp = op->data.timestamp;
 }
