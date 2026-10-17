@@ -3139,6 +3139,7 @@ cathedral_settings_reload(void)
 		}
 
 		LIST_REMOVE(shroud, list);
+		nyfe_mem_zero(shroud, sizeof(*shroud));
 		free(shroud);
 	}
 
