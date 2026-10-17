@@ -223,6 +223,17 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 }
 
 /*
+ * Configure the purgatory-tx sending socket (if required).
+ */
+void
+sanctum_platform_purgatory_config(int fd)
+{
+	PRECOND(fd >= 0);
+
+	/* no-op on Darwin. */
+}
+
+/*
  * Adds a new route via our tunnel device.
  */
 void

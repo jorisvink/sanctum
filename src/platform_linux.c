@@ -343,6 +343,21 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 }
 
 /*
+ * Configure the purgatory-tx sending socket (if required).
+ */
+void
+sanctum_platform_purgatory_config(int fd)
+{
+	PRECOND(fd >= 0);
+
+	if (sanctum->fwmark != 0) {
+		if (setsockopt(fd, SOL_SOCKET, SO_MARK,
+		    &sanctum->fwmark, sizeof(sanctum->fwmark)) == -1)
+			fatal("failed to set SO_MARK on fd: %s", errno_s);
+	}
+}
+
+/*
  * Apply sandboxing rules according to the current process.
  */
 void

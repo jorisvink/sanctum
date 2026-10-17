@@ -84,6 +84,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 	}
 
 	sanctum_platform_sandbox(proc);
+	sanctum_platform_purgatory_config(io->crypto);
 
 	running = 1;
 	sanctum_proc_started(proc);

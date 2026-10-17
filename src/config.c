@@ -50,6 +50,7 @@ static void	config_parse_local(char *);
 static void	config_parse_route(char *);
 static void	config_parse_descr(char *);
 static void	config_parse_runas(char *);
+static void	config_parse_fwmark(char *);
 static void	config_parse_accept(char *);
 static void	config_parse_bridge(char *);
 static void	config_parse_shroud(char *);
@@ -101,6 +102,7 @@ static const struct {
 	{ "route",			config_parse_route },
 	{ "run",			config_parse_runas },
 	{ "descr",			config_parse_descr },
+	{ "fwmark",			config_parse_fwmark },
 	{ "accept",			config_parse_accept },
 	{ "bridge",			config_parse_bridge },
 	{ "shroud",			config_parse_shroud },
@@ -633,6 +635,32 @@ config_parse_route(char *opt)
 	LIST_INSERT_HEAD(&routes, rt, list);
 }
 
+/*
+ * Parse a fwmark configuration option.
+ * Note: This is a linux specific option.
+ */
+static void
+config_parse_fwmark(char *opt)
+{
+#if defined(__linux__)
+	char			*ep;
+	unsigned long long	mark;
+
+	PRECOND(opt != NULL);
+
+	errno = 0;
+	mark = strtoull(opt, &ep, 16);
+	if (errno != 0 || *ep != '\0')
+		fatal("fwmark '%s' invalid <hex>", opt);
+
+	if (mark > UINT_MAX)
+		fatal("fwmark '%s' too large", opt);
+
+	sanctum->fwmark = mark;
+#else
+	fatal("fwmark is a linux-only option");
+#endif
+}
 /*
  * Parse an accept configuration option.
  */

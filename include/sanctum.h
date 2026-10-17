@@ -660,6 +660,11 @@ struct sanctum_state {
 	/* Sanctum flags. */
 	u_int32_t		flags;
 
+#if defined(__linux__)
+	/* Linux its SO_MARK (configured via fwmark). */
+	u_int32_t		fwmark;
+#endif
+
 	/* Time maintained by overwatch. */
 	volatile u_int64_t	uptime;
 
@@ -931,6 +936,7 @@ struct sanctum_offer	*sanctum_offer_init(struct sanctum_packet *pkt,
 void	sanctum_platform_init(void);
 int	sanctum_platform_tundev_create(void);
 void	sanctum_platform_tundev_mtu(u_int16_t);
+void	sanctum_platform_purgatory_config(int);
 void	sanctum_platform_ip_fragmentation(int, int);
 void	sanctum_platform_sandbox(struct sanctum_proc *);
 ssize_t	sanctum_platform_tundev_read(int, struct sanctum_packet *);
