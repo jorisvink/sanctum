@@ -98,7 +98,7 @@ sanctum_confess(struct sanctum_proc *proc)
 
 		confess_key_management();
 
-		while ((pkt = sanctum_ring_dequeue(io->confess)))
+		while ((pkt = sanctum_packet_dequeue(io->confess)))
 			confess_packet_process(pkt);
 
 		if (tx_wakeup) {
@@ -156,9 +156,9 @@ confess_clear_state(void)
 {
 	sanctum_sa_clear(&state.active);
 	sanctum_sa_clear(&state.pending);
-	sanctum_stat_clear(&sanctum->rx);
-	sanctum_atomic_write(&sanctum->last_pn, 0);
-	sanctum_atomic_write(&sanctum->rx_pending, 0);
+	sanctum_stat_clear(&shared->rx);
+	sanctum_atomic_write(&shared->last_pn, 0);
+	sanctum_atomic_write(&shared->rx_pending, 0);
 
 	nyfe_mem_zero(&state, sizeof(state));
 }
@@ -175,22 +175,22 @@ confess_key_management(void)
 {
 	if (sanctum_key_erase("RX", io->rx,
 	    &state.active, &state.pending) != -1) {
-		sanctum_stat_clear(&sanctum->rx);
-		sanctum_atomic_write(&sanctum->last_pn, 0);
-		sanctum_atomic_write(&sanctum->rx_pending, 0);
+		sanctum_stat_clear(&shared->rx);
+		sanctum_atomic_write(&shared->last_pn, 0);
+		sanctum_atomic_write(&shared->rx_pending, 0);
 		nyfe_mem_zero(&state, sizeof(state));
 	}
 
 	if (state.active.cipher == NULL) {
 		if (sanctum_key_install(io->rx, &state.active) != -1) {
-			sanctum_atomic_write(&sanctum->rx.spi,
+			sanctum_atomic_write(&shared->rx.spi,
 			    state.active.spi);
-			sanctum_atomic_write(&sanctum->rx.age,
+			sanctum_atomic_write(&shared->rx.age,
 			    state.active.age);
 		}
 	} else {
 		if (sanctum_key_install(io->rx, &state.pending) != -1) {
-			sanctum_atomic_write(&sanctum->rx_pending,
+			sanctum_atomic_write(&shared->rx_pending,
 			    state.pending.spi);
 		}
 	}
@@ -240,8 +240,8 @@ confess_packet_process(struct sanctum_packet *pkt)
 		return;
 	}
 
-	sanctum_atomic_write(&sanctum->last_pn, 0);
-	sanctum_atomic_write(&sanctum->rx_pending, 0);
+	sanctum_atomic_write(&shared->last_pn, 0);
+	sanctum_atomic_write(&shared->rx_pending, 0);
 
 	sanctum_cipher_cleanup(state.active.cipher);
 
@@ -320,10 +320,10 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 
 	if (sa->pending) {
 		sa->pending = 0;
-		sanctum_atomic_write(&sanctum->rx.pkt, 1);
-		sanctum_atomic_write(&sanctum->rx.bytes, 0);
-		sanctum_atomic_write(&sanctum->rx.age, sa->age);
-		sanctum_atomic_write(&sanctum->rx.spi, sa->spi);
+		sanctum_atomic_write(&shared->rx.pkt, 1);
+		sanctum_atomic_write(&shared->rx.bytes, 0);
+		sanctum_atomic_write(&shared->rx.age, sa->age);
+		sanctum_atomic_write(&shared->rx.spi, sa->spi);
 		sanctum_log(LOG_NOTICE, "RX SA active (spi=%08x)", sa->spi);
 	}
 
@@ -339,8 +339,8 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (tail->reserved != 0)
 		return (-1);
 
-	now = sanctum_atomic_read(&sanctum->uptime);
-	sanctum_atomic_write(&sanctum->heartbeat, now);
+	now = sanctum_atomic_read(&shared->uptime);
+	sanctum_atomic_write(&shared->heartbeat, now);
 
 	switch (tail->next) {
 	case SANCTUM_PACKET_IP:
@@ -365,7 +365,7 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	pkt->type = tail->next;
 	pkt->target = SANCTUM_PROC_HEAVEN_TX;
 
-	if (sanctum_ring_queue(io->heaven, pkt) == -1)
+	if (sanctum_packet_queue(io->heaven, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		tx_wakeup = 1;
@@ -427,7 +427,7 @@ confess_arwin_update(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
 		}
 
 		sa->seqnr = hdr->pn;
-		sanctum_atomic_write(&sanctum->last_pn, sa->seqnr);
+		sanctum_atomic_write(&shared->last_pn, sa->seqnr);
 		return;
 	}
 

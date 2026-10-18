@@ -112,7 +112,7 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		if (offer != NULL) {
 			if (now >= offer->pulse)
@@ -172,8 +172,8 @@ pilgrim_offer_check(u_int64_t now)
 	offer_now = 0;
 	reason = NULL;
 
-	if (sanctum_atomic_read(&sanctum->tx.spi) != 0) {
-		age = sanctum_atomic_read(&sanctum->tx.age);
+	if (sanctum_atomic_read(&shared->tx.spi) != 0) {
+		age = sanctum_atomic_read(&shared->tx.age);
 		if (now - age >= SHRINE_SA_LIFETIME) {
 			offer_now = 1;
 			reason = "SA age limit";
@@ -181,7 +181,7 @@ pilgrim_offer_check(u_int64_t now)
 	} else {
 		offer_now = 1;
 		reason = "no keys";
-		sanctum_atomic_write(&sanctum->heartbeat, now);
+		sanctum_atomic_write(&shared->heartbeat, now);
 	}
 
 	if (offer_now == 0)
@@ -251,7 +251,7 @@ pilgrim_offer_encrypt(u_int64_t now)
 	pkt->length = sizeof(*op);
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1)
+	if (sanctum_packet_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);

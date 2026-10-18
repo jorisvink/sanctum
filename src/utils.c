@@ -141,31 +141,31 @@ sanctum_peer_update(u_int32_t ip, u_int16_t port)
 	u_int32_t		local;
 	u_int64_t		now, next;
 
-	local = sanctum_atomic_read(&sanctum->local_ip);
+	local = sanctum_atomic_read(&shared->local_ip);
 	if (local == ip)
 		return;
 
 	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
-		now = sanctum_atomic_read(&sanctum->uptime);
-		next = sanctum_atomic_read(&sanctum->peer_update);
+		now = sanctum_atomic_read(&shared->uptime);
+		next = sanctum_atomic_read(&shared->peer_update);
 
-		if (ip == sanctum->cathedral.sin_addr.s_addr) {
+		if (ip == shared->cathedral.sin_addr.s_addr) {
 			if (next != 0 && now < next)
 				return;
-			sanctum_atomic_write(&sanctum->peer_update, 0);
+			sanctum_atomic_write(&shared->peer_update, 0);
 		} else {
-			sanctum_atomic_write(&sanctum->peer_update, now + 10);
+			sanctum_atomic_write(&shared->peer_update, now + 10);
 		}
 	}
 
-	if (ip != sanctum->peer_ip || port != sanctum->peer_port) {
+	if (ip != shared->peer_ip || port != shared->peer_port) {
 		in.s_addr = ip;
 		sanctum_log(LOG_NOTICE, "peer address change (new=%s:%u)",
 		    inet_ntoa(in), ntohs(port));
 
-		sanctum_atomic_write(&sanctum->peer_ip, ip);
-		sanctum_atomic_write(&sanctum->peer_port, port);
-		sanctum_atomic_write(&sanctum->mtu_start, 1);
+		sanctum_atomic_write(&shared->peer_ip, ip);
+		sanctum_atomic_write(&shared->peer_port, port);
+		sanctum_atomic_write(&shared->mtu_start, 1);
 	}
 }
 
@@ -237,7 +237,7 @@ sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 	sa->pending = 1;
 	sa->spi = sanctum_atomic_read(&key->spi);
 	sa->salt = sanctum_atomic_read(&key->salt);
-	sa->age = sanctum_atomic_read(&sanctum->uptime);
+	sa->age = sanctum_atomic_read(&shared->uptime);
 
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
@@ -1352,7 +1352,7 @@ sanctum_cathedral_timeout(u_int64_t now)
 	if (sanctum->cathedral_alive == 0 && sanctum->cathedral_pkts > 0) {
 		sanctum->cathedral_alive = 1;
 		sanctum_log(LOG_INFO, "cathedral %s alive",
-		    sanctum_inet_string(&sanctum->cathedral));
+		    sanctum_inet_string(&shared->cathedral));
 	}
 
 	if ((now - sanctum->cathedral_last) < SANCTUM_CATHEDRAL_TIMEOUT)
@@ -1360,7 +1360,7 @@ sanctum_cathedral_timeout(u_int64_t now)
 
 	sanctum->cathedral_last = now;
 	sanctum_log(LOG_INFO, "cathedral %s is unresponsive",
-	    sanctum_inet_string(&sanctum->cathedral));
+	    sanctum_inet_string(&shared->cathedral));
 
 	if (sanctum->cathedrals[0].sin_addr.s_addr == 0)
 		return;
@@ -1373,11 +1373,11 @@ sanctum_cathedral_timeout(u_int64_t now)
 
 	sanctum->cathedral_pkts = 0;
 	sanctum->cathedral_alive = 0;
-	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
-	sanctum->cathedral = sanctum->cathedrals[sanctum->cathedral_idx];
+	sanctum->cathedral_last = sanctum_atomic_read(&shared->uptime);
+	shared->cathedral = sanctum->cathedrals[sanctum->cathedral_idx];
 
 	sanctum_log(LOG_INFO, "switching to cathedral %s",
-	    sanctum_inet_string(&sanctum->cathedral));
+	    sanctum_inet_string(&shared->cathedral));
 }
 
 /*
@@ -1469,7 +1469,7 @@ utils_offer_rejected(u_int32_t *which)
 
 	*which = *which + 1;
 
-	now = sanctum_atomic_read(&sanctum->uptime);
+	now = sanctum_atomic_read(&shared->uptime);
 	if (now - last_reject_log < OFFER_REJECT_LOG_WINDOW)
 		return;
 

@@ -82,20 +82,20 @@ sanctum_bless(struct sanctum_proc *proc)
 		if (sanctum_ring_pending(io->bless) == 0)
 			sanctum_proc_suspend(-1);
 
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		if (sanctum_key_erase("TX", io->tx, &state, NULL) != -1)
-			sanctum_stat_clear(&sanctum->tx);
+			sanctum_stat_clear(&shared->tx);
 
 		if (sanctum_key_install(io->tx, &state) != -1) {
-			sanctum_atomic_write(&sanctum->holepunch, 1);
-			sanctum_atomic_write(&sanctum->tx.pkt, 0);
-			sanctum_atomic_write(&sanctum->tx.bytes, 0);
-			sanctum_atomic_write(&sanctum->tx.age, now);
-			sanctum_atomic_write(&sanctum->tx.spi, state.spi);
+			sanctum_atomic_write(&shared->holepunch, 1);
+			sanctum_atomic_write(&shared->tx.pkt, 0);
+			sanctum_atomic_write(&shared->tx.bytes, 0);
+			sanctum_atomic_write(&shared->tx.age, now);
+			sanctum_atomic_write(&shared->tx.spi, state.spi);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->bless)))
+		while ((pkt = sanctum_packet_dequeue(io->bless)))
 			bless_packet_process(pkt);
 
 		if (tx_wakeup) {
@@ -161,14 +161,14 @@ bless_packet_process(struct sanctum_packet *pkt)
 	PRECOND(pkt->target == SANCTUM_PROC_BLESS);
 
 	if (sanctum_key_erase("TX", io->tx, &state, NULL) != -1)
-		sanctum_stat_clear(&sanctum->tx);
+		sanctum_stat_clear(&shared->tx);
 
 	if (sanctum_key_install(io->tx, &state) != -1) {
-		sanctum_atomic_write(&sanctum->holepunch, 1);
-		sanctum_atomic_write(&sanctum->tx.pkt, 0);
-		sanctum_atomic_write(&sanctum->tx.bytes, 0);
-		sanctum_atomic_write(&sanctum->tx.age, now);
-		sanctum_atomic_write(&sanctum->tx.spi, state.spi);
+		sanctum_atomic_write(&shared->holepunch, 1);
+		sanctum_atomic_write(&shared->tx.pkt, 0);
+		sanctum_atomic_write(&shared->tx.bytes, 0);
+		sanctum_atomic_write(&shared->tx.age, now);
+		sanctum_atomic_write(&shared->tx.spi, state.spi);
 	}
 
 	if (state.cipher == NULL) {
@@ -184,7 +184,7 @@ bless_packet_process(struct sanctum_packet *pkt)
 		sanctum_cipher_cleanup(state.cipher);
 		state.cipher = NULL;
 		sanctum_packet_release(pkt);
-		sanctum_stat_clear(&sanctum->tx);
+		sanctum_stat_clear(&shared->tx);
 		return;
 	}
 
@@ -259,12 +259,12 @@ bless_packet_process(struct sanctum_packet *pkt)
 	pkt->target = SANCTUM_PROC_PURGATORY_TX;
 	length = pkt->length;
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1) {
 		sanctum_packet_release(pkt);
 	} else {
 		tx_wakeup = 1;
-		sanctum_atomic_add(&sanctum->tx.pkt, 1);
-		sanctum_atomic_add(&sanctum->tx.bytes, length);
-		sanctum_atomic_write(&sanctum->tx.last, sanctum->uptime);
+		sanctum_atomic_add(&shared->tx.pkt, 1);
+		sanctum_atomic_add(&shared->tx.bytes, length);
+		sanctum_atomic_write(&shared->tx.last, shared->uptime);
 	}
 }

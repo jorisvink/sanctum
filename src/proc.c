@@ -74,7 +74,7 @@ sanctum_proc_init(char **argv)
 	proc_title_max = 0;
 
 	for (i = 0; i < SANCTUM_PROC_MAX; i++)
-		sanctum->wstate[i] = 1;
+		shared->wstate[i] = 1;
 
 	for (i = 0; environ[i] != NULL; i++) {
 		if ((p = strdup(environ[i])) == NULL)
@@ -282,7 +282,7 @@ sanctum_proc_create(u_int16_t type,
 		sanctum_linux_trace_start(proc);
 #endif
 
-		if (sanctum_atomic_read(&sanctum->started[type]))
+		if (sanctum_atomic_read(&shared->started[type]))
 			break;
 	}
 
@@ -334,7 +334,7 @@ sanctum_proc_started(struct sanctum_proc *proc)
 {
 	PRECOND(proc != NULL);
 
-	sanctum_atomic_write(&sanctum->started[proc->type], 1);
+	sanctum_atomic_write(&shared->started[proc->type], 1);
 }
 
 /*
@@ -454,7 +454,7 @@ sanctum_proc_suspend(int64_t sleep)
 {
 	PRECOND(process != NULL);
 
-	sanctum_platform_suspend(&sanctum->wstate[process->type], sleep);
+	sanctum_platform_suspend(&shared->wstate[process->type], sleep);
 }
 
 /*
@@ -477,5 +477,5 @@ sanctum_proc_wakeup(u_int16_t type)
 	    type == SANCTUM_PROC_LITURGY ||
 	    type == SANCTUM_PROC_BISHOP);
 
-	sanctum_platform_wakeup(&sanctum->wstate[type]);
+	sanctum_platform_wakeup(&shared->wstate[type]);
 }

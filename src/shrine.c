@@ -95,9 +95,9 @@ sanctum_shrine(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(-1);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
+		while ((pkt = sanctum_packet_dequeue(io->chapel)) != NULL) {
 			shrine_offer_decrypt(pkt, now);
 			sanctum_packet_release(pkt);
 		}

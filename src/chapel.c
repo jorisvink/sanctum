@@ -199,7 +199,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 	delay_check = 0;
 	LIST_INIT(&offer_cache);
 
-	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
+	sanctum->cathedral_last = sanctum_atomic_read(&shared->uptime);
 
 	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
 		if (sanctum->cathedral_remembrance != NULL)
@@ -224,7 +224,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			sanctum_proc_suspend(1);
 
 		(void)clock_gettime(CLOCK_REALTIME, &ts);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		/*
 		 * If the clock jumped a lot, generate a new local_id
@@ -255,7 +255,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			chapel_cathedral_notify(now);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
+		while ((pkt = sanctum_packet_dequeue(io->chapel)) != NULL) {
 			chapel_packet_handle(pkt, now);
 			sanctum_packet_release(pkt);
 		}
@@ -292,9 +292,9 @@ sanctum_chapel(struct sanctum_proc *proc)
 			 * If we saw traffic on our current offer we
 			 * clear it as we know the other side got it.
 			 */
-			spi = sanctum_atomic_read(&sanctum->rx.spi);
+			spi = sanctum_atomic_read(&shared->rx.spi);
 			if (spi == offer->local.spi &&
-			    sanctum_atomic_read(&sanctum->rx.pkt) > 0) {
+			    sanctum_atomic_read(&shared->rx.pkt) > 0) {
 				offer->flags &= ~OFFER_INCLUDE_KEM_CT;
 			}
 
@@ -351,10 +351,10 @@ chapel_peer_check(u_int64_t now)
 {
 	u_int64_t	hb;
 
-	if (sanctum_atomic_read(&sanctum->rx.spi) == 0)
+	if (sanctum_atomic_read(&shared->rx.spi) == 0)
 		return;
 
-	if ((hb = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
+	if ((hb = sanctum_atomic_read(&shared->heartbeat)) == 0)
 		return;
 
 	if (now < hb || (now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * 8)
@@ -364,15 +364,15 @@ chapel_peer_check(u_int64_t now)
 
 	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO) {
 		offer_next = 0;
-		sanctum_atomic_write(&sanctum->peer_ip, 0);
-		sanctum_atomic_write(&sanctum->peer_port, 0);
+		sanctum_atomic_write(&shared->peer_ip, 0);
+		sanctum_atomic_write(&shared->peer_port, 0);
 	} else {
 		if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
 		    !(sanctum->flags & SANCTUM_FLAG_PEER_CONFIGURED)) {
-			sanctum_atomic_write(&sanctum->peer_ip,
-			    sanctum->cathedral.sin_addr.s_addr);
-			sanctum_atomic_write(&sanctum->peer_port,
-			    sanctum->cathedral.sin_port);
+			sanctum_atomic_write(&shared->peer_ip,
+			    shared->cathedral.sin_addr.s_addr);
+			sanctum_atomic_write(&shared->peer_port,
+			    shared->cathedral.sin_port);
 		}
 
 		offer_next = now;
@@ -387,7 +387,7 @@ chapel_peer_check(u_int64_t now)
 	if (offer != NULL)
 		chapel_offer_clear();
 
-	sanctum_atomic_write(&sanctum->heartbeat, 0);
+	sanctum_atomic_write(&shared->heartbeat, 0);
 }
 
 /*
@@ -470,8 +470,8 @@ chapel_cathedral_send_info(u_int64_t magic)
 	info->instance = htobe64(local_id);
 	info->tunnel = htobe16(sanctum->tun_spi);
 	info->ambry_generation = htobe32(ambry_generation);
-	info->rx_active = sanctum_atomic_read(&sanctum->rx.spi);
-	info->rx_pending = sanctum_atomic_read(&sanctum->rx_pending);
+	info->rx_active = sanctum_atomic_read(&shared->rx.spi);
+	info->rx_pending = sanctum_atomic_read(&shared->rx_pending);
 
 	if (sanctum->cathedral_remembrance != NULL)
 		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
@@ -505,14 +505,14 @@ chapel_cathedral_send_info(u_int64_t magic)
 	sanctum_offer_tfc(pkt);
 
 	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
+	pkt->addr.sin_addr.s_addr = shared->cathedral.sin_addr.s_addr;
 
 	if (magic == SANCTUM_CATHEDRAL_MAGIC)
-		pkt->addr.sin_port = sanctum->cathedral.sin_port;
+		pkt->addr.sin_port = shared->cathedral.sin_port;
 	else
 		pkt->addr.sin_port = htobe16(sanctum->cathedral_nat_port);
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1)
+	if (sanctum_packet_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -604,11 +604,11 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO);
 
 	info = &op->data.offer.info;
-	old_ip = sanctum_atomic_read(&sanctum->peer_ip);
-	old_port = sanctum_atomic_read(&sanctum->peer_port);
+	old_ip = sanctum_atomic_read(&shared->peer_ip);
+	old_port = sanctum_atomic_read(&shared->peer_port);
 
-	sanctum_atomic_write(&sanctum->local_ip, info->local_ip);
-	sanctum_atomic_write(&sanctum->local_port, info->local_port);
+	sanctum_atomic_write(&shared->local_ip, info->local_ip);
+	sanctum_atomic_write(&shared->local_port, info->local_port);
 
 	/* We do not update the peer if it was configured by user. */
 	if (!(sanctum->flags & SANCTUM_FLAG_PEER_CONFIGURED) &&
@@ -617,8 +617,8 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 
 		if (info->peer_ip != info->local_ip &&
 		    (old_ip != info->peer_ip || old_port != info->peer_port) &&
-		    info->peer_ip != sanctum->cathedral.sin_addr.s_addr)
-			sanctum_atomic_write(&sanctum->holepunch, 1);
+		    info->peer_ip != shared->cathedral.sin_addr.s_addr)
+			sanctum_atomic_write(&shared->holepunch, 1);
 	}
 }
 
@@ -837,7 +837,7 @@ chapel_offer_check(u_int64_t now)
 
 	PRECOND(offer == NULL);
 
-	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
+	if (sanctum_atomic_read(&shared->peer_ip) == 0)
 		return;
 
 	if (now < offer_next)
@@ -858,10 +858,10 @@ chapel_offer_check(u_int64_t now)
 		offer_now = 1;
 		offer_force = 0;
 		reason = "re-sync";
-	} else if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
-		age = sanctum_atomic_read(&sanctum->rx.age);
-		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
-		hb = sanctum_atomic_read(&sanctum->heartbeat);
+	} else if (sanctum_atomic_read(&shared->rx.spi) != 0) {
+		age = sanctum_atomic_read(&shared->rx.age);
+		pkt = sanctum_atomic_read(&shared->rx.pkt);
+		hb = sanctum_atomic_read(&shared->heartbeat);
 
 		if (now > hb &&
 		    (now - hb) >= SANCTUM_GRACE_HEARTBEAT_INTERVAL * 2) {
@@ -878,7 +878,7 @@ chapel_offer_check(u_int64_t now)
 	} else {
 		offer_now = 1;
 		reason = "no keys";
-		sanctum_atomic_write(&sanctum->heartbeat, now);
+		sanctum_atomic_write(&shared->heartbeat, now);
 	}
 
 	if (offer_now == 0)
@@ -896,7 +896,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	PRECOND(offer == NULL);
 	PRECOND(reason != NULL);
 
-	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
+	if (sanctum_atomic_read(&shared->peer_ip) == 0)
 		return;
 
 	if (sanctum->kek != NULL && ambry_generation == 0)
@@ -1060,7 +1060,7 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 
 	sanctum_offer_tfc(pkt);
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1)
+	if (sanctum_packet_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -1484,7 +1484,7 @@ chapel_erase_tx(void)
 {
 	u_int32_t	spi;
 
-	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
+	if ((spi = sanctum_atomic_read(&shared->tx.spi)) != 0) {
 		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 		chapel_erase(io->tx, spi);
 		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
@@ -1500,7 +1500,7 @@ chapel_erase_rx(void)
 {
 	u_int32_t	spi;
 
-	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) != 0) {
+	if ((spi = sanctum_atomic_read(&shared->rx.spi)) != 0) {
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 		chapel_erase(io->rx, spi);
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);

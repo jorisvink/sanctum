@@ -164,6 +164,7 @@ void
 sanctum_config_init(void)
 {
 	PRECOND(sanctum != NULL);
+	PRECOND(shared != NULL);
 
 	LIST_INIT(&routes);
 	LIST_INIT(&routable);
@@ -184,6 +185,7 @@ sanctum_config_load(const char *file)
 
 	PRECOND(file != NULL);
 	PRECOND(sanctum != NULL);
+	PRECOND(shared != NULL);
 
 	if ((fp = fopen(file, "r")) == NULL)
 		fatal("failed to open '%s': %s", file, errno_s);
@@ -241,9 +243,9 @@ sanctum_config_load(const char *file)
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		config_mtu_check();
-		if (sanctum->cathedral.sin_addr.s_addr == 0) {
-			memcpy(&sanctum->cathedral,
-			    &sanctum->local, sizeof(sanctum->cathedral));
+		if (shared->cathedral.sin_addr.s_addr == 0) {
+			memcpy(&shared->cathedral,
+			    &sanctum->local, sizeof(shared->cathedral));
 		}
 		break;
 	case SANCTUM_MODE_LITURGY:
@@ -301,7 +303,7 @@ sanctum_config_load(const char *file)
 			fatal("kek is only used in tunnel mode");
 	}
 
-	if (sanctum->peer_ip == 0)
+	if (shared->peer_ip == 0)
 		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
 
 	if (sanctum->instance[0] == '\0')
@@ -499,8 +501,8 @@ config_parse_peer(char *peer)
 	}
 
 	config_parse_ip_port(peer, &addr);
-	sanctum_atomic_write(&sanctum->peer_port, addr.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, addr.sin_addr.s_addr);
+	sanctum_atomic_write(&shared->peer_port, addr.sin_port);
+	sanctum_atomic_write(&shared->peer_ip, addr.sin_addr.s_addr);
 
 	sanctum->flags |= SANCTUM_FLAG_PEER_CONFIGURED;
 }
@@ -613,13 +615,13 @@ config_parse_tunnel(char *opt)
 			fatal("tunnel <ip/mask> auto");
 
 		sanctum->tun_mtu = 0;
-		sanctum->mtu_size = 0;
+		shared->mtu_size = 0;
 	} else {
 		if (mtu > SANCTUM_MTU_SIZE_MAX || mtu < 576)
 			fatal("mtu (%u) invalid", mtu);
 
 		sanctum->tun_mtu = mtu;
-		sanctum->mtu_size = mtu;
+		shared->mtu_size = mtu;
 	}
 
 	config_parse_ip_mask(ip, &sanctum->tun_ip, &sanctum->tun_mask);
@@ -815,8 +817,8 @@ config_parse_cathedral(char *cathedral)
 	if (rp == NULL)
 		fatal("cathedral '%s' failed to resolve", cathedral);
 
-	VERIFY(rp->ai_addrlen == sizeof(sanctum->cathedral));
-	memcpy(&sanctum->cathedral, rp->ai_addr, rp->ai_addrlen);
+	VERIFY(rp->ai_addrlen == sizeof(shared->cathedral));
+	memcpy(&shared->cathedral, rp->ai_addr, rp->ai_addrlen);
 
 	freeaddrinfo(res);
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
@@ -851,7 +853,7 @@ config_parse_cathedral_ip(char *ip)
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
 		fatal("cathedral_ip is only for cathedral mode");
 
-	config_parse_ip_port(ip, &sanctum->cathedral);
+	config_parse_ip_port(ip, &shared->cathedral);
 }
 
 /*
@@ -874,7 +876,7 @@ config_parse_cathedral_mtu(char *opt)
 		fatal("cathedral_mtu (%u) invalid", mtu);
 
 	sanctum->tun_mtu = mtu;
-	sanctum->mtu_size = mtu;
+	shared->mtu_size = mtu;
 }
 
 /*
@@ -1245,7 +1247,7 @@ config_mtu_check(void)
 
 		sanctum->flags |= SANCTUM_FLAG_MTU_DISCOVERY;
 		sanctum->tun_mtu = SANCTUM_MTU_SIZE_MAX - overhead;
-		sanctum->mtu_size = sanctum->tun_mtu;
+		shared->mtu_size = sanctum->tun_mtu;
 	}
 
 	if (sanctum->tun_mtu < sizeof(struct sanctum_offer)) {
@@ -1309,11 +1311,11 @@ config_cathedral_check(void)
 
 	if (sanctum->mode == SANCTUM_MODE_TUNNEL ||
 	    sanctum->mode == SANCTUM_MODE_LITURGY) {
-		if (sanctum->peer_ip == 0) {
-			sanctum_atomic_write(&sanctum->peer_port,
-			    sanctum->cathedral.sin_port);
-			sanctum_atomic_write(&sanctum->peer_ip,
-			    sanctum->cathedral.sin_addr.s_addr);
+		if (shared->peer_ip == 0) {
+			sanctum_atomic_write(&shared->peer_port,
+			    shared->cathedral.sin_port);
+			sanctum_atomic_write(&shared->peer_ip,
+			    shared->cathedral.sin_addr.s_addr);
 		}
 	}
 }

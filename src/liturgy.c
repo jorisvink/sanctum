@@ -78,7 +78,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 	local_id = sanctum->tun_spi & 0xff;
 
 	LIST_INIT(&offer_cache);
-	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
+	sanctum->cathedral_last = sanctum_atomic_read(&shared->uptime);
 
 	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
 	    sanctum->cathedral_remembrance != NULL)
@@ -97,7 +97,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		if (now >= next_liturgy) {
 			next_liturgy = now + 5;
@@ -107,7 +107,7 @@ sanctum_liturgy(struct sanctum_proc *proc)
 
 		sanctum_cathedral_timeout(now);
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel))) {
+		while ((pkt = sanctum_packet_dequeue(io->chapel))) {
 			liturgy_offer_recv(pkt, now);
 			sanctum_packet_release(pkt);
 		}
@@ -180,10 +180,10 @@ liturgy_offer_send(void)
 	sanctum_offer_tfc(pkt);
 
 	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_port = sanctum->cathedral.sin_port;
-	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
+	pkt->addr.sin_port = shared->cathedral.sin_port;
+	pkt->addr.sin_addr.s_addr = shared->cathedral.sin_addr.s_addr;
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -293,6 +293,6 @@ liturgy_bishop_inform(u_int8_t id, int present)
 	pkt->length = sizeof(*info);
 	pkt->target = SANCTUM_PROC_BISHOP;
 
-	if (sanctum_ring_queue(io->bishop, pkt) == -1)
+	if (sanctum_packet_queue(io->bishop, pkt) == -1)
 		sanctum_packet_release(pkt);
 }

@@ -70,6 +70,42 @@ sanctum_packet_release(struct sanctum_packet *pkt)
 }
 
 /*
+ * Put the given packet into the given ring queue.
+ */
+int
+sanctum_packet_queue(struct sanctum_ring *ring, struct sanctum_packet *pkt)
+{
+	u_int32_t		idx;
+
+	PRECOND(ring != NULL);
+	PRECOND(pkt != NULL);
+
+	idx = sanctum_pool_index(pktpool, pkt);
+
+	return (sanctum_ring_queue(ring, idx));
+}
+
+/*
+ * Obtain a packet from the given ring queue.
+ */
+struct sanctum_packet *
+sanctum_packet_dequeue(struct sanctum_ring *ring)
+{
+	u_int32_t		idx;
+	struct sanctum_packet	*pkt;
+
+	PRECOND(ring != NULL);
+
+	if (sanctum_ring_dequeue(ring, &idx) == -1)
+		return (NULL);
+
+	if ((pkt = sanctum_pool_ptr(pktpool, idx)) == NULL)
+		fatal("invalid pktpool index %u", idx);
+
+	return (pkt);
+}
+
+/*
  * Returns a pointer to the start of the entire packet buffer.
  */
 void *
@@ -156,8 +192,9 @@ sanctum_packet_from_cathedral(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
 
-	if (pkt->addr.sin_addr.s_addr != sanctum->cathedral.sin_addr.s_addr ||
-	    pkt->addr.sin_port != sanctum->cathedral.sin_port) {
+	if (pkt->addr.sin_addr.s_addr !=
+	    shared->cathedral.sin_addr.s_addr ||
+	    pkt->addr.sin_port != shared->cathedral.sin_port) {
 		sanctum_log(LOG_NOTICE,
 		    "cathedral packet from unexpected source %s",
 		    sanctum_inet_string(&pkt->addr));
@@ -214,7 +251,7 @@ sanctum_packet_shroud(struct sanctum_packet *pkt, const u_int8_t *id,
 	data[pkt->length++] = 0xff;
 	pkt->length += sizeof(*hdr);
 
-	mtu = sanctum_atomic_read(&sanctum->mtu_size);
+	mtu = sanctum_atomic_read(&shared->mtu_size);
 	if (pkt->length < mtu) {
 		avail = mtu - pkt->length;
 		if (avail >= 2) {

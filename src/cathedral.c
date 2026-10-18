@@ -548,7 +548,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			sanctum_offer_prune(&offer_cache);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel))) {
+		while ((pkt = sanctum_packet_dequeue(io->chapel))) {
 			cathedral_packet_handle(pkt, now);
 			shroud_last = NULL;
 		}
@@ -797,7 +797,7 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 
 	cathedral_shroud_packet(pkt, shroud_last);
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
 	sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -1526,7 +1526,7 @@ cathedral_offer_federate(struct federated *dst, struct sanctum_packet *orig)
 
 	cathedral_shroud_packet(pkt, NULL);
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1) {
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1) {
 		sanctum_log(LOG_NOTICE,
 		    "no CATACOMB update possible, failed to queue");
 		sanctum_packet_release(pkt);
@@ -1795,7 +1795,7 @@ cathedral_forward_offer(struct sanctum_packet *pkt,
 	cathedral_shroud_packet(pkt, tunnel->shroud);
 	length = pkt->length;
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
 	offers.pkts_out++;
@@ -1870,7 +1870,7 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	cathedral_shroud_packet(pkt, tunnel->shroud);
 	length = pkt->length;
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1)
 		return (-1);
 
 	traffic.pkts_out++;
@@ -2409,8 +2409,8 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 		    tun->p2p_ip == peer->p2p_ip)
 			info->flags = SANCTUM_INFO_FLAG_SAME_EXTERNAL_IPV4;
 
-		info->peer_port = sanctum->cathedral.sin_port;
-		info->peer_ip = sanctum->cathedral.sin_addr.s_addr;
+		info->peer_port = shared->cathedral.sin_port;
+		info->peer_ip = shared->cathedral.sin_addr.s_addr;
 	}
 
 	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
@@ -2504,8 +2504,8 @@ cathedral_remembrance_send(struct flockent *flock, struct sockaddr_in *sin,
 	idx = 1;
 	list = &op->data.offer.remembrance;
 
-	list->ports[0] = sanctum->cathedral.sin_port;
-	list->ips[0] = sanctum->cathedral.sin_addr.s_addr;
+	list->ports[0] = shared->cathedral.sin_port;
+	list->ips[0] = shared->cathedral.sin_addr.s_addr;
 
 	LIST_FOREACH(cathedral, &federations, list) {
 		if (idx >= SANCTUM_CATHEDRALS_MAX)
@@ -3179,8 +3179,8 @@ cathedral_settings_federate(const char *option)
 		return;
 	}
 
-	if (sin.sin_addr.s_addr == sanctum->cathedral.sin_addr.s_addr &&
-	    htobe16(port) == sanctum->cathedral.sin_port) {
+	if (sin.sin_addr.s_addr == shared->cathedral.sin_addr.s_addr &&
+	    htobe16(port) == shared->cathedral.sin_port) {
 		sanctum_log(LOG_INFO, "skipping federation to own cathedral");
 		return;
 	}

@@ -43,8 +43,11 @@ static int			pid_fd = -1;
 /* The last received signal. */
 volatile sig_atomic_t		sig_recv = -1;
 
-/* Our global state. */
+/* Our configuration state. */
 struct sanctum_state		*sanctum = NULL;
+
+/* Our shared state between all processes. */
+struct sanctum_shared		*shared = NULL;
 
 static void
 version(void)
@@ -112,14 +115,17 @@ main(int argc, char *argv[])
 	nyfe_fatal_callback(fatalv);
 	nyfe_selftest_kmac256();
 
-	sanctum = sanctum_alloc_shared(sizeof(*sanctum));
+	if ((sanctum = calloc(1, sizeof(*sanctum))) == NULL)
+		fatal("calloc failed");
+
 	sanctum->mode = SANCTUM_MODE_TUNNEL;
+	shared = sanctum_alloc_shared(sizeof(*shared));
 
 	if (foreground == 0)
 		sanctum->flags |= SANCTUM_FLAG_DAEMONIZED;
 
 	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
-	sanctum_atomic_write(&sanctum->uptime, ts.tv_sec);
+	sanctum_atomic_write(&shared->uptime, ts.tv_sec);
 
 	sanctum_config_init();
 	sanctum_config_load(config);
@@ -199,7 +205,7 @@ main(int argc, char *argv[])
 		sanctum_mtu_change();
 
 		(void)clock_gettime(CLOCK_MONOTONIC, &ts);
-		sanctum_atomic_write(&sanctum->uptime, ts.tv_sec);
+		sanctum_atomic_write(&shared->uptime, ts.tv_sec);
 
 		sleep(1);
 	}
@@ -399,16 +405,21 @@ sanctum_mtu_change(void)
 {
 	u_int16_t	mtu;
 
-	if ((mtu = sanctum_atomic_read(&sanctum->mtu_change)) == 0)
+	if ((mtu = sanctum_atomic_read(&shared->mtu_change)) == 0)
 		return;
 
-	if (!sanctum_atomic_cas_simple(&sanctum->mtu_change, mtu, 0))
+	if (!sanctum_atomic_cas_simple(&shared->mtu_change, mtu, 0))
 		return;
 
-	if (sanctum_atomic_read(&sanctum->mtu_size) != mtu) {
+	if (mtu > sanctum->tun_mtu || mtu < SANCTUM_MTU_SIZE_MIN) {
+		sanctum_log(LOG_NOTICE, "invalid mtu received (%u)", mtu);
+		return;
+	}
+
+	if (sanctum_atomic_read(&shared->mtu_size) != mtu) {
 		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
 			sanctum_platform_tundev_mtu(mtu);
-		sanctum_atomic_write(&sanctum->mtu_size, mtu);
+		sanctum_atomic_write(&shared->mtu_size, mtu);
 		sanctum_log(LOG_INFO, "MTU has been set to %u", mtu);
 	}
 }

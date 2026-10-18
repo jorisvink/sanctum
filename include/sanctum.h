@@ -473,12 +473,14 @@ struct sanctum_ring_span {
 	volatile u_int32_t	tail;
 };
 
+#define SANCTUM_RING_MAX		4096
+
 struct sanctum_ring {
 	u_int32_t			elm;
 	u_int32_t			mask;
 	struct sanctum_ring_span	producer;
 	struct sanctum_ring_span	consumer;
-	volatile uintptr_t		data[4096];
+	volatile u_int32_t		data[SANCTUM_RING_MAX];
 };
 
 /*
@@ -486,8 +488,9 @@ struct sanctum_ring {
  */
 struct sanctum_pool {
 	size_t			len;
+	size_t			elm;
 	u_int8_t		*base;
-	struct sanctum_ring	queue;
+	struct sanctum_ring	*queue;
 };
 
 /*
@@ -651,7 +654,68 @@ struct sanctum_ether {
 #define SANCTUM_MODE_LITURGY		5
 
 /*
- * The shared state between processes.
+ * The part of the sanctum state that is allocated in shared
+ * memory and that can be touched by all processes. Access to
+ * these must be done carefully and with good reason as it
+ * can be done between processes.
+ */
+struct sanctum_shared {
+	/* Time maintained by guardian. */
+	volatile u_int64_t	uptime;
+
+	/* Our own public ip:port (when cathedral is in use only). */
+	volatile u_int32_t	local_ip;
+	volatile u_int16_t	local_port;
+
+	/* The peer ip and port we send encrypted traffic too. */
+	volatile u_int32_t	peer_ip;
+	volatile u_int16_t	peer_port;
+
+	/* Next time we can update the peer (when cathedral is in use only) */
+	volatile u_int64_t	peer_update;
+
+	/* The last mtu that was actively set. */
+	volatile u_int16_t	mtu_size;
+
+	/* Used by heaven-tx to communicate with guardian to set mtu. */
+	volatile u_int16_t	mtu_change;
+
+	/* Used by heaven-tx to communicate with heaven-rx to send an ack. */
+	volatile u_int16_t	mtu_probe_ack;
+
+	/* Used to start/stop MTU discovery explicitly from other procs. */
+	volatile int		mtu_start;
+	volatile int		mtu_cancel;
+
+	/* Last valid sequence number for the current RX SA. */
+	volatile u_int64_t	last_pn;
+
+	/* RX SA pending. */
+	volatile u_int32_t	rx_pending;
+
+	/* The last time we received a grace heartbeat from our peer. */
+	volatile u_int64_t	heartbeat;
+
+	/* Do hole punching (by sending many graces for a bit). */
+	volatile int		holepunch;
+
+	/* Process wakeup states. */
+	u_int32_t		wstate[SANCTUM_PROC_MAX];
+
+	/* Process startup signaling. */
+	u_int32_t		started[SANCTUM_PROC_MAX];
+
+	/* Tx and Rx statistics. */
+	struct sanctum_ifstat	tx;
+	struct sanctum_ifstat	rx;
+
+	/* The cathedral address (tunnel / cathedral mode). */
+	struct sockaddr_in	cathedral;
+};
+
+/*
+ * The sanctum configuration state. This is private to each process
+ * (inherited at fork) and is not shared between them.
  */
 struct sanctum_state {
 	/* Startup mode. */
@@ -665,14 +729,11 @@ struct sanctum_state {
 	u_int32_t		fwmark;
 #endif
 
-	/* Time maintained by overwatch. */
-	volatile u_int64_t	uptime;
+	/* The control socket. */
+	struct sanctum_sun	control;
 
 	/* The local address from the configuration. */
 	struct sockaddr_in	local;
-
-	/* The cathedral address (tunnel / cathedral mode). */
-	struct sockaddr_in	cathedral;
 
 	/* The current index into the cathedrals remembrance list. */
 	u_int8_t		cathedral_idx;
@@ -689,35 +750,11 @@ struct sanctum_state {
 	/* All cathedrals in remembrance (tunnel mode only). */
 	struct sockaddr_in	cathedrals[SANCTUM_CATHEDRALS_MAX];
 
-	/* Our own public ip:port (when cathedral is in use only). */
-	volatile u_int32_t	local_ip;
-	volatile u_int16_t	local_port;
-
-	/* The peer ip and port we send encrypted traffic too. */
-	volatile u_int32_t	peer_ip;
-	volatile u_int16_t	peer_port;
-
-	/* Next time we can update the peer (when cathedral is in use only) */
-	volatile u_int64_t	peer_update;
-
 	/* The tunnel configuration. */
 	struct sockaddr_in	tun_ip;
 	struct sockaddr_in	tun_mask;
 	u_int16_t		tun_mtu;
 	u_int16_t		tun_spi;
-
-	/* The last mtu that was actively set. */
-	volatile u_int16_t	mtu_size;
-
-	/* Used by heaven-tx to communicate with guardian to set mtu. */
-	volatile u_int16_t	mtu_change;
-
-	/* Used by heaven-tx to communicate with heaven-rx to send an ack. */
-	volatile u_int16_t	mtu_probe_ack;
-
-	/* Used to start/stop MTU discovery explicitly from other procs. */
-	volatile int		mtu_start;
-	volatile int		mtu_cancel;
 
 	/* The path to the pidfile. */
 	char			*pidfile;
@@ -773,39 +810,15 @@ struct sanctum_state {
 	/* The users the different processes runas. */
 	char			*runas[SANCTUM_PROC_MAX];
 
-	/* The control socket. */
-	struct sanctum_sun	control;
-
 	/* The sanctum instance name. */
 	char			instance[32];	/* XXX */
 
 	/* The sanctum instance description. */
 	char			descr[32];	/* XXX */
-
-	/* Tx and Rx statistics. */
-	struct sanctum_ifstat	tx;
-	struct sanctum_ifstat	rx;
-
-	/* Last valid sequence number for the current RX SA. */
-	volatile u_int64_t	last_pn;
-
-	/* RX SA pending. */
-	volatile u_int32_t	rx_pending;
-
-	/* The last time we received a grace heartbeat from our peer. */
-	volatile u_int64_t	heartbeat;
-
-	/* Do hole punching (by sending many graces for a bit). */
-	volatile int		holepunch;
-
-	/* Process wakeup states. */
-	u_int32_t		wstate[SANCTUM_PROC_MAX];
-
-	/* Process startup signaling. */
-	u_int32_t		started[SANCTUM_PROC_MAX];
 };
 
 extern struct sanctum_state	*sanctum;
+extern struct sanctum_shared	*shared;
 extern const char		*sanctum_kem;
 extern const char		*sanctum_cipher;
 extern const char		*sanctum_random;
@@ -860,19 +873,24 @@ void	*sanctum_packet_head(struct sanctum_packet *);
 void	*sanctum_packet_start(struct sanctum_packet *);
 
 struct sanctum_packet	*sanctum_packet_get(void);
+struct sanctum_packet	*sanctum_packet_dequeue(struct sanctum_ring *);
+int			sanctum_packet_queue(struct sanctum_ring *,
+			    struct sanctum_packet *);
 
 /* src/pool.c */
 void	*sanctum_pool_get(struct sanctum_pool *);
 void	sanctum_pool_put(struct sanctum_pool *, void *);
+void	*sanctum_pool_ptr(struct sanctum_pool *, u_int32_t);
+u_int32_t	sanctum_pool_index(struct sanctum_pool *, const void *);
 
 struct sanctum_pool	*sanctum_pool_init(size_t, size_t);
 
 /* src/ring.c */
 size_t	sanctum_ring_pending(struct sanctum_ring *);
-void	*sanctum_ring_dequeue(struct sanctum_ring *);
 size_t	sanctum_ring_available(struct sanctum_ring *);
 void	sanctum_ring_init(struct sanctum_ring *, size_t);
-int	sanctum_ring_queue(struct sanctum_ring *, void *);
+int	sanctum_ring_queue(struct sanctum_ring *, u_int32_t);
+int	sanctum_ring_dequeue(struct sanctum_ring *, u_int32_t *);
 
 struct sanctum_ring	*sanctum_ring_alloc(size_t);
 

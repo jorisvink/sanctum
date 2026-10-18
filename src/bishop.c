@@ -92,6 +92,9 @@ static struct sanctum_proc_io	*io = NULL;
 /* Our local socket which we use to grab statuses from different instances. */
 static int			cfd = -1;
 
+/* Our local id. */
+static u_int8_t			local_id = 0;
+
 /* Pipe we re-use to read stdout from the forked hymn processes. */
 static int			hymn_pipe[2];
 
@@ -110,10 +113,10 @@ static u_int8_t			instances[SANCTUM_PEERS_PER_FLOCK];
 void
 sanctum_bishop(struct sanctum_proc *proc)
 {
+	u_int8_t		idx;
 	struct sockaddr_un	sun;
 	struct sanctum_packet	*pkt;
 	int			sig, running;
-	u_int8_t		local_id, idx;
 
 	PRECOND(proc != NULL);
 	PRECOND(proc->arg != NULL);
@@ -161,7 +164,7 @@ sanctum_bishop(struct sanctum_proc *proc)
 
 		sanctum_proc_suspend(1);
 
-		while ((pkt = sanctum_ring_dequeue(io->bishop)) != NULL) {
+		while ((pkt = sanctum_packet_dequeue(io->bishop)) != NULL) {
 			bishop_liturgy_request(pkt);
 			sanctum_packet_release(pkt);
 		}
@@ -230,12 +233,29 @@ bishop_liturgy_request(struct sanctum_packet *pkt)
 	u_int8_t			src, dst;
 
 	PRECOND(pkt != NULL);
-	PRECOND(pkt->length == sizeof(*info));
+
+	if (pkt->length != sizeof(*info)) {
+		sanctum_log(LOG_NOTICE,
+		    "received invalid info of size %zu", pkt->length);
+		return;
+	}
 
 	info = sanctum_packet_head(pkt);
 
 	src = info->instance >> 8;
 	dst = info->instance & 0xff;
+
+	if (src != local_id) {
+		sanctum_log(LOG_NOTICE,
+		    "received src of %u which is invalid", src);
+		return;
+	}
+
+	if (dst == 0 || dst == src || dst > (SANCTUM_PEERS_PER_FLOCK - 1)) {
+		sanctum_log(LOG_NOTICE,
+		    "received dst of %u which is invalid", dst);
+		return;
+	}
 
 	if (info->present) {
 		if (bishop_instance_exists(src, dst) == -1) {
@@ -307,7 +327,7 @@ bishop_hymn_run(const char *cmd, u_int8_t src, u_int8_t dst)
 		len = snprintf(buf, sizeof(buf), HYMN_FMT_ADD,
 		    sanctum->cathedral_flock, src, dst, ip,
 		    sanctum->cathedral_name,
-		    be16toh(sanctum->cathedral.sin_port), sanctum->kek,
+		    be16toh(shared->cathedral.sin_port), sanctum->kek,
 		    sanctum->cathedral_id, sanctum->cathedral_secret,
 		    sanctum->cathedral_cosk, sanctum->cathedral_nat_port,
 		    device, bridge, user, shroud);
@@ -530,7 +550,7 @@ bishop_instance_alive(u_int8_t src, u_int8_t dst)
 		return (-1);
 	}
 
-	now = sanctum_atomic_read(&sanctum->uptime);
+	now = sanctum_atomic_read(&shared->uptime);
 	if (now > resp.rx.last)
 		last = now - resp.rx.last;
 	else
