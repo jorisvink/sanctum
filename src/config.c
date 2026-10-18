@@ -325,8 +325,9 @@ sanctum_config_release(void)
 	free(sanctum->kek);
 	free(sanctum->secret);
 	free(sanctum->pidfile);
-	free(sanctum->secretdir);
 	free(sanctum->settings);
+	free(sanctum->secretdir);
+	free(sanctum->shrine_relic);
 	free(sanctum->cathedral_cosk);
 	free(sanctum->cathedral_name);
 	free(sanctum->cathedral_secret);
