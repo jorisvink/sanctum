@@ -11,6 +11,10 @@ What is not intended is that when a new ambry is uploaded to revoke
 a device its KEK a compromised cathedral can simply use a non-expired
 ambry to overcome this behaviour.
 
+This is reduced by having multiple cathedrals, all of which would
+have to be compromised at the same time in order for all clients
+to obtain the same old ambry.
+
 ## Shroud is expensive.
 
 Using shroud means calculating a mask using KMAC256 for every
