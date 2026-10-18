@@ -42,6 +42,23 @@ sanctum_packet_init(void)
 }
 
 /*
+ * Detach and clear our packet pool local pointers, only called from guardian.
+ */
+void
+sanctum_packet_detach(void)
+{
+	PRECOND(pktpool != NULL);
+	PRECOND(sanctum_process() == NULL);
+
+	sanctum_shm_detach(pktpool->queue);
+	sanctum_shm_detach(pktpool->base);
+
+	free(pktpool);
+
+	pktpool = NULL;
+}
+
+/*
  * Obtain a new packet from the packet pool. If no packets are
  * available NULL is returned to the caller.
  */
@@ -79,6 +96,7 @@ sanctum_packet_queue(struct sanctum_ring *ring, struct sanctum_packet *pkt)
 
 	PRECOND(ring != NULL);
 	PRECOND(pkt != NULL);
+	PRECOND(pkt->length <= SANCTUM_PACKET_DATA_LEN);
 
 	idx = sanctum_pool_index(pktpool, pkt);
 
@@ -93,6 +111,7 @@ sanctum_packet_dequeue(struct sanctum_ring *ring)
 {
 	u_int32_t		idx;
 	struct sanctum_packet	*pkt;
+	size_t			length;
 
 	PRECOND(ring != NULL);
 
@@ -101,6 +120,15 @@ sanctum_packet_dequeue(struct sanctum_ring *ring)
 
 	if ((pkt = sanctum_pool_ptr(pktpool, idx)) == NULL)
 		fatal("invalid pktpool index %u", idx);
+
+	length = pkt->length;
+
+	if (length > SANCTUM_PACKET_DATA_LEN) {
+		sanctum_log(LOG_NOTICE,
+		    "dropping packet with invalid length %zu", length);
+		sanctum_packet_release(pkt);
+		return (NULL);
+	}
 
 	return (pkt);
 }

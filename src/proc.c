@@ -196,13 +196,19 @@ sanctum_proc_start(void)
 		fatal("unknown mode %u", sanctum->mode);
 	}
 
+	(void)close(io.nat);
 	(void)close(io.clear);
 	(void)close(io.crypto);
 
+	sanctum_packet_detach();
+
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
+	sanctum_shm_detach(io.stx);
+	sanctum_shm_detach(io.srx);
 	sanctum_shm_detach(io.bless);
 	sanctum_shm_detach(io.offer);
+	sanctum_shm_detach(io.bishop);
 	sanctum_shm_detach(io.chapel);
 	sanctum_shm_detach(io.heaven);
 	sanctum_shm_detach(io.confess);
