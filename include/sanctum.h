@@ -817,8 +817,8 @@ struct sanctum_state {
 	char			descr[32];	/* XXX */
 };
 
-extern struct sanctum_state	*sanctum;
 extern struct sanctum_shared	*shared;
+extern struct sanctum_state	*sanctum;
 extern const char		*sanctum_kem;
 extern const char		*sanctum_cipher;
 extern const char		*sanctum_random;
