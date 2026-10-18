@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Traffic Analysis — Sanctum</title>
 <meta name="description" content="Shroud masks every Sanctum packet, including protocol metadata, so it looks like uniform random noise to a passive observer.">
-<link rel="stylesheet" href="sanctum.css?v=1792287416">
+<link rel="stylesheet" href="sanctum.css?v=1792287432">
 </head>
 
 <body>
@@ -19,23 +19,23 @@
 <li><a href="index.html">Overview</a></li>
 <li><a href="releases.html">Releases</a></li>
 <li><a href="topologies.html">Topologies</a></li>
-<li class="drop current"><b tabindex="0">Security</b>
-<ul>
+<li class="drop current"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
 <li><a href="errata.html">Errata</a></li>
 <li><a href="crypto.html">Cryptography</a></li>
 <li><a href="privsep.html">Privilege Separation</a></li>
 <li><a href="shroud.html" class="current">Traffic Analysis</a></li>
 </ul></li>
-<li class="drop"><b tabindex="0">Docs</b>
-<ul>
+<li class="drop"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
 <li><a href="building.html">Building</a></li>
 <li><a href="contributing.html">Contributing</a></li>
 <li><a href="guide.html">Setup Guide</a></li>
 <li><a href="liturgy.html">Liturgy Guide</a></li>
 <li><a href="cathedral.html">Cathedral Guide</a></li>
 </ul></li>
-<li class="drop"><b tabindex="0">Community</b>
-<ul>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
 <li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
 <li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
 <li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
@@ -91,7 +91,7 @@ additional unique per-packet masks.
 <div class="footer-brand">
 <a href="index.html" class="brand">SANCTUM</a>
 <p>A PQ-secure and fully privilege separated VPN daemon and protocol
-that runs under Linux, OpenBSD and MacOS. Open and free, licensed under
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
 the ISC license.</p>
 </div>
 
@@ -136,33 +136,5 @@ the ISC license.</p>
 </div>
 </footer>
 
-<script>
-document.querySelectorAll(".bar > li.drop > b").forEach(function (b) {
-	var li = b.parentNode;
-
-	b.addEventListener("mousedown", function (e) {
-		if (document.activeElement !== b)
-			return;
-		e.preventDefault();
-		b.blur();
-		li.classList.add("shut");
-	});
-
-	li.addEventListener("mouseenter", function () {
-		var open = document.activeElement;
-
-		if (open && open !== b && open.closest(".bar > li.drop"))
-			open.blur();
-	});
-
-	li.addEventListener("mouseleave", function () {
-		li.classList.remove("shut");
-	});
-
-	b.addEventListener("focus", function () {
-		li.classList.remove("shut");
-	});
-});
-</script>
 </body>
 </html>

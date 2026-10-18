@@ -6,8 +6,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sanctum — Post-quantum secure P2P VPN</title>
-<meta name="description" content="Sanctum is a PQ-secure and fully privilege separated VPN daemon and protocol that runs under Linux, OpenBSD and MacOS. It is designed from the ground up with security in mind and will always be open and free, licensed under the ISC license.">
-<link rel="stylesheet" href="sanctum.css?v=1792287416">
+<meta name="description" content="Sanctum is a PQ-secure and fully privilege separated VPN daemon and protocol that runs under Linux, OpenBSD and MacOS. It is designed from the ground up with security in mind and will always be open and free, released under the ISC license.">
+<link rel="stylesheet" href="sanctum.css?v=1792287432">
 </head>
 
 <body>
@@ -19,23 +19,23 @@
 <li><a href="index.html" class="current">Overview</a></li>
 <li><a href="releases.html">Releases</a></li>
 <li><a href="topologies.html">Topologies</a></li>
-<li class="drop"><b tabindex="0">Security</b>
-<ul>
+<li class="drop"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
 <li><a href="errata.html">Errata</a></li>
 <li><a href="crypto.html">Cryptography</a></li>
 <li><a href="privsep.html">Privilege Separation</a></li>
 <li><a href="shroud.html">Traffic Analysis</a></li>
 </ul></li>
-<li class="drop"><b tabindex="0">Docs</b>
-<ul>
+<li class="drop"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
 <li><a href="building.html">Building</a></li>
 <li><a href="contributing.html">Contributing</a></li>
 <li><a href="guide.html">Setup Guide</a></li>
 <li><a href="liturgy.html">Liturgy Guide</a></li>
 <li><a href="cathedral.html">Cathedral Guide</a></li>
 </ul></li>
-<li class="drop"><b tabindex="0">Community</b>
-<ul>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
 <li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
 <li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
 <li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
@@ -53,12 +53,191 @@
 Sanctum is a PQ-secure and fully privilege separated VPN daemon and
 protocol that runs under Linux, OpenBSD and MacOS. It is designed from
 the ground up with security in mind and will always be open and free,
-licensed under the ISC license.
+released under the ISC license.
 </p>
 <p class="go">
 <a href="releases.html">Get Sanctum →</a>
 <a href="guide.html">Quickstart with our guide</a>
 </p>
+<svg class="net" aria-hidden="true" viewBox="0 0 1600 480" preserveAspectRatio="xMidYMid slice">
+<line x1="198" y1="241" x2="254" y2="154" style="--t: 7.0s; --d: -2.3s"/>
+<line x1="198" y1="241" x2="91" y2="169" style="--t: 9.6s; --d: -3.0s"/>
+<line x1="818" y1="405" x2="720" y2="384" style="--t: 6.8s; --d: -4.2s"/>
+<line x1="818" y1="405" x2="927" y2="438" style="--t: 7.2s; --d: -4.9s"/>
+<line x1="818" y1="405" x2="787" y2="325" style="--t: 12.3s; --d: -7.0s"/>
+<line x1="172" y1="112" x2="254" y2="154" style="--t: 7.2s; --d: -3.5s"/>
+<line x1="172" y1="112" x2="91" y2="169" style="--t: 8.7s; --d: -4.5s"/>
+<line x1="172" y1="112" x2="192" y2="10" style="--t: 10.7s; --d: -7.9s"/>
+<line x1="959" y1="266" x2="872" y2="267" style="--t: 11.1s; --d: -1.4s"/>
+<line x1="959" y1="266" x2="1045" y2="284" style="--t: 11.4s; --d: -4.5s"/>
+<line x1="1247" y1="261" x2="1268" y2="376" style="--t: 6.4s; --d: -6.2s"/>
+<line x1="1247" y1="261" x2="1138" y2="281" style="--t: 9.9s; --d: -4.0s"/>
+<line x1="1247" y1="261" x2="1324" y2="171" style="--t: 9.5s; --d: -0.1s"/>
+<line x1="1164" y1="363" x2="1197" y2="449" style="--t: 9.5s; --d: -0.7s"/>
+<line x1="1164" y1="363" x2="1066" y2="440" style="--t: 12.1s; --d: -11.9s"/>
+<line x1="1164" y1="363" x2="1138" y2="281" style="--t: 5.3s; --d: -1.7s"/>
+<line x1="389" y1="292" x2="471" y2="220" style="--t: 6.0s; --d: -0.1s"/>
+<line x1="389" y1="292" x2="307" y2="337" style="--t: 5.4s; --d: -0.1s"/>
+<line x1="389" y1="292" x2="340" y2="220" style="--t: 12.6s; --d: -5.6s"/>
+<line x1="389" y1="292" x2="425" y2="378" style="--t: 5.4s; --d: -4.1s"/>
+<line x1="184" y1="385" x2="87" y2="334" style="--t: 9.8s; --d: -4.8s"/>
+<line x1="184" y1="385" x2="269" y2="418" style="--t: 12.8s; --d: -0.5s"/>
+<line x1="184" y1="385" x2="44" y2="423" style="--t: 8.6s; --d: -1.7s"/>
+<line x1="184" y1="385" x2="128" y2="467" style="--t: 7.5s; --d: -7.4s"/>
+<line x1="720" y1="384" x2="624" y2="445" style="--t: 8.8s; --d: -6.1s"/>
+<line x1="720" y1="384" x2="658" y2="301" style="--t: 10.6s; --d: -1.0s"/>
+<line x1="720" y1="384" x2="787" y2="325" style="--t: 8.4s; --d: -6.0s"/>
+<line x1="342" y1="125" x2="254" y2="154" style="--t: 11.8s; --d: -10.6s"/>
+<line x1="342" y1="125" x2="320" y2="16" style="--t: 7.4s; --d: -1.8s"/>
+<line x1="342" y1="125" x2="340" y2="220" style="--t: 5.7s; --d: -0.0s"/>
+<line x1="342" y1="125" x2="446" y2="110" style="--t: 5.2s; --d: -2.7s"/>
+<line x1="1558" y1="437" x2="1542" y2="322" style="--t: 12.6s; --d: -0.6s"/>
+<line x1="1558" y1="437" x2="1456" y2="406" style="--t: 7.4s; --d: -4.7s"/>
+<line x1="1282" y1="469" x2="1197" y2="449" style="--t: 5.0s; --d: -0.0s"/>
+<line x1="1282" y1="469" x2="1268" y2="376" style="--t: 6.3s; --d: -1.2s"/>
+<line x1="1282" y1="469" x2="1372" y2="436" style="--t: 8.5s; --d: -0.7s"/>
+<line x1="821" y1="45" x2="922" y2="21" style="--t: 8.4s; --d: -0.8s"/>
+<line x1="821" y1="45" x2="771" y2="115" style="--t: 12.3s; --d: -2.2s"/>
+<line x1="547" y1="266" x2="471" y2="220" style="--t: 9.7s; --d: -8.9s"/>
+<line x1="547" y1="266" x2="568" y2="363" style="--t: 5.7s; --d: -5.7s"/>
+<line x1="547" y1="266" x2="658" y2="301" style="--t: 8.3s; --d: -0.4s"/>
+<line x1="471" y1="220" x2="527" y2="149" style="--t: 10.6s; --d: -8.3s"/>
+<line x1="1394" y1="333" x2="1372" y2="436" style="--t: 11.2s; --d: -9.7s"/>
+<line x1="1394" y1="333" x2="1456" y2="406" style="--t: 8.6s; --d: -0.2s"/>
+<line x1="922" y1="21" x2="1046" y2="23" style="--t: 7.7s; --d: -3.8s"/>
+<line x1="922" y1="21" x2="972" y2="108" style="--t: 10.8s; --d: -6.3s"/>
+<line x1="1133" y1="177" x2="1148" y2="72" style="--t: 10.0s; --d: -2.0s"/>
+<line x1="1133" y1="177" x2="1033" y2="169" style="--t: 11.8s; --d: -0.8s"/>
+<line x1="1133" y1="177" x2="1138" y2="281" style="--t: 12.0s; --d: -2.3s"/>
+<line x1="677" y1="193" x2="640" y2="99" style="--t: 8.9s; --d: -7.5s"/>
+<line x1="677" y1="193" x2="768" y2="204" style="--t: 12.9s; --d: -8.8s"/>
+<line x1="677" y1="193" x2="658" y2="301" style="--t: 5.8s; --d: -2.4s"/>
+<line x1="1473" y1="230" x2="1518" y2="88" style="--t: 7.9s; --d: -6.9s"/>
+<line x1="1473" y1="230" x2="1542" y2="322" style="--t: 6.1s; --d: -3.6s"/>
+<line x1="1473" y1="230" x2="1566" y2="232" style="--t: 12.0s; --d: -7.2s"/>
+<line x1="1473" y1="230" x2="1414" y2="165" style="--t: 12.3s; --d: -12.1s"/>
+<line x1="87" y1="334" x2="50" y2="244" style="--t: 12.4s; --d: -8.2s"/>
+<line x1="87" y1="334" x2="44" y2="423" style="--t: 8.8s; --d: -3.0s"/>
+<line x1="1411" y1="57" x2="1281" y2="80" style="--t: 7.1s; --d: -6.4s"/>
+<line x1="1411" y1="57" x2="1518" y2="88" style="--t: 5.5s; --d: -2.2s"/>
+<line x1="1411" y1="57" x2="1414" y2="165" style="--t: 12.7s; --d: -10.4s"/>
+<line x1="771" y1="115" x2="700" y2="20" style="--t: 5.8s; --d: -2.9s"/>
+<line x1="771" y1="115" x2="866" y2="167" style="--t: 11.3s; --d: -5.9s"/>
+<line x1="771" y1="115" x2="768" y2="204" style="--t: 12.9s; --d: -10.5s"/>
+<line x1="872" y1="267" x2="866" y2="167" style="--t: 9.7s; --d: -1.9s"/>
+<line x1="872" y1="267" x2="787" y2="325" style="--t: 9.4s; --d: -0.9s"/>
+<line x1="435" y1="25" x2="320" y2="16" style="--t: 7.1s; --d: -3.2s"/>
+<line x1="435" y1="25" x2="446" y2="110" style="--t: 12.9s; --d: -8.8s"/>
+<line x1="435" y1="25" x2="547" y2="52" style="--t: 10.5s; --d: -1.7s"/>
+<line x1="1045" y1="284" x2="1033" y2="169" style="--t: 7.1s; --d: -5.8s"/>
+<line x1="1045" y1="284" x2="1138" y2="281" style="--t: 11.0s; --d: -4.5s"/>
+<line x1="1045" y1="284" x2="1014" y2="370" style="--t: 11.5s; --d: -5.9s"/>
+<line x1="510" y1="431" x2="568" y2="363" style="--t: 6.4s; --d: -0.2s"/>
+<line x1="510" y1="431" x2="624" y2="445" style="--t: 10.3s; --d: -6.3s"/>
+<line x1="510" y1="431" x2="425" y2="378" style="--t: 12.8s; --d: -0.2s"/>
+<line x1="32" y1="10" x2="19" y2="100" style="--t: 10.8s; --d: -7.7s"/>
+<line x1="32" y1="10" x2="192" y2="10" style="--t: 6.1s; --d: -4.4s"/>
+<line x1="927" y1="438" x2="1014" y2="370" style="--t: 6.2s; --d: -1.0s"/>
+<line x1="1197" y1="449" x2="1268" y2="376" style="--t: 11.0s; --d: -1.5s"/>
+<line x1="254" y1="154" x2="192" y2="10" style="--t: 6.3s; --d: -1.4s"/>
+<line x1="1148" y1="72" x2="1281" y2="80" style="--t: 8.7s; --d: -8.5s"/>
+<line x1="1148" y1="72" x2="1046" y2="23" style="--t: 11.3s; --d: -7.7s"/>
+<line x1="1066" y1="440" x2="1014" y2="370" style="--t: 9.8s; --d: -6.9s"/>
+<line x1="320" y1="16" x2="192" y2="10" style="--t: 5.4s; --d: -0.3s"/>
+<line x1="91" y1="169" x2="50" y2="244" style="--t: 13.0s; --d: -1.6s"/>
+<line x1="91" y1="169" x2="19" y2="100" style="--t: 12.9s; --d: -7.6s"/>
+<line x1="568" y1="363" x2="624" y2="445" style="--t: 9.4s; --d: -0.1s"/>
+<line x1="568" y1="363" x2="658" y2="301" style="--t: 6.0s; --d: -0.7s"/>
+<line x1="50" y1="244" x2="19" y2="100" style="--t: 12.3s; --d: -0.7s"/>
+<line x1="527" y1="149" x2="446" y2="110" style="--t: 5.8s; --d: -1.3s"/>
+<line x1="527" y1="149" x2="547" y2="52" style="--t: 10.0s; --d: -3.4s"/>
+<line x1="1281" y1="80" x2="1324" y2="171" style="--t: 6.4s; --d: -3.8s"/>
+<line x1="640" y1="99" x2="700" y2="20" style="--t: 12.1s; --d: -5.3s"/>
+<line x1="640" y1="99" x2="547" y2="52" style="--t: 12.6s; --d: -12.4s"/>
+<line x1="307" y1="337" x2="269" y2="418" style="--t: 8.8s; --d: -8.3s"/>
+<line x1="307" y1="337" x2="340" y2="220" style="--t: 11.4s; --d: -10.4s"/>
+<line x1="375" y1="448" x2="269" y2="418" style="--t: 8.2s; --d: -0.3s"/>
+<line x1="375" y1="448" x2="425" y2="378" style="--t: 9.1s; --d: -0.9s"/>
+<line x1="1518" y1="88" x2="1566" y2="232" style="--t: 11.8s; --d: -4.8s"/>
+<line x1="1518" y1="88" x2="1414" y2="165" style="--t: 5.9s; --d: -0.6s"/>
+<line x1="866" y1="167" x2="768" y2="204" style="--t: 9.2s; --d: -3.2s"/>
+<line x1="1046" y1="23" x2="972" y2="108" style="--t: 5.5s; --d: -0.2s"/>
+<line x1="1542" y1="322" x2="1566" y2="232" style="--t: 6.3s; --d: -1.3s"/>
+<line x1="1372" y1="436" x2="1456" y2="406" style="--t: 8.2s; --d: -6.2s"/>
+<line x1="1033" y1="169" x2="972" y2="108" style="--t: 9.6s; --d: -5.8s"/>
+<line x1="1414" y1="165" x2="1324" y2="171" style="--t: 7.7s; --d: -2.0s"/>
+<line x1="44" y1="423" x2="128" y2="467" style="--t: 6.0s; --d: -1.8s"/>
+<rect x="197" y="240" width="3" height="3"/>
+<rect x="817" y="404" width="3" height="3"/>
+<rect x="171" y="111" width="3" height="3"/>
+<rect x="958" y="265" width="3" height="3"/>
+<rect x="1246" y="260" width="3" height="3"/>
+<rect x="1163" y="362" width="3" height="3"/>
+<rect x="388" y="291" width="3" height="3"/>
+<rect x="183" y="384" width="3" height="3"/>
+<rect x="719" y="383" width="3" height="3"/>
+<rect x="341" y="124" width="3" height="3"/>
+<rect x="1557" y="436" width="3" height="3"/>
+<rect x="1281" y="468" width="3" height="3"/>
+<rect x="820" y="44" width="3" height="3"/>
+<rect x="546" y="265" width="3" height="3"/>
+<rect x="470" y="219" width="3" height="3"/>
+<rect x="1393" y="332" width="3" height="3"/>
+<rect x="921" y="20" width="3" height="3"/>
+<rect x="1132" y="176" width="3" height="3"/>
+<rect x="676" y="192" width="3" height="3"/>
+<rect x="1472" y="229" width="3" height="3"/>
+<rect x="86" y="333" width="3" height="3"/>
+<rect x="1410" y="56" width="3" height="3"/>
+<rect x="770" y="114" width="3" height="3"/>
+<rect x="871" y="266" width="3" height="3"/>
+<rect x="434" y="24" width="3" height="3"/>
+<rect x="1044" y="283" width="3" height="3"/>
+<rect x="509" y="430" width="3" height="3"/>
+<rect x="31" y="9" width="3" height="3"/>
+<rect x="926" y="437" width="3" height="3"/>
+<rect x="1196" y="448" width="3" height="3"/>
+<rect x="253" y="153" width="3" height="3"/>
+<rect x="1147" y="71" width="3" height="3"/>
+<rect x="1065" y="439" width="3" height="3"/>
+<rect x="319" y="15" width="3" height="3"/>
+<rect x="90" y="168" width="3" height="3"/>
+<rect x="567" y="362" width="3" height="3"/>
+<rect x="49" y="243" width="3" height="3"/>
+<rect x="526" y="148" width="3" height="3"/>
+<rect x="1280" y="79" width="3" height="3"/>
+<rect x="639" y="98" width="3" height="3"/>
+<rect x="306" y="336" width="3" height="3"/>
+<rect x="1267" y="375" width="3" height="3"/>
+<rect x="374" y="447" width="3" height="3"/>
+<rect x="1517" y="87" width="3" height="3"/>
+<rect x="623" y="444" width="3" height="3"/>
+<rect x="699" y="19" width="3" height="3"/>
+<rect x="865" y="166" width="3" height="3"/>
+<rect x="1045" y="22" width="3" height="3"/>
+<rect x="1541" y="321" width="3" height="3"/>
+<rect x="1371" y="435" width="3" height="3"/>
+<rect x="767" y="203" width="3" height="3"/>
+<rect x="268" y="417" width="3" height="3"/>
+<rect x="1565" y="231" width="3" height="3"/>
+<rect x="1032" y="168" width="3" height="3"/>
+<rect x="1413" y="164" width="3" height="3"/>
+<rect x="339" y="219" width="3" height="3"/>
+<rect x="971" y="107" width="3" height="3"/>
+<rect x="43" y="422" width="3" height="3"/>
+<rect x="18" y="99" width="3" height="3"/>
+<rect x="424" y="377" width="3" height="3"/>
+<rect x="191" y="9" width="3" height="3"/>
+<rect x="1137" y="280" width="3" height="3"/>
+<rect x="1323" y="170" width="3" height="3"/>
+<rect x="657" y="300" width="3" height="3"/>
+<rect x="1013" y="369" width="3" height="3"/>
+<rect x="127" y="466" width="3" height="3"/>
+<rect x="445" y="109" width="3" height="3"/>
+<rect x="546" y="51" width="3" height="3"/>
+<rect x="786" y="324" width="3" height="3"/>
+<rect x="1455" y="405" width="3" height="3"/>
+</svg>
 </section>
 
 <p class="boast"><strong>Zero security vulnerabilities in 4 years.</strong></p>
@@ -258,7 +437,7 @@ will work with you.</p>
 <div class="footer-brand">
 <a href="index.html" class="brand">SANCTUM</a>
 <p>A PQ-secure and fully privilege separated VPN daemon and protocol
-that runs under Linux, OpenBSD and MacOS. Open and free, licensed under
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
 the ISC license.</p>
 </div>
 
@@ -305,55 +484,27 @@ the ISC license.</p>
 
 <script>
 (function () {
-	console.log("%cPax vobiscum.", "color: #ffb000; font: 600 14px monospace");
-	var main = document.querySelector("main");
-	var boast = document.querySelector(".boast");
-	var len = 56;
+    console.log("%cPax vobiscum.", "color: #ffb000; font: 600 14px monospace");
+    var main = document.querySelector("main");
+    var boast = document.querySelector(".boast");
+    var len = 56;
 
-	if (!main || !boast)
-		return;
+    if (!main || !boast)
+        return;
 
-	function sync() {
-		var y = boast.offsetTop + boast.offsetHeight / 2;
-		var f = (y - len) / (main.offsetHeight - len);
+    function sync() {
+        var y = boast.offsetTop + boast.offsetHeight / 2;
+        var f = (y - len) / (main.offsetHeight - len);
 
-		main.style.setProperty("--hit", Math.max(0, Math.min(1, f)));
-		main.classList.add("synced");
-	}
+        main.style.setProperty("--hit", Math.max(0, Math.min(1, f)));
+        main.classList.add("synced");
+    }
 
-	sync();
-	if (window.ResizeObserver)
-		new ResizeObserver(sync).observe(main);
+    sync();
+    if (window.ResizeObserver)
+        new ResizeObserver(sync).observe(main);
 })();
 </script>
 
-<script>
-document.querySelectorAll(".bar > li.drop > b").forEach(function (b) {
-	var li = b.parentNode;
-
-	b.addEventListener("mousedown", function (e) {
-		if (document.activeElement !== b)
-			return;
-		e.preventDefault();
-		b.blur();
-		li.classList.add("shut");
-	});
-
-	li.addEventListener("mouseenter", function () {
-		var open = document.activeElement;
-
-		if (open && open !== b && open.closest(".bar > li.drop"))
-			open.blur();
-	});
-
-	li.addEventListener("mouseleave", function () {
-		li.classList.remove("shut");
-	});
-
-	b.addEventListener("focus", function () {
-		li.classList.remove("shut");
-	});
-});
-</script>
 </body>
 </html>
