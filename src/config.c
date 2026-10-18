@@ -62,6 +62,7 @@ static void	config_parse_instance(char *);
 static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
+static void	config_parse_shrine_relic(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
@@ -114,6 +115,7 @@ static const struct {
 	{ "cathedral",			config_parse_cathedral },
 	{ "secretdir",			config_parse_secretdir },
 	{ "settings",			config_parse_settings },
+	{ "shrine_relic",		config_parse_shrine_relic },
 	{ "liturgy_group",		config_parse_liturgy_group },
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
@@ -264,6 +266,11 @@ sanctum_config_load(const char *file)
 		config_mtu_check();
 		break;
 	case SANCTUM_MODE_SHRINE:
+		if (sanctum->shrine_relic == NULL)
+			fatal("shrine requires a shrine_relic option");
+		config_l2_check();
+		config_mtu_check();
+		break;
 	case SANCTUM_MODE_PILGRIM:
 		config_l2_check();
 		config_mtu_check();
@@ -1057,6 +1064,21 @@ config_parse_liturgy_discoverable(char *opt)
 	} else {
 		fatal("liturgy_discoverable '%s' is invalid (yes|no)", opt);
 	}
+}
+
+/*
+ * Parse the shrine_relic configuration option.
+ */
+static void
+config_parse_shrine_relic(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->shrine_relic != NULL)
+		fatal("shrine_relic already specified");
+
+	if ((sanctum->shrine_relic = strdup(opt)) == NULL)
+		fatal("strdup failed");
 }
 
 /*

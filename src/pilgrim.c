@@ -29,6 +29,9 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
+/* We have our own lifetime before we rekey, to get restarted shrines back. */
+#define SHRINE_SA_LIFETIME	300
+
 /*
  * A key offer sent to our peer, this is wrapped with a key derived
  * from a shared secret.
@@ -57,12 +60,12 @@ static struct key_offer		*offer = NULL;
 static u_int64_t		offer_next = 0;
 
 /*
- * We pulse out the current offer every 30 seconds with a max ttl
- * of 115, resulting in a total offer time of 3450 seconds, 50 seconds
- * less than SANCTUM_SA_LIFETIME_SOFT.
+ * We pulse out the current offer every 27 seconds with a max ttl
+ * of 10, resulting in a total offer time of 270 seconds, 30 seconds
+ * less than our SHRINE_SA_LIFETIME.
  */
-static u_int64_t		offer_ttl = 115;
-static u_int64_t		offer_next_send = 30;
+static u_int64_t		offer_ttl = 10;
+static u_int64_t		offer_next_send = 27;
 
 /* Randomly generated local ID. */
 static u_int64_t		local_id = 0;
@@ -171,7 +174,7 @@ pilgrim_offer_check(u_int64_t now)
 
 	if (sanctum_atomic_read(&sanctum->tx.spi) != 0) {
 		age = sanctum_atomic_read(&sanctum->tx.age);
-		if (now - age >= SANCTUM_SA_LIFETIME_SOFT) {
+		if (now - age >= SHRINE_SA_LIFETIME) {
 			offer_now = 1;
 			reason = "SA age limit";
 		}
@@ -201,7 +204,7 @@ pilgrim_offer_check(u_int64_t now)
 	    "(spi=0x%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->spi, offer_ttl, offer_next_send);
 
-	offer_next = now + SANCTUM_SA_LIFETIME_SOFT;
+	offer_next = now + SHRINE_SA_LIFETIME;
 	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 }
 

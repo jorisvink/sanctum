@@ -728,6 +728,9 @@ struct sanctum_state {
 	/* The path to the kek, if any (tunnel mode only). */
 	char			*kek;
 
+	/* Path where shrine stores its relics. (shrine mode only). */
+	char			*shrine_relic;
+
 	/* The network prefix for liturgy (liturgy mode only). */
 	struct sockaddr_in	liturgy_prefix;
 
