@@ -7,78 +7,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Setup Guide — Sanctum</title>
 <meta name="description" content="Step-by-step guide to setting up a Sanctum tunnel between two machines, both manually and using the hymn configuration tool.">
-<link rel="stylesheet" href="sanctum.css?v=1790547490">
+<link rel="stylesheet" href="sanctum.css?v=1792287416">
 </head>
 
 <body>
 
-<header class="topbar">
-<div class="wrap topbar-inner">
-<a href="index.html" class="brand">SANCTUM</a>
-
-<input type="checkbox" id="nav-toggle" class="nav-toggle">
-
-<nav class="primary">
-<a href="index.html">Overview</a>
-<a href="releases.html">Releases</a>
-<a href="topologies.html">Topologies</a>
-
-<details class="nav-drop" name="navmenu">
-<summary>Security <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
-<div class="nav-drop-panel">
-<a href="errata.html">Errata</a>
-<a href="crypto.html">Cryptography</a>
-<a href="privsep.html">Privilege Separation</a>
-<a href="shroud.html">Traffic Analysis</a>
-</div>
-</details>
-
-<details class="nav-drop" name="navmenu">
-<summary>Docs <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
-<div class="nav-drop-panel">
-<a href="building.html">Building</a>
-<a href="contributing.html">Contributing</a>
-<a href="guide.html">Setup Guide</a>
-<a href="liturgy.html">Liturgy Guide</a>
-<a href="cathedral.html">Cathedral Guide</a>
-</div>
-</details>
-
-<details class="nav-drop" name="navmenu">
-<summary>Community <svg class="chev" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></summary>
-<div class="nav-drop-panel">
-<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
-<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
-<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
-</div>
-</details>
+<header>
+<p class="site"><a href="index.html">SANCTUM</a></p>
+<nav>
+<ul class="bar">
+<li><a href="index.html">Overview</a></li>
+<li><a href="releases.html">Releases</a></li>
+<li><a href="topologies.html">Topologies</a></li>
+<li class="drop"><b tabindex="0">Security</b>
+<ul>
+<li><a href="errata.html">Errata</a></li>
+<li><a href="crypto.html">Cryptography</a></li>
+<li><a href="privsep.html">Privilege Separation</a></li>
+<li><a href="shroud.html">Traffic Analysis</a></li>
+</ul></li>
+<li class="drop current"><b tabindex="0">Docs</b>
+<ul>
+<li><a href="building.html">Building</a></li>
+<li><a href="contributing.html">Contributing</a></li>
+<li><a href="guide.html" class="current">Setup Guide</a></li>
+<li><a href="liturgy.html">Liturgy Guide</a></li>
+<li><a href="cathedral.html">Cathedral Guide</a></li>
+</ul></li>
+<li class="drop"><b tabindex="0">Community</b>
+<ul>
+<li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
+<li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
+<li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
+<li><a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub" class="gh"></a></li>
+</ul></li>
+<li class="get"><a href="releases.html">Get Sanctum</a></li>
+</ul>
 </nav>
-
-<div class="nav-right">
-<a class="icon-link" href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub">
-<svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-</a>
-<a class="icon-link" href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener" aria-label="Discord">
-<svg viewBox="0 0 24 24"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.09-.32 13.68.099 18.213a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.246.198.373.292a.077.077 0 0 1-.006.128 12.3 12.3 0 0 1-1.873.891.076.076 0 0 0-.04.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.001-3.03.077.077 0 0 0 .031-.055c.5-5.177-.838-9.73-3.548-13.816a.062.062 0 0 0-.03-.028zM8.02 15.278c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/></svg>
-</a>
-<a class="btn btn-primary" href="releases.html"><span class="label">Get Sanctum</span></a>
-</div>
-
-<label for="nav-toggle" class="nav-burger" aria-label="Menu"><span></span><span></span><span></span></label>
-</div>
 </header>
 
 <main>
-
-<div class="page-head">
-<div class="wrap">
-<div class="crumb"><a href="index.html">Sanctum</a> / Docs / Setup Guide</div>
-<div class="page-head-top">
-<h1>Setup Guide</h1>
-<div class="release-pill"><span class="dot"></span>Latest release: <a href="releases/sanctum-1.4.1.tgz">sanctum 1.4.1</a></div>
-</div>
-</div>
-</div>
 
 <div class="page-body">
 <div class="wrap">
@@ -316,8 +284,9 @@ hymn-01-02:
 <div class="footer-grid">
 <div class="footer-brand">
 <a href="index.html" class="brand">SANCTUM</a>
-<p>A small, reviewable, fully privilege-separated, post-quantum secure
-VPN daemon and protocol. Free and open, forever, under the ISC license.</p>
+<p>A PQ-secure and fully privilege separated VPN daemon and protocol
+that runs under Linux, OpenBSD and MacOS. Open and free, licensed under
+the ISC license.</p>
 </div>
 
 <div class="footer-col">
@@ -355,10 +324,39 @@ VPN daemon and protocol. Free and open, forever, under the ISC license.</p>
 
 <div class="footer-bottom">
 <span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Ite, missa est.</span>
 <span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
 </div>
 </div>
 </footer>
 
+<script>
+document.querySelectorAll(".bar > li.drop > b").forEach(function (b) {
+	var li = b.parentNode;
+
+	b.addEventListener("mousedown", function (e) {
+		if (document.activeElement !== b)
+			return;
+		e.preventDefault();
+		b.blur();
+		li.classList.add("shut");
+	});
+
+	li.addEventListener("mouseenter", function () {
+		var open = document.activeElement;
+
+		if (open && open !== b && open.closest(".bar > li.drop"))
+			open.blur();
+	});
+
+	li.addEventListener("mouseleave", function () {
+		li.classList.remove("shut");
+	});
+
+	b.addEventListener("focus", function () {
+		li.classList.remove("shut");
+	});
+});
+</script>
 </body>
 </html>
