@@ -1069,7 +1069,7 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 		    "failed to remove tmp file %s (%s)", path, errno_s);
 	} else {
 		if ((fd = open(path,
-		    O_CREAT | O_TRUNC | O_WRONLY, 0400)) == -1) {
+		    O_CREAT | O_TRUNC | O_WRONLY | O_EXCL, 0400)) == -1) {
 			sanctum_log(LOG_NOTICE,
 			    "failed to open '%s': %s", path, errno_s);
 		}
