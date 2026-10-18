@@ -298,15 +298,15 @@ main::after {
     position: absolute;
     left: calc(var(--trace) - 1px);
     top: 0;
+    bottom: 0;
     width: 3px;
-    height: 56px;
-    background: linear-gradient(transparent, var(--amber));
+    background: linear-gradient(transparent, var(--amber)) no-repeat 0 -56px / 3px 56px;
     animation: packet 9s linear infinite;
 }
 
 @keyframes packet {
-    from        { top: 0; }
-    to  { top: calc(100% - 56px); }
+    from        { background-position: 0 -56px; }
+    to          { background-position: 0 calc(100% + 56px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

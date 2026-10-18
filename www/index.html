@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sanctum — Post-quantum secure P2P VPN</title>
 <meta name="description" content="Sanctum is a PQ-secure and fully privilege separated VPN daemon and protocol that runs under Linux, OpenBSD and MacOS. It is designed from the ground up with security in mind and will always be open and free, released under the ISC license.">
-<link rel="stylesheet" href="sanctum.css?v=1792287432">
+<link rel="stylesheet" href="sanctum.css?v=1792287433">
 </head>
 
 <body>
@@ -494,7 +494,7 @@ the ISC license.</p>
 
     function sync() {
         var y = boast.offsetTop + boast.offsetHeight / 2;
-        var f = (y - len) / (main.offsetHeight - len);
+        var f = y / (main.offsetHeight + len);
 
         main.style.setProperty("--hit", Math.max(0, Math.min(1, f)));
         main.classList.add("synced");
