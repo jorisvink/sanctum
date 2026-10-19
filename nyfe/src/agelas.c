@@ -70,16 +70,21 @@
  *		counter = counter + 1
  *		State <- keccak.squeeze(136)
  *
- * Additional Authenticated Data may be added at any time as long as this
- * matches in both the encryption and decryption process.
+ * Additional Authenticated Data must be added before any data is encrypted
+ * or decrypted and must match in both the encryption and decryption process.
  *
  * The data for each AAD call must fit in a single agelas_bytepad() block.
+ *
+ * After absorbing the AAD a new state is squeezed so that the keystream
+ * depends on all of the AAD. When a key is used for more than one message,
+ * a unique nonce must be given as the first AAD.
  *
  * add_aad(aad):
  *	aad_padded = bytepad(aad, 136)
  *	aad_padded[135] = 0x0f
  *	keccak.absorb(aad_padded)
  *	alen += len(aad)
+ *	State <- keccak.squeeze(136)
  *
  * The authentication tag is obtained at the end. The authentication step
  * includes the length of the AAD and data operated on.
@@ -229,7 +234,9 @@ nyfe_agelas_decrypt(struct nyfe_agelas *ctx, const void *in,
 
 /*
  * Add additional authenticated data into the Agelas context.
- * The data its length must be 0 < len <= 132.
+ * The data its length must be len <= 130.
+ *
+ * AAD must be added before any encryption or decryption operation commences.
  */
 void
 nyfe_agelas_aad(struct nyfe_agelas *ctx, const void *data, size_t len)
@@ -239,10 +246,13 @@ nyfe_agelas_aad(struct nyfe_agelas *ctx, const void *data, size_t len)
 	PRECOND(ctx != NULL);
 	PRECOND(data != NULL);
 	PRECOND(len <= AGELAS_ABSORB_LEN - 2);
+	PRECOND(ctx->clen == 0 && ctx->offset == 0);
 
 	agelas_bytepad(data, len, buf, sizeof(buf));
 	buf[AGELAS_SPONGE_RATE - 1] = 0x0f;
+
 	nyfe_keccak1600_absorb(&ctx->sponge, buf, sizeof(buf));
+	nyfe_keccak1600_squeeze(&ctx->sponge, ctx->state, sizeof(ctx->state));
 
 	ctx->alen += len;
 }
