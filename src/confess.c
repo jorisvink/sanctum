@@ -32,13 +32,19 @@
 static void	confess_clear_state(void);
 static void	confess_drop_access(void);
 static void	confess_key_management(void);
-static void	confess_packet_process(struct sanctum_packet *);
 static int	confess_with_slot(struct sanctum_sa *, struct sanctum_packet *);
 
-static int	confess_arwin_check(struct sanctum_sa *,
-		    struct sanctum_proto_hdr *);
-static void	confess_arwin_update(struct sanctum_sa *,
-		    struct sanctum_proto_hdr *);
+static void	confess_packet_process(struct sanctum_packet *);
+static void	confess_packet_transfer(struct sanctum_packet *);
+static int	confess_packet_adjust_length(struct sanctum_packet *);
+static int	confess_packet_matches(struct sanctum_sa *,
+		    struct sanctum_packet *);
+static int	confess_packet_decrypt(struct sanctum_sa *,
+		    struct sanctum_packet *);
+static int	confess_packet_replay_check(struct sanctum_sa *,
+		    struct sanctum_packet *);
+static void	confess_packet_replay_update(struct sanctum_sa *,
+		    struct sanctum_packet *);
 
 /* The local queues. */
 static struct sanctum_proc_io	*io = NULL;
@@ -204,15 +210,21 @@ confess_key_management(void)
  * If the pending RX key was used, it becomes the active one.
  */
 static void
-confess_packet_process(struct sanctum_packet *pkt)
+confess_packet_process(struct sanctum_packet *in)
 {
+	struct sanctum_packet		*pkt;
 	struct sanctum_proto_hdr	*hdr;
 	u_int64_t			flock_src, flock_dst;
 
-	PRECOND(pkt != NULL);
-	PRECOND(pkt->target == SANCTUM_PROC_CONFESS);
+	PRECOND(in != NULL);
 
 	confess_key_management();
+
+	if ((pkt = sanctum_packet_transfer(in,
+	    SANCTUM_PROC_HEAVEN_TX)) == NULL) {
+		sanctum_packet_release(in);
+		return;
+	}
 
 	if (sanctum_packet_crypto_checklen(pkt) == -1) {
 		sanctum_packet_release(pkt);
@@ -261,15 +273,8 @@ confess_packet_process(struct sanctum_packet *pkt)
 static int
 confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
-	u_int16_t			len;
-	u_int64_t			now;
-	struct ip			*ip;
-	struct sanctum_proto_tail	*tail;
-	u_int8_t			*data;
-	size_t				ctlen;
-	struct sanctum_cipher		cipher;
-	struct sanctum_proto_hdr	*hdr, aad;
-	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
+	size_t			min;
+	u_int64_t		now;
 
 	PRECOND(sa != NULL);
 	PRECOND(pkt != NULL);
@@ -277,46 +282,20 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 	if (sa->cipher == NULL)
 		return (-1);
 
-	hdr = sanctum_packet_head(pkt);
-	if (hdr->esp.spi != sa->spi)
+	min = sizeof(struct sanctum_proto_hdr) +
+	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH;
+
+	if (pkt->length < min || pkt->length > SANCTUM_MTU_SIZE_MAX)
 		return (-1);
 
-	if (confess_arwin_check(sa, hdr) == -1)
+	if (confess_packet_matches(sa, pkt) == -1)
 		return (-1);
 
-	if (pkt->length < sizeof(*hdr) + sizeof(*tail) + SANCTUM_TAG_LENGTH)
+	if (confess_packet_replay_check(sa, pkt) == -1)
 		return (-1);
 
-	ctlen = pkt->length - sizeof(*hdr) - SANCTUM_TAG_LENGTH;
-
-	memcpy(&aad, hdr, sizeof(*hdr));
-
-	memset(nonce, 0, sizeof(nonce));
-	memcpy(nonce, &sa->salt, sizeof(sa->salt));
-	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
-
-	aad.esp.spi = htobe32(hdr->esp.spi);
-	aad.esp.seq = htobe32(hdr->esp.seq);
-
-	cipher.aad = &aad;
-	cipher.aad_len = sizeof(aad);
-
-	cipher.nonce = nonce;
-	cipher.nonce_len = sizeof(nonce);
-
-	cipher.data_len = ctlen;
-	cipher.ctx = sa->cipher;
-
-	data = sanctum_packet_data(pkt);
-
-	cipher.pt = data;
-	cipher.ct = data;
-	cipher.tag = data + ctlen;
-
-	if (sanctum_cipher_decrypt(&cipher) == -1)
+	if (confess_packet_decrypt(sa, pkt) == -1)
 		return (-1);
-
-	hdr->pn = be64toh(hdr->pn);
 
 	if (sa->pending) {
 		sa->pending = 0;
@@ -327,48 +306,35 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 		sanctum_log(LOG_NOTICE, "RX SA active (spi=%08x)", sa->spi);
 	}
 
-	confess_arwin_update(sa, hdr);
-	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
+	confess_packet_replay_update(sa, pkt);
 
-	/* The length was checked earlier by the caller. */
-	pkt->length -= sizeof(struct sanctum_proto_hdr);
-	pkt->length -= sizeof(struct sanctum_proto_tail);
-	pkt->length -= SANCTUM_TAG_LENGTH;
-
-	tail = sanctum_packet_tail(pkt);
-	if (tail->reserved != 0)
+	if (confess_packet_adjust_length(pkt) == -1)
 		return (-1);
 
 	now = sanctum_atomic_read(&shared->uptime);
 	sanctum_atomic_write(&shared->heartbeat, now);
+	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
 
-	switch (tail->next) {
-	case SANCTUM_PACKET_IP:
-		if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
-			if (pkt->length < sizeof(*ip))
-				return (-1);
+	confess_packet_transfer(pkt);
 
-			ip = sanctum_packet_data(pkt);
-			len = be16toh(ip->ip_len);
-			if (len > pkt->length || len > sanctum->tun_mtu)
-				return (-1);
+	return (0);
+}
 
-			pkt->length = len;
-		}
-		break;
-	case SANCTUM_PACKET_GRACE:
-		break;
-	default:
+/*
+ * Check if the given packet its SPI matches our SA SPI.
+ */
+static int
+confess_packet_matches(struct sanctum_sa *sa, struct sanctum_packet *pkt)
+{
+	struct sanctum_proto_hdr	*hdr;
+
+	PRECOND(sa != NULL);
+	PRECOND(pkt != NULL);
+
+	hdr = sanctum_packet_head(pkt);
+
+	if (hdr->esp.spi != sa->spi)
 		return (-1);
-	}
-
-	pkt->type = tail->next;
-	pkt->target = SANCTUM_PROC_HEAVEN_TX;
-
-	if (sanctum_packet_queue(io->heaven, pkt) == -1)
-		sanctum_packet_release(pkt);
-	else
-		tx_wakeup = 1;
 
 	return (0);
 }
@@ -377,13 +343,15 @@ confess_with_slot(struct sanctum_sa *sa, struct sanctum_packet *pkt)
  * Check if the given packet was too old, or already seen.
  */
 static int
-confess_arwin_check(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
+confess_packet_replay_check(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
-	u_int64_t	bit, pn;
+	struct sanctum_proto_hdr	*hdr;
+	u_int64_t			bit, pn;
 
 	PRECOND(sa != NULL);
-	PRECOND(hdr != NULL);
+	PRECOND(pkt != NULL);
 
+	hdr = sanctum_packet_head(pkt);
 	pn = be64toh(hdr->pn);
 
 	if ((pn & 0xffffffff) != hdr->esp.seq)
@@ -408,15 +376,66 @@ confess_arwin_check(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
 }
 
 /*
- * Update the anti-replay window.
+ * Prepare the nonce and AAD and decrypt the packet its contents and
+ * verify its integrity.
  */
-static void
-confess_arwin_update(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
+static int
+confess_packet_decrypt(struct sanctum_sa *sa, struct sanctum_packet *pkt)
 {
-	u_int64_t	bit;
+	size_t				ctlen;
+	struct sanctum_cipher		cipher;
+	struct sanctum_proto_hdr	*hdr, aad;
+	u_int8_t			*data, nonce[SANCTUM_NONCE_LENGTH];
 
 	PRECOND(sa != NULL);
-	PRECOND(hdr != NULL);
+	PRECOND(pkt != NULL);
+
+	hdr = sanctum_packet_head(pkt);
+	ctlen = pkt->length - sizeof(*hdr) - SANCTUM_TAG_LENGTH;
+
+	memset(nonce, 0, sizeof(nonce));
+	memcpy(nonce, &sa->salt, sizeof(sa->salt));
+	memcpy(&nonce[sizeof(sa->salt)], &hdr->pn, sizeof(hdr->pn));
+
+	memcpy(&aad, hdr, sizeof(*hdr));
+	aad.esp.spi = htobe32(hdr->esp.spi);
+	aad.esp.seq = htobe32(hdr->esp.seq);
+
+	cipher.aad = &aad;
+	cipher.aad_len = sizeof(aad);
+
+	cipher.nonce = nonce;
+	cipher.nonce_len = sizeof(nonce);
+
+	cipher.ctx = sa->cipher;
+	cipher.data_len = ctlen;
+
+	data = sanctum_packet_data(pkt);
+
+	cipher.ct = data;
+	cipher.pt = data;
+	cipher.tag = data + ctlen;
+
+	if (sanctum_cipher_decrypt(&cipher) == -1)
+		return (-1);
+
+	return (0);
+}
+
+/*
+ * Update the anti-replay window with the given packet.
+ */
+static void
+confess_packet_replay_update(struct sanctum_sa *sa, struct sanctum_packet *pkt)
+{
+	u_int64_t			bit;
+	struct sanctum_proto_hdr	*hdr;
+
+	PRECOND(sa != NULL);
+	PRECOND(pkt != NULL);
+
+	hdr = sanctum_packet_head(pkt);
+	hdr->pn = be64toh(hdr->pn);
 
 	if (hdr->pn > sa->seqnr) {
 		if (hdr->pn - sa->seqnr >= SANCTUM_ARWIN_SIZE) {
@@ -436,4 +455,66 @@ confess_arwin_update(struct sanctum_sa *sa, struct sanctum_proto_hdr *hdr)
 
 	bit = (SANCTUM_ARWIN_SIZE - 1) - (sa->seqnr - hdr->pn);
 	sa->bitmap |= ((u_int64_t)1 << bit);
+}
+
+/*
+ * Adjust the length for the decrypted packet by removing the
+ * overhead bytes. Once we've done that check the protocol tail
+ * and adjust for TFC if required.
+ */
+static int
+confess_packet_adjust_length(struct sanctum_packet *pkt)
+{
+	u_int16_t			len;
+	struct ip			*ip;
+	struct sanctum_proto_tail	*tail;
+
+	PRECOND(pkt != NULL);
+
+	/* The length was checked earlier by the caller. */
+	pkt->length -= sizeof(struct sanctum_proto_hdr);
+	pkt->length -= sizeof(struct sanctum_proto_tail);
+	pkt->length -= SANCTUM_TAG_LENGTH;
+
+	tail = sanctum_packet_tail(pkt);
+	if (tail->reserved != 0)
+		return (-1);
+
+	switch (tail->next) {
+	case SANCTUM_PACKET_IP:
+		if (sanctum->flags & SANCTUM_FLAG_TFC_ENABLED) {
+			if (pkt->length < sizeof(*ip))
+				return (-1);
+
+			ip = sanctum_packet_data(pkt);
+			len = be16toh(ip->ip_len);
+			if (len > pkt->length || len > sanctum->tun_mtu)
+				return (-1);
+
+			pkt->length = len;
+		}
+		break;
+	case SANCTUM_PACKET_GRACE:
+		break;
+	default:
+		return (-1);
+	}
+
+	pkt->type = tail->next;
+
+	return (0);
+}
+
+/*
+ * Transfer the decrypted packet to the heaven-tx process.
+ */
+static void
+confess_packet_transfer(struct sanctum_packet *pkt)
+{
+	pkt->target = SANCTUM_PROC_HEAVEN_TX;
+
+	if (sanctum_packet_queue(io->heaven, pkt) == -1)
+		sanctum_packet_release(pkt);
+	else
+		tx_wakeup = 1;
 }

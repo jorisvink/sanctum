@@ -303,6 +303,9 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
 		mtu += sizeof(struct sanctum_ether) + 4;
 
+	if (mtu > SANCTUM_MTU_SIZE_MAX)
+		fatal("tundev read mtu %zu > %d", mtu, SANCTUM_MTU_SIZE_MAX);
+
 	return (read(fd, data, mtu));
 }
 

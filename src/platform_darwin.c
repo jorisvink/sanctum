@@ -172,6 +172,11 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	iov[1].iov_base = data;
 	iov[1].iov_len = sanctum_atomic_read(&shared->mtu_size);
 
+	if (iov[1].iov_len > SANCTUM_MTU_SIZE_MAX) {
+		fatal("tundev read mtu %zu > %d",
+		    iov[1].iov_len, SANCTUM_MTU_SIZE_MAX);
+	}
+
 	/*
 	 * We have to adjust the total data read with the protocol
 	 * information we read, otherwise the size makes no sense

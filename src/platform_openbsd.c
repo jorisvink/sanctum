@@ -146,6 +146,11 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
 		iov[cnt].iov_len += sizeof(struct sanctum_ether) + 4;
 
+	if (iov[cnt].iov_len > SANCTUM_MTU_SIZE_MAX) {
+		fatal("tundev read mtu %zu > %d",
+		    iov[cnt].iov_len, SANCTUM_MTU_SIZE_MAX);
+	}
+
 	cnt++;
 
 	/*

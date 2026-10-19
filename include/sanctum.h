@@ -858,10 +858,11 @@ struct sanctum_proc	*sanctum_process(void);
 
 /* src/packet.c */
 void	sanctum_packet_init(void);
-void	sanctum_packet_detach(void);
+void	sanctum_packet_drop_access(void);
 void	sanctum_packet_release(struct sanctum_packet *);
 int	sanctum_packet_from_cathedral(struct sanctum_packet *);
 int	sanctum_packet_crypto_checklen(struct sanctum_packet *);
+int	sanctum_packet_queue(struct sanctum_ring *, struct sanctum_packet *);
 
 void	sanctum_packet_shroud(struct sanctum_packet *, const u_int8_t *,
 	    size_t, const u_int8_t *, size_t, const u_int8_t *, size_t);
@@ -875,16 +876,18 @@ void	*sanctum_packet_start(struct sanctum_packet *);
 
 struct sanctum_packet	*sanctum_packet_get(void);
 struct sanctum_packet	*sanctum_packet_dequeue(struct sanctum_ring *);
-int			sanctum_packet_queue(struct sanctum_ring *,
-			    struct sanctum_packet *);
+struct sanctum_packet	*sanctum_packet_transfer(struct sanctum_packet *,
+			    u_int16_t);
 
 /* src/pool.c */
 void	*sanctum_pool_get(struct sanctum_pool *);
+void	*sanctum_pool_entry(struct sanctum_pool *, u_int32_t);
+
 void	sanctum_pool_put(struct sanctum_pool *, void *);
-void	*sanctum_pool_ptr(struct sanctum_pool *, u_int32_t);
-u_int32_t	sanctum_pool_index(struct sanctum_pool *, const void *);
+int	sanctum_pool_owns(struct sanctum_pool *, const void *);
 
 struct sanctum_pool	*sanctum_pool_init(size_t, size_t);
+u_int32_t		sanctum_pool_index(struct sanctum_pool *, const void *);
 
 /* src/ring.c */
 size_t	sanctum_ring_pending(struct sanctum_ring *);

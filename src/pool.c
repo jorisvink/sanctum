@@ -21,7 +21,10 @@
 
 #include "sanctum.h"
 
+/* Pool entries are aligned on a 16-byte boundary. */
 #define POOL_ALIGN		16
+
+/* Each entry gets an entry tacked before it. */
 #define POOL_HDR_LEN		\
     ((sizeof(struct entry) + (POOL_ALIGN - 1)) & ~(POOL_ALIGN - 1))
 
@@ -29,7 +32,7 @@ struct entry {
 	volatile u_int32_t	free;
 };
 
-static struct entry	*pool_entry_from_idx(struct sanctum_pool *, u_int32_t);
+static struct entry	*pool_entry(struct sanctum_pool *, u_int32_t);
 
 /*
  * Allocate a pool that can be shared between different processes.
@@ -59,7 +62,7 @@ sanctum_pool_init(size_t elm, size_t len)
 	pool->base = sanctum_alloc_shared(len * elm);
 
 	for (idx = 0; idx < elm; idx++) {
-		entry = pool_entry_from_idx(pool, idx);
+		entry = pool_entry(pool, idx);
 		entry->free = 1;
 
 		if (sanctum_ring_queue(pool->queue, idx) == -1)
@@ -84,7 +87,7 @@ sanctum_pool_get(struct sanctum_pool *pool)
 	if (sanctum_ring_dequeue(pool->queue, &idx) == -1)
 		return (NULL);
 
-	if ((entry = pool_entry_from_idx(pool, idx)) == NULL)
+	if ((entry = pool_entry(pool, idx)) == NULL)
 		fatal("invalid pool index %u", idx);
 
 	if (!sanctum_atomic_cas_simple(&entry->free, 1, 0))
@@ -106,7 +109,7 @@ sanctum_pool_put(struct sanctum_pool *pool, void *ptr)
 	PRECOND(ptr != NULL);
 
 	idx = sanctum_pool_index(pool, ptr);
-	entry = pool_entry_from_idx(pool, idx);
+	entry = pool_entry(pool, idx);
 	VERIFY(entry != NULL);
 
 	if (!sanctum_atomic_cas_simple(&entry->free, 0, 1))
@@ -120,23 +123,24 @@ sanctum_pool_put(struct sanctum_pool *pool, void *ptr)
  * Return the expected pointer in the pool for the given index.
  */
 void *
-sanctum_pool_ptr(struct sanctum_pool *pool, u_int32_t idx)
+sanctum_pool_entry(struct sanctum_pool *pool, u_int32_t idx)
 {
 	struct entry		*entry;
 
 	PRECOND(pool != NULL);
 
-	if ((entry = pool_entry_from_idx(pool, idx)) == NULL)
+	if ((entry = pool_entry(pool, idx)) == NULL)
 		return (NULL);
 
 	return ((u_int8_t *)entry + POOL_HDR_LEN);
 }
 
 /*
- * Return the expected index in the pool for the given pointer.
+ * Check if the given pool owns the given pointer.
+ * Returns 0 if it owns it, -1 otherwise.
  */
-u_int32_t
-sanctum_pool_index(struct sanctum_pool *pool, const void *ptr)
+int
+sanctum_pool_owns(struct sanctum_pool *pool, const void *ptr)
 {
 	uintptr_t		off, base;
 
@@ -146,21 +150,42 @@ sanctum_pool_index(struct sanctum_pool *pool, const void *ptr)
 	base = (uintptr_t)pool->base + POOL_HDR_LEN;
 
 	if ((uintptr_t)ptr < base)
-		fatal("%p is not part of the pool", ptr);
+		return (-1);
 
 	off = (uintptr_t)ptr - base;
 
 	if ((off % pool->len) != 0 || (off / pool->len) >= pool->elm)
+		return (-1);
+
+	return (0);
+}
+
+/*
+ * Return the expected index in the pool for the given pointer.
+ */
+u_int32_t
+sanctum_pool_index(struct sanctum_pool *pool, const void *ptr)
+{
+	u_int32_t	idx;
+	uintptr_t	base;
+
+	PRECOND(pool != NULL);
+	PRECOND(ptr != NULL);
+
+	if (sanctum_pool_owns(pool, ptr) == -1)
 		fatal("%p is not part of the pool", ptr);
 
-	return ((u_int32_t)(off / pool->len));
+	base = (uintptr_t)pool->base + POOL_HDR_LEN;
+	idx = (u_int32_t)(((uintptr_t)ptr - base) / pool->len);
+
+	return (idx);
 }
 
 /*
  * Returns the pool entry for the given index.
  */
 static struct entry *
-pool_entry_from_idx(struct sanctum_pool *pool, u_int32_t idx)
+pool_entry(struct sanctum_pool *pool, u_int32_t idx)
 {
 	PRECOND(pool != NULL);
 

@@ -200,7 +200,7 @@ sanctum_proc_start(void)
 	(void)close(io.clear);
 	(void)close(io.crypto);
 
-	sanctum_packet_detach();
+	sanctum_packet_drop_access();
 
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
@@ -274,6 +274,8 @@ sanctum_proc_create(u_int16_t type,
 
 		process = proc;
 		proc->pid = getpid();
+
+		sanctum_packet_drop_access();
 		proc->entry(proc);
 		/* NOTREACHED */
 	}

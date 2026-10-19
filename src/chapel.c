@@ -101,8 +101,9 @@ static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_packet(struct sanctum_packet *, u_int64_t);
 
-static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
 static void	chapel_ambry_unwrap(struct sanctum_ambry_offer *, u_int64_t);
+static void	chapel_ambry_write(struct sanctum_ambry_offer *,
+		    const u_int8_t *, size_t, u_int64_t);
 
 static void	chapel_packet_handle(struct sanctum_packet *, u_int64_t);
 static void	chapel_session_key_exchange(struct sanctum_offer *, u_int64_t);
@@ -675,6 +676,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	struct sanctum_cipher		cipher;
 	u_int16_t			tunnel;
 	u_int64_t			flock_src, flock_dst;
+	u_int8_t			ss[SANCTUM_KEY_LENGTH];
 	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
@@ -692,6 +694,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 		return;
 	}
 
+	nyfe_zeroize_register(ss, sizeof(ss));
 	nyfe_zeroize_register(&key, sizeof(key));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
@@ -743,13 +746,14 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	cipher.nonce_len = sizeof(nonce);
 	cipher.nonce = nonce;
 
-	cipher.pt = ambry->key;
+	cipher.pt = ss;
 	cipher.ct = ambry->key;
 	cipher.tag = &ambry->tag[0];
 	cipher.data_len = sizeof(ambry->key);
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
 		sanctum_cipher_cleanup(cipher.ctx);
+		nyfe_zeroize(ss, sizeof(ss));
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_log(LOG_NOTICE, "ambry integrity check failed");
 		return;
@@ -760,12 +764,14 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 	ambry->expires = be16toh(ambry->expires);
 	if (sanctum_ambry_expired(ambry->expires) == -1) {
+		nyfe_zeroize(ss, sizeof(ss));
 		sanctum_log(LOG_NOTICE, "ambry generation 0x%08x is expired",
 		    be32toh(ambry->generation));
 		return;
 	}
 
-	chapel_ambry_write(ambry, now);
+	chapel_ambry_write(ambry, ss, sizeof(ss), now);
+	nyfe_zeroize(ss, sizeof(ss));
 }
 
 /*
@@ -773,12 +779,15 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
  * secret file so it can be used by chapel.
  */
 static void
-chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
+chapel_ambry_write(struct sanctum_ambry_offer *ambry,
+    const u_int8_t *key, size_t klen, u_int64_t now)
 {
 	int		fd, len;
 	char		path[1024];
 
 	PRECOND(ambry != NULL);
+	PRECOND(key != NULL);
+	PRECOND(klen == SANCTUM_KEY_LENGTH);
 
 	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
 	if (len < 0 || (size_t)len >= sizeof(path))
@@ -791,7 +800,7 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	}
 
 	fd = nyfe_file_open(path, NYFE_FILE_CREATE);
-	nyfe_file_write(fd, ambry->key, sizeof(ambry->key));
+	nyfe_file_write(fd, key, klen);
 	nyfe_file_close(fd);
 
 	if (rename(path, sanctum->secret) == -1) {
