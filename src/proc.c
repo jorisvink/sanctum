@@ -283,7 +283,7 @@ sanctum_proc_create(u_int16_t type,
 	timeo.tv_sec = 0;
 	timeo.tv_nsec = 20000000;
 
-	for (i = 0; i < 50; i++) {
+	for (i = 0; i < 150; i++) {
 		nanosleep(&timeo, NULL);
 
 #if defined(__linux__)
@@ -294,7 +294,7 @@ sanctum_proc_create(u_int16_t type,
 			break;
 	}
 
-	if (i == 50)
+	if (i == 150)
 		fatal("failed to start %s", proc->name);
 
 	sanctum_log(LOG_INFO, "started %s (pid=%d)", proc->name, proc->pid);
