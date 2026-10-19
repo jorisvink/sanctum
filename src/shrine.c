@@ -140,44 +140,57 @@ shrine_drop_access(void)
  * too old then we will install it as the RX key for it.
  */
 static void
-shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
+shrine_offer_decrypt(struct sanctum_packet *in, u_int64_t now)
 {
 	struct sanctum_offer		*op;
+	struct sanctum_packet		pkt;
 	struct relic			relic;
 	struct sanctum_key		cipher;
 
-	PRECOND(pkt != NULL);
+	PRECOND(in != NULL);
 	PRECOND(io != NULL);
 
-	if (pkt->length != sizeof(*op))
+	memcpy(&pkt, in, sizeof(struct sanctum_packet));
+
+	if (pkt.length != sizeof(*op))
 		return;
 
-	op = sanctum_packet_head(pkt);
+	nyfe_zeroize_register(&pkt, sizeof(pkt));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
+	op = sanctum_packet_head(&pkt);
 
 	if (sanctum_offer_kdf(sanctum->secret,
 	    SANCTUM_SHRINE_PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed), 0, 0) == -1) {
+		nyfe_zeroize(&pkt, sizeof(pkt));
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}
 
 	if (sanctum_offer_decrypt(&cipher, op, SHRINE_OFFER_VALID) == -1) {
+		nyfe_zeroize(&pkt, sizeof(pkt));
 		nyfe_zeroize(&cipher, sizeof(cipher));
 		return;
 	}
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
-	if (op->data.type != SANCTUM_OFFER_TYPE_KEY)
+
+	if (op->data.type != SANCTUM_OFFER_TYPE_KEY) {
+		nyfe_zeroize(&pkt, sizeof(pkt));
 		return;
+	}
 
 	op->hdr.spi = be32toh(op->hdr.spi);
 	op->data.timestamp = be64toh(op->data.timestamp);
 
-	if (op->hdr.spi == 0 || op->hdr.spi == last_relic.spi)
+	if (op->hdr.spi == 0 || op->hdr.spi == last_relic.spi) {
+		nyfe_zeroize(&pkt, sizeof(pkt));
 		return;
+	}
 
 	if (op->data.timestamp <= last_relic.timestamp) {
+		nyfe_zeroize(&pkt, sizeof(pkt));
 		sanctum_log(LOG_NOTICE,
 		    "old key exchange seen, someone replaying?");
 		return;
@@ -188,17 +201,19 @@ shrine_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	relic.timestamp = op->data.timestamp;
 
 	if (shrine_relic_save(&relic) == -1) {
+		nyfe_zeroize(&pkt, sizeof(pkt));
 		sanctum_log(LOG_NOTICE,
 		    "failed to save shrine relic, new key not accepted");
 		return;
 	}
 
-	sanctum_peer_update(pkt->addr.sin_addr.s_addr, pkt->addr.sin_port);
+	sanctum_peer_update(pkt.addr.sin_addr.s_addr, pkt.addr.sin_port);
 
 	sanctum_offer_install(io->rx, op);
 	sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 
 	nyfe_memcpy(&last_relic, &relic, sizeof(relic));
+	nyfe_zeroize(&pkt, sizeof(pkt));
 }
 
 /*

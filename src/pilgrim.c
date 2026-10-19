@@ -216,27 +216,28 @@ static void
 pilgrim_offer_encrypt(u_int64_t now)
 {
 	struct sanctum_offer		*op;
-	struct sanctum_packet		*pkt;
 	struct sanctum_key_offer	*key;
 	struct sanctum_key		cipher;
+	struct sanctum_packet		pkt, *out;
+	void				*src, *dst;
 
 	PRECOND(offer != NULL);
 
 	offer->ttl--;
 	offer->pulse = now + offer_next_send;
 
-	if ((pkt = sanctum_packet_get()) == NULL)
-		goto cleanup;
+	memset(&pkt, 0, sizeof(pkt));
 
-	op = sanctum_offer_init(pkt, offer->spi,
+	nyfe_zeroize_register(&pkt, sizeof(pkt));
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
+	op = sanctum_offer_init(&pkt, offer->spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_offer_kdf(sanctum->secret,
 	    SANCTUM_SHRINE_PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed), 0, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
-		sanctum_packet_release(pkt);
 		goto cleanup;
 	}
 
@@ -248,17 +249,27 @@ pilgrim_offer_encrypt(u_int64_t now)
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	pkt->length = sizeof(*op);
-	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+	if ((out = sanctum_packet_get()) == NULL)
+		goto cleanup;
 
-	if (sanctum_packet_queue(io->offer, pkt) == -1)
-		sanctum_packet_release(pkt);
+	src = sanctum_packet_head(&pkt);
+	dst = sanctum_packet_head(out);
+
+	memcpy(dst, src, sizeof(*op));
+
+	out->length = sizeof(*op);
+	out->target = SANCTUM_PROC_PURGATORY_TX;
+
+	if (sanctum_packet_queue(io->offer, out) == -1)
+		sanctum_packet_release(out);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 cleanup:
 	if (offer->ttl == 0)
 		pilgrim_offer_clear();
+
+	nyfe_zeroize(&pkt, sizeof(pkt));
 }
 
 /*

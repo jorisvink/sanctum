@@ -396,25 +396,28 @@ chapel_peer_check(u_int64_t now)
  * We accept key exchange and cathedral offerings.
  */
 static void
-chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
+chapel_packet_handle(struct sanctum_packet *in, u_int64_t now)
 {
 	struct sanctum_offer		*op;
+	struct sanctum_packet		pkt;
 	u_int64_t			magic;
 
-	PRECOND(pkt != NULL);
+	PRECOND(in != NULL);
 
-	if (pkt->length < sizeof(*op))
+	memcpy(&pkt, in, sizeof(struct sanctum_packet));
+
+	if (pkt.length < sizeof(*op))
 		return;
 
-	op = sanctum_packet_head(pkt);
+	op = sanctum_packet_head(&pkt);
 	magic = be64toh(op->hdr.magic);
 
 	switch (magic) {
 	case SANCTUM_KEY_OFFER_MAGIC:
-		chapel_offer_decrypt(pkt, now);
+		chapel_offer_decrypt(&pkt, now);
 		break;
 	case SANCTUM_CATHEDRAL_MAGIC:
-		chapel_cathedral_packet(pkt, now);
+		chapel_cathedral_packet(&pkt, now);
 		break;
 	default:
 		fatal("invalid chapel packet %" PRIx64, magic);
