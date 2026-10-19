@@ -42,13 +42,18 @@ sanctum_packet_init(void)
 }
 
 /*
- * Detach and clear our packet pool local pointers, only called from guardian.
+ * Detach and clear our packet pool local pointers,
+ * only called from the guardian and control processes.
  */
 void
 sanctum_packet_detach(void)
 {
+	struct sanctum_proc	*proc;
+
 	PRECOND(pktpool != NULL);
-	PRECOND(sanctum_process() == NULL);
+
+	proc = sanctum_process();
+	VERIFY(proc == NULL || proc->type == SANCTUM_PROC_CONTROL);
 
 	sanctum_shm_detach(pktpool->queue);
 	sanctum_shm_detach(pktpool->base);

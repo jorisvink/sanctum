@@ -50,6 +50,7 @@ sanctum_control(struct sanctum_proc *proc)
 
 	running = 1;
 
+	sanctum_packet_detach();
 	sanctum_platform_sandbox(proc);
 	sanctum_proc_started(proc);
 
