@@ -32,9 +32,6 @@
 /* Size of key input for Agelas. */
 #define AGELAS_KEY_BYTES		64
 
-/* Absorb rate for Agelas. */
-#define AGELAS_ABSORB_RATE		136
-
 /* Label for the kdf. */
 #define AGELAS_KDF_LABEL		"SANCTUM.AGELAS.KDF"
 
