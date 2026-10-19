@@ -36,17 +36,17 @@ static void	bless_packet_transfer(struct sanctum_packet *);
 static void	bless_packet_protocol(struct sanctum_packet *);
 static void	bless_packet_commixtion(struct sanctum_packet *);
 
-/* The shared queues. */
-static struct sanctum_proc_io	*io = NULL;
-
 /* The local state for TX. */
 static struct sanctum_sa	state;
 
 /* The current time. */
-static u_int64_t	now = 0;
+static u_int64_t		now = 0;
+
+/* The shared queues. */
+static struct sanctum_proc_io	*io = NULL;
 
 /* If we should wakeup SANCTUM_PROC_PURGATORY_TX. */
-static int		tx_wakeup = 0;
+static int			tx_wakeup = 0;
 
 /*
  * Bless - The process responsible for the blessing of packets coming
