@@ -43,6 +43,9 @@
 /* Should we generate an offer include the ML-KEM-1024 ciphertext. */
 #define OFFER_INCLUDE_KEM_CT		(1 << 1)
 
+/* Number of previous SPIs for key offers we keep. */
+#define CHAPEL_SPI_HISTORY		4
+
 /*
  * When we received a new ambry, we have the following number of seconds
  * in time to complete a negotiation before we clear all keys and take
@@ -115,6 +118,9 @@ static void	chapel_offer_encrypt(int, u_int8_t);
 static void	chapel_offer_create(u_int64_t, const char *);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
+static void	chapel_spi_history_add(u_int32_t);
+static int	chapel_spi_history_seen(u_int32_t);
+
 static void	chapel_erase_tx(void);
 static void	chapel_erase_rx(void);
 static void	chapel_erase(struct sanctum_key *, u_int32_t);
@@ -161,6 +167,10 @@ static u_int32_t			ambry_generation = 0;
 
 /* The number of exchanges that timed out. */
 static u_int32_t			exchanges_timed_out = 0;
+
+/* Previously used key offer SPIs. */
+static u_int32_t			spi_history_idx = 0;
+static u_int32_t			spi_history[CHAPEL_SPI_HISTORY];
 
 /*
  * Chapel - The keying process.
@@ -1089,6 +1099,8 @@ chapel_offer_clear(void)
 	sanctum_log(LOG_INFO,
 	    "key exchange cleared (spi=%08x)", offer->local.spi);
 
+	chapel_spi_history_add(offer->local.spi);
+
 	offer_ttl = 15;
 	offer_next = 0;
 	offer_next_send = 1;
@@ -1096,6 +1108,36 @@ chapel_offer_clear(void)
 	nyfe_zeroize(offer, sizeof(*offer));
 	free(offer);
 	offer = NULL;
+}
+
+/*
+ * Remember a local spi we used for an exchange.
+ */
+static void
+chapel_spi_history_add(u_int32_t spi)
+{
+	spi_history[spi_history_idx % CHAPEL_SPI_HISTORY] = spi;
+	spi_history_idx++;
+}
+
+/*
+ * Check if we recently saw the given SPI for an exchange.
+ * Returns -1 if we saw it, otherwise 0.
+ */
+static int
+chapel_spi_history_seen(u_int32_t spi)
+{
+	u_int32_t	idx;
+
+	if (spi == 0)
+		return (0);
+
+	for (idx = 0; idx < CHAPEL_SPI_HISTORY; idx++) {
+		if (spi_history[idx] == spi)
+			return (-1);
+	}
+
+	return (0);
 }
 
 /*
@@ -1303,9 +1345,14 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 	xchg = &op->data.offer.exchange;
 
 	if (xchg->spi != offer->local.spi) {
+		if (chapel_spi_history_seen(xchg->spi) == -1)
+			return;
+
 		sanctum_log(LOG_INFO,
 		    "ct fragment, wrong spi (got:%08x - expected:%08x)",
 		    xchg->spi, offer->local.spi);
+
+		chapel_spi_history_add(xchg->spi);
 		chapel_offer_clear();
 		offer_force = 1;
 		return;
