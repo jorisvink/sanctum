@@ -38,10 +38,13 @@ static void	liturgy_offer_send(void);
 static void	liturgy_offer_recv(struct sanctum_packet *, u_int64_t);
 
 /* The local queues. */
-static struct sanctum_proc_io	*io = NULL;
+static struct sanctum_proc_io		*io = NULL;
 
 /* Our own id for tunnel mapping. */
-static u_int16_t		local_id;
+static u_int16_t			local_id;
+
+/* Our local offer cache for offers from our peer. */
+static struct sanctum_offer_cache	offer_cache;
 
 /*
  * Liturgy - Automatic peer discovery via cathedrals.
@@ -74,7 +77,8 @@ sanctum_liturgy(struct sanctum_proc *proc)
 	next_liturgy = 0;
 	local_id = sanctum->tun_spi & 0xff;
 
-	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
+	LIST_INIT(&offer_cache);
+	sanctum->cathedral_last = sanctum_atomic_read(&shared->uptime);
 
 	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
 	    sanctum->cathedral_remembrance != NULL)
@@ -93,16 +97,17 @@ sanctum_liturgy(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		if (now >= next_liturgy) {
 			next_liturgy = now + 5;
 			liturgy_offer_send();
+			sanctum_offer_prune(&offer_cache);
 		}
 
 		sanctum_cathedral_timeout(now);
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel))) {
+		while ((pkt = sanctum_packet_dequeue(io->chapel))) {
 			liturgy_offer_recv(pkt, now);
 			sanctum_packet_release(pkt);
 		}
@@ -154,6 +159,7 @@ liturgy_offer_send(void)
 		return;
 	}
 
+	sanctum_offer_record(&offer_cache, op, 0);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
@@ -174,10 +180,10 @@ liturgy_offer_send(void)
 	sanctum_offer_tfc(pkt);
 
 	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_port = sanctum->cathedral.sin_port;
-	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
+	pkt->addr.sin_port = shared->cathedral.sin_port;
+	pkt->addr.sin_addr.s_addr = shared->cathedral.sin_addr.s_addr;
 
-	if (sanctum_ring_queue(io->purgatory, pkt) == -1)
+	if (sanctum_packet_queue(io->purgatory, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -220,6 +226,13 @@ liturgy_offer_recv(struct sanctum_packet *pkt, u_int64_t now)
 	}
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	if (sanctum_offer_recall(&offer_cache, op, 0) == -1) {
+		sanctum_log(LOG_NOTICE, "dropping duplicate cathedral offer");
+		return;
+	}
+
+	sanctum_offer_record(&offer_cache, op, 0);
 
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi != sanctum->cathedral_id)
@@ -280,6 +293,6 @@ liturgy_bishop_inform(u_int8_t id, int present)
 	pkt->length = sizeof(*info);
 	pkt->target = SANCTUM_PROC_BISHOP;
 
-	if (sanctum_ring_queue(io->bishop, pkt) == -1)
+	if (sanctum_packet_queue(io->bishop, pkt) == -1)
 		sanctum_packet_release(pkt);
 }

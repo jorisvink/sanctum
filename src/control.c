@@ -73,7 +73,6 @@ sanctum_control(struct sanctum_proc *proc)
 
 		if (pfd.revents & POLLIN)
 			control_handle_request(pfd.fd);
-
 	}
 
 	sanctum_config_release();
@@ -98,11 +97,13 @@ control_handle_request(int fd)
 
 	PRECOND(fd >= 0);
 
-	socklen = sizeof(peer);
-
 	for (;;) {
+		socklen = sizeof(peer);
+
 		if ((ret = recvfrom(fd, &ctl, sizeof(ctl), 0,
 		    (struct sockaddr *)&peer, &socklen)) == -1) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				break;
 			if (errno == EINTR)
 				continue;
 			fatal("recvfrom: %s", errno_s);
@@ -137,21 +138,21 @@ control_status_request(int fd, struct sockaddr_un *peer)
 
 	memset(&resp, 0, sizeof(resp));
 
-	resp.tx.age = sanctum_atomic_read(&sanctum->tx.age);
-	resp.tx.spi = sanctum_atomic_read(&sanctum->tx.spi);
-	resp.tx.pkt = sanctum_atomic_read(&sanctum->tx.pkt);
-	resp.tx.last = sanctum_atomic_read(&sanctum->tx.last);
-	resp.tx.bytes = sanctum_atomic_read(&sanctum->tx.bytes);
+	resp.tx.age = sanctum_atomic_read(&shared->tx.age);
+	resp.tx.spi = sanctum_atomic_read(&shared->tx.spi);
+	resp.tx.pkt = sanctum_atomic_read(&shared->tx.pkt);
+	resp.tx.last = sanctum_atomic_read(&shared->tx.last);
+	resp.tx.bytes = sanctum_atomic_read(&shared->tx.bytes);
 
-	resp.rx.age = sanctum_atomic_read(&sanctum->rx.age);
-	resp.rx.spi = sanctum_atomic_read(&sanctum->rx.spi);
-	resp.rx.pkt = sanctum_atomic_read(&sanctum->rx.pkt);
-	resp.rx.last = sanctum_atomic_read(&sanctum->rx.last);
-	resp.rx.bytes = sanctum_atomic_read(&sanctum->rx.bytes);
+	resp.rx.age = sanctum_atomic_read(&shared->rx.age);
+	resp.rx.spi = sanctum_atomic_read(&shared->rx.spi);
+	resp.rx.pkt = sanctum_atomic_read(&shared->rx.pkt);
+	resp.rx.last = sanctum_atomic_read(&shared->rx.last);
+	resp.rx.bytes = sanctum_atomic_read(&shared->rx.bytes);
 
-	resp.ip = sanctum_atomic_read(&sanctum->peer_ip);
-	resp.mtu = sanctum_atomic_read(&sanctum->mtu_size);
-	resp.port = sanctum_atomic_read(&sanctum->peer_port);
+	resp.ip = sanctum_atomic_read(&shared->peer_ip);
+	resp.mtu = sanctum_atomic_read(&shared->mtu_size);
+	resp.port = sanctum_atomic_read(&shared->peer_port);
 
 	if (sendto(fd, &resp, sizeof(resp), 0,
 	    (const struct sockaddr *)peer, sizeof(*peer)) == -1) {

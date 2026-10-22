@@ -80,7 +80,7 @@ sanctum_heaven_tx(struct sanctum_proc *proc)
 		if (sanctum_ring_pending(io->heaven) == 0)
 			sanctum_proc_suspend(-1);
 
-		while ((pkt = sanctum_ring_dequeue(io->heaven)))
+		while ((pkt = sanctum_packet_dequeue(io->heaven)))
 			heaven_tx_send_packet(io->clear, pkt);
 	}
 
@@ -167,9 +167,9 @@ heaven_tx_send_packet(int fd, struct sanctum_packet *pkt)
 			fatal("%s: write(): %s", __func__, errno_s);
 		}
 
-		sanctum_atomic_add(&sanctum->rx.pkt, 1);
-		sanctum_atomic_add(&sanctum->rx.bytes, pkt->length);
-		sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
+		sanctum_atomic_add(&shared->rx.pkt, 1);
+		sanctum_atomic_add(&shared->rx.bytes, pkt->length);
+		sanctum_atomic_write(&shared->rx.last, shared->uptime);
 		break;
 	}
 
@@ -216,8 +216,8 @@ heaven_tx_grace_packet(struct sanctum_packet *pkt)
 		return;
 	}
 
-	sanctum_atomic_write(&sanctum->rx.last, sanctum->uptime);
-	sanctum_atomic_add(&sanctum->rx.pkt, 1);
+	sanctum_atomic_write(&shared->rx.last, shared->uptime);
+	sanctum_atomic_add(&shared->rx.pkt, 1);
 }
 
 /*
@@ -244,7 +244,15 @@ heaven_tx_grace_mtu_probe(struct sanctum_packet *pkt)
 	probe = sanctum_packet_data(pkt);
 	VERIFY(probe->grace.type == SANCTUM_GRACE_TYPE_MTU_PROBE);
 
-	sanctum_atomic_cas_simple(&sanctum->mtu_probe_ack, 0, probe->size);
+	if (probe->size < SANCTUM_MTU_SIZE_MIN ||
+	    probe->size > sanctum->tun_mtu) {
+		sanctum_log(LOG_NOTICE,
+		    "peer sent an MTU probe with an invalid size (%u)",
+		    probe->size);
+		return;
+	}
+
+	sanctum_atomic_cas_simple(&shared->mtu_probe_ack, 0, probe->size);
 }
 
 /*
@@ -268,18 +276,17 @@ heaven_tx_grace_mtu_ack(struct sanctum_packet *pkt)
 	ack = sanctum_packet_data(pkt);
 	VERIFY(ack->grace.type == SANCTUM_GRACE_TYPE_MTU_ACK);
 
-	if (ack->size < SANCTUM_MTU_SIZE_MIN ||
-	    ack->size > SANCTUM_PACKET_DATA_LEN) {
+	if (ack->size < SANCTUM_MTU_SIZE_MIN || ack->size > sanctum->tun_mtu) {
 		sanctum_log(LOG_NOTICE,
 		    "peer sent an MTU ack with an invalid size (%u)",
 		    ack->size);
 		return;
 	}
 
-	sanctum_atomic_write(&sanctum->mtu_change, ack->size);
+	sanctum_atomic_write(&shared->mtu_change, ack->size);
 	sanctum_log(LOG_INFO, "MTU ack received (mtu=%u)", ack->size);
 
-	sanctum_atomic_write(&sanctum->mtu_cancel, 1);
+	sanctum_atomic_write(&shared->mtu_cancel, 1);
 }
 
 /*

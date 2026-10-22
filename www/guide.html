@@ -3,305 +3,244 @@
 <html lang="en">
 
 <head>
-<title>Sanctum || Setup Guide</title>
-<link rel="stylesheet" href="/sanctum.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup Guide — Sanctum</title>
+<meta name="description" content="Step-by-step guide to setting up a Sanctum tunnel between two machines, both manually and using the hymn configuration tool.">
+<link rel="stylesheet" href="sanctum.css?v=1792287433">
 </head>
 
 <body>
 
-<div class="nav">
-    <div class="menu">
-        <h3>Introduction</h3>
-        <a href="/">About</a>
-        <br>
-        <a href="/topologies.html">Topologies</a>
-        <h3>Releases</h3>
-        <a href="/releases.html">Getting Sanctum</a>
-        <br>
-        <a href="/building.html">Building Sanctum</a>
-        <h3>Security</h3>
-        <a href="/errata.html">Errata</a>
-        <br>
-        <a href="/crypto.html">Cryptography</a>
-        <br>
-        <a href="/shroud.html">Traffic Analysis</a>
-        <br>
-        <a href="/privsep.html">Privilege Separation</a>
-        <h3>Resources</h3>
-        <a href="/guide.html">Setup Guide</a>
-        <br>
-        <a href="/liturgy.html">Liturgy Guide</a>
-        <br>
-        <a href="/cathedral.html">Cathedral Guide</a>
-        <h3>Community</h3>
-        <a href="/contributing.html">Contributing</a>
-        <br>
-        <a href="https://reliquary.se">The Reliquary</a>
-        <br>
-        <a href="https://conclave.se">The Conclave</a>
-        <br>
-        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
-        <br>
-        <br>
-        <small>Made in Sweden</small>
-    </div>
-</div>
-
-<div class="content">
-
-<div class="release">
-Latest release: <a href="/releases/sanctum-1.4.0.tgz">sanctum 1.4.0</a>
-</div>
-
-<div class="sep"></div>
-
-<h2>Table of contents</h2>
-
-<ul>
-<li><a href="/guide.html#manual">Manual setup</a></li>
-<li><a href="/guide.html#hymn">Hymn based setup</a></li>
+<header>
+<p class="site"><a href="index.html">SANCTUM</a></p>
+<nav>
+<ul class="bar">
+<li><a href="index.html">Overview</a></li>
+<li><a href="releases.html">Releases</a></li>
+<li><a href="topologies.html">Topologies</a></li>
+<li class="drop"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
+<li><a href="errata.html">Errata</a></li>
+<li><a href="crypto.html">Cryptography</a></li>
+<li><a href="privsep.html">Privilege Separation</a></li>
+<li><a href="shroud.html">Traffic Analysis</a></li>
+</ul></li>
+<li class="drop current"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
+<li><a href="building.html">Building</a></li>
+<li><a href="contributing.html">Contributing</a></li>
+<li><a href="guide.html" class="current">Setup Guide</a></li>
+<li><a href="liturgy.html">Liturgy Guide</a></li>
+<li><a href="cathedral.html">Cathedral Guide</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
+<li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
+<li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
+<li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
+<li><a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub" class="gh"></a></li>
+</ul></li>
+<li class="get"><a href="releases.html">Get Sanctum</a></li>
 </ul>
+</nav>
+</header>
 
-<div class="sep"></div>
+<main>
+
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
+
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#manual">Manual setup</a>
+<a href="#building">Building</a>
+<a href="#environment">Environment</a>
+<a href="#secret">The shared secret</a>
+<a href="#configurations">Configurations</a>
+<a href="#up-and-running">Up and running</a>
+<a href="#hymn">Hymn setup</a>
+<a href="#tunnel-configuration">Tunnel configuration</a>
+<a href="#tunnel-up">Tunnel up</a>
+<a href="#tunnel-status">Tunnel status</a>
+<a href="#useful-commands">Useful hymn commands</a>
+</aside>
+
+<div class="prose">
+
+<h2 id="manual">Guides</h2>
+<p>
+Choose between two types of setup, a manual setup where you create
+the configurations yourself, or a hymn based one which manages
+configurations and naming for you.
+</p>
+
+<p>
+<a href="#manual">Manual setup</a>
+<br>
+<a href="#hymn">Hymn based setup</a>
+</p>
 
 <h2 id="manual">Manual setup</h2>
-
 <p>
-This guide is aimed at people wanting to manually setup sanctum between
-two machines where at least one machine has a public IP.
+This guide is aimed at people wanting to manually set up Sanctum between
+two machines where at least one machine has a public IP — let's call this
+a client-to-server setup.
 </p>
-
-<p>
-Let's call this a client-to-server setup.
-</p>
-
 <p>
 For this example we will use the following parameters:
-
+</p>
 <ul>
 <li>server ip = 1.2.3.4</li>
 <li>client tunnel net = 10.0.0.1/24</li>
 <li>server tunnel net = 10.0.0.2/24</li>
 </ul>
-</p>
 
-<h3>Building</h3>
+<h3 id="building">Building</h3>
 <p>
-Make sure you read the README.md to see what dependencies you want.
+Make sure you read the README.md to see what dependencies you want. On
+both client and server:
 </p>
-
-<p>
-On both client and server:
-
-<pre>
-$ git clone https://github.com/jorisvink/sanctum
+<pre>$ git clone https://github.com/jorisvink/sanctum
 $ cd sanctum
 $ less README.md
 $ make
-# make install
-</pre>
-</p>
+# make install</pre>
 
-<h3>Environment</h3>
-
+<h3 id="environment">Environment</h3>
 <p>
-Create a directory for sanctum, set the right permissions on it. You will
-want to do this on both client and server.
+Create a directory for Sanctum and set the right permissions on it. You
+will want to do this on both client and server.
 </p>
-
-<pre>
-# mkdir -p /etc/sanctum
-# chmod 0700 /etc/sanctum
-</pre>
+<pre># mkdir -p /etc/sanctum
+# chmod 0700 /etc/sanctum</pre>
 
 <h3 id="secret">The shared secret</h3>
-
 <p>
-Generate the shared secret on either the client or the server and
-figure out a way to securely transfer it to the other peer :)
+Generate the shared secret on either the client or the server and figure
+out a way to securely transfer it to the other peer.
+</p>
+<pre># dd if=/dev/urandom of=/etc/sanctum/secret bs=32 count=1</pre>
+<p>
+Sanctum will automatically combine this symmetric key with an asymmetric
+key exchange that consists of ECDH (x25519) and MLKEM-1024.
 </p>
 
-<pre>
-# dd if=/dev/urandom of=/etc/sanctum/secret bs=32 count=1
-</pre>
-
+<h3 id="configurations">Configurations</h3>
 <p>
-Sanctum will automatically combine this symmetric key with an
-asymmetric key exchange that consists of ECDH (x25519) and MLKEM-1024.
+We will configure both the client and server so that the process talking
+to the outside world (<code>purgatory-*</code>) runs as a separate user,
+while the others run as root.
 </p>
+<div class="callout">
+<p><strong>Note:</strong> you may configure a different user for
+<strong>each</strong> process individually if you want tighter separation.</p>
+</div>
 
-<h3>Configurations</h3>
-
-<p>
-We will configure both the client and server in such a way so that the
-process talking to the outside world (purgatory-*) is running as a seperate
-user, while the others run as root.
-</p>
-
-<p>
-<strong>Note</strong>: You may configure a different user for
-<strong>each</strong> process.
-</p>
+<br>
 
 <h4>Configuring the client</h4>
-
 <p>
-Create the following configuration file under /etc/sanctum/client.conf.
-Make sure you replace <strong>user</strong> with the user you want these
-processes to run as (either your own, or maybe a special one).
+Create the following configuration file under
+<code>/etc/sanctum/client.conf</code>. Replace <strong>user</strong> with
+the user you want these processes to run as (either your own, or a
+dedicated one).
 </p>
-
-<pre>
-instance to-server
+<pre>instance to-server
 
 tunnel 10.0.0.1/24 1422
 secret /etc/sanctum/secret
 
 peer 1.2.3.4:1234
 
-run heaven-rx as <strong>user</strong>
-run heaven-tx as <strong>user</strong>
-run purgatory-rx as <strong>user</strong>
-run purgatory-tx as <strong>user</strong>
+run heaven-rx as user
+run heaven-tx as user
+run purgatory-rx as user
+run purgatory-tx as user
 
-run control as <strong>user</strong>
-control /tmp/sanctum.control <strong>user</strong>
+run control as user
+control /tmp/sanctum.control user
 
 run bless as root
 run chapel as root
-run confess as root
-</pre>
+run confess as root</pre>
+<p>Now start it:</p>
+<pre># sanctum -d -c /etc/sanctum/client.conf</pre>
 
-<p>
-Now start it.
-</p>
-
-<pre>
-# sanctum -d -c /etc/sanctum/client.conf
-</pre>
+<br>
 
 <h4>Configuring the server</h4>
-
 <p>
-Create the following configuration file under /etc/sanctum/server.conf.
-Make sure you replace <strong>user</strong> with the user you want these
-processes to run as (either your own, or maybe a special one).
+Create the following configuration file under
+<code>/etc/sanctum/server.conf</code>, again replacing
+<strong>user</strong> as needed.
 </p>
-
-<pre>
-instance to-client
+<pre>instance to-client
 
 tunnel 10.0.0.2/24 1422
 secret /etc/sanctum/secret
 
 local 1.2.3.4:1234
 
-run heaven-rx as <strong>user</strong>
-run heaven-tx as <strong>user</strong>
-run purgatory-rx as <strong>user</strong>
-run purgatory-tx as <strong>user</strong>
+run heaven-rx as user
+run heaven-tx as user
+run purgatory-rx as user
+run purgatory-tx as user
 
-run control as <strong>user</strong>
-control /tmp/sanctum.control <strong>user</strong>
+run control as user
+control /tmp/sanctum.control user
 
 run bless as root
 run chapel as root
-run confess as root
-</pre>
+run confess as root</pre>
+<p>Now start it:</p>
+<pre># sanctum -d -c /etc/sanctum/server.conf</pre>
 
+<h3 id="up-and-running">Up and running</h3>
 <p>
-Now start it.
+If everything went well you now have a tunnel between both devices and
+can ping each other's tunnel addresses.
 </p>
-
-<pre>
-# sanctum -d -c /etc/sanctum/server.conf
-</pre>
-
-<h3>Up and running</h3>
-
-<p>
-If everything went well you now have a tunnel between both devices
-and can ping each others tunnel addresses.
-</p>
-
-<pre>
-$ ping 10.0.0.1
+<pre>$ ping 10.0.0.1
 64 bytes from 10.0.0.1: icmp_seq=0 ttl=255 time=21 ms
 64 bytes from 10.0.0.1: icmp_seq=1 ttl=255 time=22 ms
-64 bytes from 10.0.0.1: icmp_seq=2 ttl=255 time=21 ms
-$
-</pre>
-
-<div class="sep"></div>
+64 bytes from 10.0.0.1: icmp_seq=2 ttl=255 time=21 ms</pre>
 
 <h2 id="hymn">Hymn setup</h2>
-
 <p>
-You can also use the hymn tool to more easily get up and running.
-The hymn tool is part of the sanctum repository and acts as a
-system configuration tool.
+You can also use the <strong>hymn</strong> tool to get up and running
+faster. Hymn is part of the Sanctum repository and acts as a system
+configuration tool. The next few steps assume you've already generated
+and shared the secret <a href="#secret">as described above</a>.
 </p>
+<div class="callout good">
+<p><strong>Tip:</strong> if you don't want to understand every moving
+part, hymn is the quickest way to a running tunnel — it takes care of
+config files and instance naming for you.</p>
+</div>
 
+<h3 id="tunnel-configuration">Tunnel configuration</h3>
+<p>Configure the client using the hymn tool:</p>
+<pre>$ sudo hymn add 01-02 tunnel 10.10.0.1/24 mtu 1422 peer 1.2.3.4:1234 \
+    secret /etc/sanctum/secret</pre>
+<p>And now the server side:</p>
+<pre>$ sudo hymn add 02-01 tunnel 10.10.0.2/24 mtu 1422 local 1.2.3.4:1234 \
+    peer 0.0.0.0:0 secret /etc/sanctum/secret</pre>
+
+<h3 id="tunnel-up">Tunnel up</h3>
 <p>
-These next few steps depend on you having generated and shared the
-secret just as <a href="/guide.html#secret">done before</a>.
+Bring the instances up with the <strong>hymn up</strong> command and the
+correct instance name. On the client:
 </p>
+<pre>$ sudo hymn up 01-02</pre>
+<p>And on the server side:</p>
+<pre>$ sudo hymn up 02-01</pre>
+<p>After a few seconds the tunnel will be alive.</p>
 
-<h3>Tunnel configuration</h3>
-
-<p>
-Configure the client using the hymn tool:
-</p>
-
-<pre>
-$ sudo hymn add 01-02 tunnel 10.10.0.1/24 mtu 1422 peer 1.2.3.4:1234 \
-    secret /etc/sanctum/secret
-</pre>
-
-<p>
-And now the server side:
-</p>
-
-<pre>
-$ sudo hymn add 02-01 tunnel 10.10.0.2/24 mtu 1422 local 1.2.3.4:1234 \
-    peer 0.0.0.0:0 secret /etc/sanctum/secret
-</pre>
-
-<h3>Tunnel up</h3>
-
-<p>
-Now that you've done that you can bring up the instances. You do this by
-running the <strong>hymn up</strong> command with the correct instance name.
-</p>
-
-<p>
-For example on the client:
-</p>
-
-<pre>
-$ sudo hymn up 01-02
-</pre>
-
-<p>
-And on the server side:
-</p>
-
-<pre>
-$ sudo hymn up 02-01
-</pre>
-
-<p>
-After a few seconds the tunnel will be alive.
-</p>
-
-<h3>Tunnel status</h3>
-
-<p>
-You can see tunnel status using the <strong>hymn status</strong> command.
-</p>
-
-<pre>
-$ sudo hymn status 01-02
+<h3 id="tunnel-status">Tunnel status</h3>
+<p>You can see tunnel status using the <strong>hymn status</strong> command.</p>
+<pre>$ hymn status 01-02
 hymn-01-02:
   local         0.0.0.0:0
   tunnel        10.0.0.1/24 (mtu 1422)
@@ -323,23 +262,73 @@ hymn-01-02:
     spi            0x0102a866 (age: 1943 seconds)
     pkt            6151
     bytes          2050832
-    last packet    6 seconds ago
-$
-</pre>
+    last packet    6 seconds ago</pre>
 
-<h3>Useful hymn commands</h3>
-
-<p>
-Some other useful commands:
+<h3 id="useful-commands">Useful hymn commands</h3>
 <ul>
-<li>hymn down - Bring down a tunnel.</li>
-<li>hymn list - Showing all configured instances.</li>
-<li>hymn route add - Route a new network over the tunnel.</li>
-<li>hymn route del - Remove a previously added route.</li>
+<li><strong>hymn down</strong> — Bring down a tunnel.</li>
+<li><strong>hymn list</strong> — Show all configured instances.</li>
+<li><strong>hymn route add</strong> — Route a new network over the tunnel.</li>
+<li><strong>hymn route del</strong> — Remove a previously added route.</li>
 </ul>
-</p>
 
 </div>
+</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A PQ-secure and fully privilege separated VPN daemon and protocol
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
+the ISC license.</p>
+</div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Ite, missa est.</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
 
 </body>
 </html>

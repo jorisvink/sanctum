@@ -84,6 +84,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 	}
 
 	sanctum_platform_sandbox(proc);
+	sanctum_platform_purgatory_config(io->crypto);
 
 	running = 1;
 	sanctum_proc_started(proc);
@@ -107,7 +108,7 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 		 * if we can figure out we changed networks etc so
 		 * the user doesn't have to follow opsec as tightly.
 		 */
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 		if (now >= shroud_next) {
 			purgatory_tx_shroud_regen();
 			shroud_next = now + PURGATORY_SHROUD_NEXT;
@@ -123,11 +124,11 @@ sanctum_purgatory_tx(struct sanctum_proc *proc)
 
 		if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
 		    sanctum->mode != SANCTUM_MODE_LITURGY) {
-			while ((pkt = sanctum_ring_dequeue(io->offer)))
+			while ((pkt = sanctum_packet_dequeue(io->offer)))
 				purgatory_tx_send_packet(pkt);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->purgatory)))
+		while ((pkt = sanctum_packet_dequeue(io->purgatory)))
 			purgatory_tx_send_packet(pkt);
 	}
 
@@ -184,8 +185,8 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 
 	if (pkt->addr.sin_family == 0) {
 		peer.sin_family = AF_INET;
-		peer.sin_port = sanctum_atomic_read(&sanctum->peer_port);
-		peer.sin_addr.s_addr = sanctum_atomic_read(&sanctum->peer_ip);
+		peer.sin_port = sanctum_atomic_read(&shared->peer_port);
+		peer.sin_addr.s_addr = sanctum_atomic_read(&shared->peer_ip);
 
 		if (peer.sin_addr.s_addr == 0) {
 			sanctum_packet_release(pkt);
@@ -218,10 +219,10 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 				sanctum_log(LOG_INFO,
 				    "packet (size=%zu) too large, "
 				    "lowering tunnel MTU", pkt->length);
-				mtu = sanctum_atomic_read(&sanctum->mtu_size);
+				mtu = sanctum_atomic_read(&shared->mtu_size);
 				if (mtu - 64 >= SANCTUM_MTU_SIZE_MIN)
 					mtu -= 64;
-				sanctum_atomic_write(&sanctum->mtu_change, mtu);
+				sanctum_atomic_write(&shared->mtu_change, mtu);
 				break;
 			}
 			if (errno == ENETUNREACH || errno == EHOSTUNREACH) {
@@ -240,6 +241,7 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 			}
 			fatal("sendto: %s", errno_s);
 		}
+
 		break;
 	}
 
@@ -274,7 +276,7 @@ purgatory_tx_shroud(struct sanctum_packet *pkt, struct sockaddr_in *peer)
 		return (sanctum_packet_start(pkt));
 
 	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
-	    peer->sin_addr.s_addr == sanctum->cathedral.sin_addr.s_addr) {
+	    peer->sin_addr.s_addr == shared->cathedral.sin_addr.s_addr) {
 		sanctum_packet_shroud(pkt, shroud_identity,
 		    sizeof(shroud_identity), shroud_seed, sizeof(shroud_seed),
 		    shroud_cathedral, sizeof(shroud_cathedral));

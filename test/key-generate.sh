@@ -25,9 +25,9 @@ cp test/secrets/badf00d.key test/secrets/flock-cafeba00/0badf00d.key
 cp test/secrets/badf00d.key test/secrets/flock-aaaaaa00/0badf00d.key
 cp test/secrets/badf00d.key test/secrets/flock-bbbbbb00/0badf00d.key
 
-rm -rf test/aaaaaa00
-rm -rf test/bbbbbb00
-rm -rf test/cafeba00
+rm -rf test/*aaaaaa00
+rm -rf test/*bbbbbb00
+rm -rf test/*cafeba00
 
 rm -f test/a.bundle
 rm -f test/b.bundle

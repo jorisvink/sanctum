@@ -20,54 +20,228 @@
 
 #include "sanctum.h"
 
+static void	packet_detach_clear(void);
+static void	packet_detach_crypto(void);
 static void	packet_shroud_xor(struct sanctum_packet *,
 		    const void *, size_t, int);
 
-/*
- * Shared pool of packets that are to be processed.
- *
- * The clear and crypto io processes will for each received packet grab
- * one from the pool and hand them over to either the encryption or decryption
- * processes who in turn hand them over to the crypto or clear io processes.
- */
-struct sanctum_pool	*pktpool;
+static struct sanctum_pool	*packet_pool_domain(u_int16_t);
+static struct sanctum_pool	*packet_pool_owner(struct sanctum_packet *);
 
 /*
- * Setup the packet pool, the 1024 could maybe be tuneable.
+ * We run with two pktpools, one for crypto-side that never should see
+ * user-data plaintext and one for clear-side which can see user-data
+ * plaintext.
+ *
+ * This separation keeps plaintext out of processes that shouldn't be
+ * seeing it in shared memory anywhere.
+ *
+ * Note that things like chapel, liturgy or cathedral gets fed packets
+ * from the crypto-side. Those do not carry user-data but often encrypted
+ * offers for key establishment and so on.
+ *
+ * Only bless and confess have access to both and can transfer packets between
+ * them using the sanctum_packet_transfer() call.
+ */
+static struct sanctum_pool	*pktpool_clear = NULL;
+static struct sanctum_pool	*pktpool_crypto = NULL;
+
+/*
+ * Setup the pktpools, the 1024 could maybe be tuneable.
  */
 void
 sanctum_packet_init(void)
 {
-	pktpool = sanctum_pool_init(1024, sizeof(struct sanctum_packet));
+	pktpool_clear = sanctum_pool_init(1024, sizeof(struct sanctum_packet));
+	pktpool_crypto = sanctum_pool_init(1024, sizeof(struct sanctum_packet));
 }
 
 /*
- * Obtain a new packet from the packet pool. If no packets are
- * available NULL is returned to the caller.
+ * Called by processes to drop access to the relevant pktpools.
+ */
+void
+sanctum_packet_drop_access(void)
+{
+	struct sanctum_proc	*proc;
+
+	if ((proc = sanctum_process()) == NULL) {
+		packet_detach_clear();
+		packet_detach_crypto();
+		return;
+	}
+
+	switch (proc->type) {
+	case SANCTUM_PROC_CONTROL:
+		packet_detach_clear();
+		packet_detach_crypto();
+		break;
+	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_CONFESS:
+		VERIFY(pktpool_clear != NULL && pktpool_crypto != NULL);
+		break;
+	default:
+		if (packet_pool_domain(proc->type) == pktpool_clear)
+			packet_detach_crypto();
+		else
+			packet_detach_clear();
+		break;
+	}
+}
+
+/*
+ * Obtain a new packet from the pktpool of the calling process.
+ *
+ * If no packets are available NULL is returned to the caller.
  */
 struct sanctum_packet *
 sanctum_packet_get(void)
 {
 	struct sanctum_packet	*pkt;
+	struct sanctum_proc	*proc;
+	struct sanctum_pool	*pool;
 
-	if ((pkt = sanctum_pool_get(pktpool)) == NULL)
+	proc = sanctum_process();
+	VERIFY(proc != NULL);
+
+	pool = packet_pool_domain(proc->type);
+	if ((pkt = sanctum_pool_get(pool)) == NULL)
 		return (NULL);
-
-	nyfe_mem_zero(pkt, sizeof(*pkt));
 
 	return (pkt);
 }
 
 /*
- * Place a packet back into the packet pool, making it available again
+ * Transfer (copy) a packet from one domain to another. We pull a packet
+ * from the correct target pktpool and copy all data over. If successfull,
+ * the in packet is released back into its pool.
+ *
+ * If no packets are available NULL is returned to the caller.
+ */
+struct sanctum_packet *
+sanctum_packet_transfer(struct sanctum_packet *in, u_int16_t target)
+{
+	struct sanctum_packet	*pkt;
+	struct sanctum_pool	*pool;
+	struct sanctum_proc	*proc;
+	int			reject;
+	size_t			length;
+	void			*src, *dst;
+
+	PRECOND(in != NULL);
+
+	proc = sanctum_process();
+	VERIFY(proc != NULL);
+	VERIFY(proc->type == SANCTUM_PROC_BLESS ||
+	    proc->type == SANCTUM_PROC_CONFESS);
+
+	reject = -1;
+
+	if (proc->type == SANCTUM_PROC_BLESS &&
+	    target == SANCTUM_PROC_PURGATORY_TX)
+		reject = 0;
+
+	if (proc->type == SANCTUM_PROC_CONFESS &&
+	    target == SANCTUM_PROC_HEAVEN_TX)
+		reject = 0;
+
+	if (reject != 0) {
+		sanctum_log(LOG_NOTICE, "%s tried crossing the streams to %u",
+		    proc->name, target);
+		return (NULL);
+	}
+
+	length = in->length;
+
+	if (length > SANCTUM_MTU_SIZE_MAX) {
+		sanctum_log(LOG_NOTICE,
+		    "%s tried crossing a packet that is too large (%zu)",
+		    proc->name, length);
+		return (NULL);
+	}
+
+	pool = packet_pool_domain(target);
+	if ((pkt = sanctum_pool_get(pool)) == NULL)
+		return (NULL);
+
+	pkt->type = in->type;
+	pkt->target = target;
+	pkt->length = length;
+
+	src = sanctum_packet_head(in);
+	dst = sanctum_packet_head(pkt);
+
+	memcpy(dst, src, length);
+	memcpy(&pkt->addr, &in->addr, sizeof(in->addr));
+
+	sanctum_packet_release(in);
+
+	return (pkt);
+}
+
+/*
+ * Place a packet back into the pktpool, making it available again
  * for clear or crypto.
  */
 void
 sanctum_packet_release(struct sanctum_packet *pkt)
 {
+	struct sanctum_pool	*pool;
+
 	PRECOND(pkt != NULL);
 
-	sanctum_pool_put(pktpool, pkt);
+	pool = packet_pool_owner(pkt);
+
+	nyfe_mem_zero(pkt, sizeof(*pkt));
+	sanctum_pool_put(pool, pkt);
+}
+
+/*
+ * Put the given packet into the given ring queue.
+ * We make sure the packet belongs to the correct pktpool.
+ */
+int
+sanctum_packet_queue(struct sanctum_ring *ring, struct sanctum_packet *pkt)
+{
+	u_int32_t		idx;
+	struct sanctum_pool	*pool;
+
+	PRECOND(ring != NULL);
+	PRECOND(pkt != NULL);
+	PRECOND(pkt->length <= SANCTUM_PACKET_DATA_LEN);
+
+	pool = packet_pool_owner(pkt);
+	VERIFY(pool == packet_pool_domain(pkt->target));
+
+	idx = sanctum_pool_index(pool, pkt);
+
+	return (sanctum_ring_queue(ring, idx));
+}
+
+/*
+ * Obtain a packet from the given ring queue.
+ * We make sure the packet belongs to the correct pktpool.
+ */
+struct sanctum_packet *
+sanctum_packet_dequeue(struct sanctum_ring *ring)
+{
+	u_int32_t		idx;
+	struct sanctum_packet	*pkt;
+	struct sanctum_pool	*pool;
+	struct sanctum_proc	*proc;
+
+	PRECOND(ring != NULL);
+
+	if (sanctum_ring_dequeue(ring, &idx) == -1)
+		return (NULL);
+
+	proc = sanctum_process();
+	VERIFY(proc != NULL);
+
+	pool = packet_pool_domain(proc->type);
+	if ((pkt = sanctum_pool_entry(pool, idx)) == NULL)
+		fatal("index %u is invalid for given pktpool", idx);
+
+	return (pkt);
 }
 
 /*
@@ -134,6 +308,7 @@ sanctum_packet_crypto_checklen(struct sanctum_packet *pkt)
 	    sizeof(struct sanctum_proto_tail) + SANCTUM_TAG_LENGTH;
 
 	proc = sanctum_process();
+	VERIFY(proc != NULL);
 
 	if (proc->type == SANCTUM_PROC_PURGATORY_RX) {
 		if (sanctum->flags & SANCTUM_FLAG_SHROUD)
@@ -157,8 +332,9 @@ sanctum_packet_from_cathedral(struct sanctum_packet *pkt)
 {
 	PRECOND(pkt != NULL);
 
-	if (pkt->addr.sin_addr.s_addr != sanctum->cathedral.sin_addr.s_addr ||
-	    pkt->addr.sin_port != sanctum->cathedral.sin_port) {
+	if (pkt->addr.sin_addr.s_addr !=
+	    shared->cathedral.sin_addr.s_addr ||
+	    pkt->addr.sin_port != shared->cathedral.sin_port) {
 		sanctum_log(LOG_NOTICE,
 		    "cathedral packet from unexpected source %s",
 		    sanctum_inet_string(&pkt->addr));
@@ -215,7 +391,7 @@ sanctum_packet_shroud(struct sanctum_packet *pkt, const u_int8_t *id,
 	data[pkt->length++] = 0xff;
 	pkt->length += sizeof(*hdr);
 
-	mtu = sanctum_atomic_read(&sanctum->mtu_size);
+	mtu = sanctum_atomic_read(&shared->mtu_size);
 	if (pkt->length < mtu) {
 		avail = mtu - pkt->length;
 		if (avail >= 2) {
@@ -326,4 +502,87 @@ packet_shroud_xor(struct sanctum_packet *pkt, const void *key, size_t len,
 		else if (steps > 0 || data[pkt->length - 1] == 0xff)
 			pkt->length--;
 	}
+}
+
+/*
+ * Obtain the correct pool for the given process type.
+ */
+static struct sanctum_pool *
+packet_pool_domain(u_int16_t type)
+{
+	struct sanctum_pool	*pool;
+
+	switch (type) {
+	case SANCTUM_PROC_BLESS:
+	case SANCTUM_PROC_HEAVEN_RX:
+	case SANCTUM_PROC_HEAVEN_TX:
+		pool = pktpool_clear;
+		break;
+	case SANCTUM_PROC_CHAPEL:
+	case SANCTUM_PROC_SHRINE:
+	case SANCTUM_PROC_BISHOP:
+	case SANCTUM_PROC_CONFESS:
+	case SANCTUM_PROC_PILGRIM:
+	case SANCTUM_PROC_LITURGY:
+	case SANCTUM_PROC_CATHEDRAL:
+	case SANCTUM_PROC_PURGATORY_RX:
+	case SANCTUM_PROC_PURGATORY_TX:
+		pool = pktpool_crypto;
+		break;
+	default:
+		fatal("process type %u has no pktpool", type);
+	}
+
+	return (pool);
+}
+
+/*
+ * Returns the pktpool the given packet belongs to.
+ */
+static struct sanctum_pool *
+packet_pool_owner(struct sanctum_packet *pkt)
+{
+	PRECOND(pkt != NULL);
+
+	if (pktpool_clear != NULL) {
+		if (sanctum_pool_owns(pktpool_clear, pkt) != -1)
+			return (pktpool_clear);
+	}
+
+	if (pktpool_crypto != NULL) {
+		if (sanctum_pool_owns(pktpool_crypto, pkt) != -1)
+			return (pktpool_crypto);
+	}
+
+	fatal("packet %p is not part of any pktpool", (void *)pkt);
+}
+
+/*
+ * Detach from the clear pktpool.
+ */
+static void
+packet_detach_clear(void)
+{
+	PRECOND(pktpool_clear != NULL);
+
+	sanctum_shm_detach(pktpool_clear->queue);
+	sanctum_shm_detach(pktpool_clear->base);
+
+	free(pktpool_clear);
+	pktpool_clear = NULL;
+}
+
+/*
+ * Detach from the crypto pktpool.
+ */
+static void
+packet_detach_crypto(void)
+{
+	PRECOND(pktpool_crypto != NULL);
+
+	sanctum_shm_detach(pktpool_crypto->queue);
+	sanctum_shm_detach(pktpool_crypto->base);
+
+	free(pktpool_crypto);
+	pktpool_crypto = NULL;
 }

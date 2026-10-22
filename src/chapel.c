@@ -43,6 +43,9 @@
 /* Should we generate an offer include the ML-KEM-1024 ciphertext. */
 #define OFFER_INCLUDE_KEM_CT		(1 << 1)
 
+/* Number of previous SPIs for key offers we keep. */
+#define CHAPEL_SPI_HISTORY		4
+
 /*
  * When we received a new ambry, we have the following number of seconds
  * in time to complete a negotiation before we clear all keys and take
@@ -81,6 +84,7 @@ struct exchange_offer {
 	u_int64_t			pulse;
 	u_int32_t			flags;
 
+	u_int32_t			pk_spi;
 	u_int8_t			pk_frag;
 	u_int8_t			ct_frag;
 };
@@ -100,8 +104,9 @@ static void	chapel_cathedral_p2p(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_ambry(struct sanctum_offer *, u_int64_t);
 static void	chapel_cathedral_packet(struct sanctum_packet *, u_int64_t);
 
-static void	chapel_ambry_write(struct sanctum_ambry_offer *, u_int64_t);
 static void	chapel_ambry_unwrap(struct sanctum_ambry_offer *, u_int64_t);
+static void	chapel_ambry_write(struct sanctum_ambry_offer *,
+		    const u_int8_t *, size_t, u_int64_t);
 
 static void	chapel_packet_handle(struct sanctum_packet *, u_int64_t);
 static void	chapel_session_key_exchange(struct sanctum_offer *, u_int64_t);
@@ -113,49 +118,59 @@ static void	chapel_offer_encrypt(int, u_int8_t);
 static void	chapel_offer_create(u_int64_t, const char *);
 static void	chapel_offer_decrypt(struct sanctum_packet *, u_int64_t);
 
+static void	chapel_spi_history_add(u_int32_t);
+static int	chapel_spi_history_seen(u_int32_t);
+
 static void	chapel_erase_tx(void);
 static void	chapel_erase_rx(void);
 static void	chapel_erase(struct sanctum_key *, u_int32_t);
 
 /* The local queues. */
-static struct sanctum_proc_io	*io = NULL;
+static struct sanctum_proc_io		*io = NULL;
 
 /* The current offer for our peer. */
-static struct exchange_offer	*offer = NULL;
+static struct exchange_offer		*offer = NULL;
+
+/* Our local offer cache for offers from our peer. */
+static struct sanctum_offer_cache	offer_cache;
 
 /* The next time we can offer at the earliest. */
-static u_int64_t		offer_next = 0;
+static u_int64_t			offer_next = 0;
 
 /* Should we forcefully recreate an offer? */
-static int			offer_force = 0;
+static int				offer_force = 0;
 
 /* The last remote spi we negotiated keys for. */
-static u_int32_t		last_spi = 0;
+static u_int32_t			last_spi = 0;
 
 /* The next time we update the cathedral. */
-static u_int64_t		cathedral_next = 0;
+static u_int64_t			cathedral_next = 0;
 
 /* Current offer TTL and next send intervals. */
-static u_int64_t		offer_ttl = 15;
-static u_int64_t		offer_next_send = 1;
+static u_int64_t			offer_ttl = 15;
+static u_int64_t			offer_next_send = 1;
 
 /* Randomly generated local ID. */
-static u_int64_t		local_id = 0;
+static u_int64_t			local_id = 0;
 
 /* The last peer ID received during an exchange. */
-static u_int64_t		peer_id = 0;
+static u_int64_t			peer_id = 0;
 
 /* Have we recently swapped ambries? Cleared after renegotiation. */
-static int			ambry_switch = 0;
+static int				ambry_switch = 0;
 
 /* When did we receive the ambry generation switch? */
-static u_int64_t		ambry_received = 0;
+static u_int64_t			ambry_received = 0;
 
 /* The active ambry generation, initially 0. */
-static u_int32_t		ambry_generation = 0;
+static u_int32_t			ambry_generation = 0;
 
 /* The number of exchanges that timed out. */
-static u_int32_t		exchanges_timed_out = 0;
+static u_int32_t			exchanges_timed_out = 0;
+
+/* Previously used key offer SPIs. */
+static u_int32_t			spi_history_idx = 0;
+static u_int32_t			spi_history[CHAPEL_SPI_HISTORY];
 
 /*
  * Chapel - The keying process.
@@ -173,7 +188,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 	u_int64_t		now;
 	u_int32_t		spi;
 	struct sanctum_packet	*pkt;
-	time_t			last_rtime;
+	time_t			last_rtime, last_prune;
 	int			sig, running, delay_check;
 
 	PRECOND(proc != NULL);
@@ -191,9 +206,11 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 	running = 1;
 	last_rtime = 0;
+	last_prune = 0;
 	delay_check = 0;
+	LIST_INIT(&offer_cache);
 
-	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
+	sanctum->cathedral_last = sanctum_atomic_read(&shared->uptime);
 
 	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
 		if (sanctum->cathedral_remembrance != NULL)
@@ -218,7 +235,7 @@ sanctum_chapel(struct sanctum_proc *proc)
 			sanctum_proc_suspend(1);
 
 		(void)clock_gettime(CLOCK_REALTIME, &ts);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		/*
 		 * If the clock jumped a lot, generate a new local_id
@@ -239,12 +256,17 @@ sanctum_chapel(struct sanctum_proc *proc)
 
 		last_rtime = ts.tv_sec;
 
+		if ((now - last_prune) >= 5) {
+			last_prune = now;
+			sanctum_offer_prune(&offer_cache);
+		}
+
 		if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
 			sanctum_cathedral_timeout(now);
 			chapel_cathedral_notify(now);
 		}
 
-		while ((pkt = sanctum_ring_dequeue(io->chapel)) != NULL) {
+		while ((pkt = sanctum_packet_dequeue(io->chapel)) != NULL) {
 			chapel_packet_handle(pkt, now);
 			sanctum_packet_release(pkt);
 		}
@@ -281,12 +303,14 @@ sanctum_chapel(struct sanctum_proc *proc)
 			 * If we saw traffic on our current offer we
 			 * clear it as we know the other side got it.
 			 */
-			spi = sanctum_atomic_read(&sanctum->rx.spi);
+			spi = sanctum_atomic_read(&shared->rx.spi);
 			if (spi == offer->local.spi &&
-			    sanctum_atomic_read(&sanctum->rx.pkt) > 0) {
+			    sanctum_atomic_read(&shared->rx.pkt) > 0) {
 				offer->flags &= ~OFFER_INCLUDE_KEM_CT;
-				if (offer->flags == 0)
-					chapel_offer_clear();
+			}
+
+			if (offer->flags == 0) {
+				chapel_offer_clear();
 			} else {
 				if (now >= offer->pulse)
 					chapel_offer_send(now);
@@ -338,28 +362,28 @@ chapel_peer_check(u_int64_t now)
 {
 	u_int64_t	hb;
 
-	if (sanctum_atomic_read(&sanctum->rx.spi) == 0)
+	if (sanctum_atomic_read(&shared->rx.spi) == 0)
 		return;
 
-	if ((hb = sanctum_atomic_read(&sanctum->heartbeat)) == 0)
+	if ((hb = sanctum_atomic_read(&shared->heartbeat)) == 0)
 		return;
 
-	if ((now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * 8)
+	if (now < hb || (now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * 8)
 		return;
 
 	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
 
 	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO) {
 		offer_next = 0;
-		sanctum_atomic_write(&sanctum->peer_ip, 0);
-		sanctum_atomic_write(&sanctum->peer_port, 0);
+		sanctum_atomic_write(&shared->peer_ip, 0);
+		sanctum_atomic_write(&shared->peer_port, 0);
 	} else {
 		if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
 		    !(sanctum->flags & SANCTUM_FLAG_PEER_CONFIGURED)) {
-			sanctum_atomic_write(&sanctum->peer_ip,
-			    sanctum->cathedral.sin_addr.s_addr);
-			sanctum_atomic_write(&sanctum->peer_port,
-			    sanctum->cathedral.sin_port);
+			sanctum_atomic_write(&shared->peer_ip,
+			    shared->cathedral.sin_addr.s_addr);
+			sanctum_atomic_write(&shared->peer_port,
+			    shared->cathedral.sin_port);
 		}
 
 		offer_next = now;
@@ -374,36 +398,39 @@ chapel_peer_check(u_int64_t now)
 	if (offer != NULL)
 		chapel_offer_clear();
 
-	sanctum_atomic_write(&sanctum->heartbeat, 0);
+	sanctum_atomic_write(&shared->heartbeat, 0);
 }
 
 /*
- * Handle an incoming packet and decide who gets to handle it.
- * We accept key exchange offers and cathedral packets.
+ * Handle an incoming offer and decide who gets to handle it.
+ * We accept key exchange and cathedral offerings.
  */
 static void
-chapel_packet_handle(struct sanctum_packet *pkt, u_int64_t now)
+chapel_packet_handle(struct sanctum_packet *in, u_int64_t now)
 {
-	struct sanctum_proto_hdr	*hdr;
-	u_int32_t			spi, seq;
+	struct sanctum_offer		*op;
+	struct sanctum_packet		pkt;
+	u_int64_t			magic;
 
-	PRECOND(pkt != NULL);
+	PRECOND(in != NULL);
 
-	if (pkt->length < sizeof(struct sanctum_offer))
+	memcpy(&pkt, in, sizeof(struct sanctum_packet));
+
+	if (pkt.length < sizeof(*op))
 		return;
 
-	hdr = sanctum_packet_head(pkt);
-	seq = be32toh(hdr->esp.seq);
-	spi = be32toh(hdr->esp.spi);
+	op = sanctum_packet_head(&pkt);
+	magic = be64toh(op->hdr.magic);
 
-	if ((spi == (SANCTUM_KEY_OFFER_MAGIC >> 32)) &&
-	    (seq == (SANCTUM_KEY_OFFER_MAGIC & 0xffffffff))) {
-		chapel_offer_decrypt(pkt, now);
-	} else if ((spi == (SANCTUM_CATHEDRAL_MAGIC >> 32)) &&
-	    (seq == (SANCTUM_CATHEDRAL_MAGIC & 0xffffffff))) {
-		chapel_cathedral_packet(pkt, now);
-	} else {
-		fatal("invalid chapel packet (spi=%08x, seq=0x%x)", spi, seq);
+	switch (magic) {
+	case SANCTUM_KEY_OFFER_MAGIC:
+		chapel_offer_decrypt(&pkt, now);
+		break;
+	case SANCTUM_CATHEDRAL_MAGIC:
+		chapel_cathedral_packet(&pkt, now);
+		break;
+	default:
+		fatal("invalid chapel packet %" PRIx64, magic);
 	}
 }
 
@@ -457,8 +484,6 @@ chapel_cathedral_send_info(u_int64_t magic)
 	info->instance = htobe64(local_id);
 	info->tunnel = htobe16(sanctum->tun_spi);
 	info->ambry_generation = htobe32(ambry_generation);
-	info->rx_active = sanctum_atomic_read(&sanctum->rx.spi);
-	info->rx_pending = sanctum_atomic_read(&sanctum->rx_pending);
 
 	if (sanctum->cathedral_remembrance != NULL)
 		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;
@@ -472,6 +497,7 @@ chapel_cathedral_send_info(u_int64_t magic)
 		return;
 	}
 
+	sanctum_offer_record(&offer_cache, op, 0);
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
 
 	if (sanctum_offer_kdf(sanctum->cathedral_secret,
@@ -491,14 +517,14 @@ chapel_cathedral_send_info(u_int64_t magic)
 	sanctum_offer_tfc(pkt);
 
 	pkt->addr.sin_family = AF_INET;
-	pkt->addr.sin_addr.s_addr = sanctum->cathedral.sin_addr.s_addr;
+	pkt->addr.sin_addr.s_addr = shared->cathedral.sin_addr.s_addr;
 
 	if (magic == SANCTUM_CATHEDRAL_MAGIC)
-		pkt->addr.sin_port = sanctum->cathedral.sin_port;
+		pkt->addr.sin_port = shared->cathedral.sin_port;
 	else
 		pkt->addr.sin_port = htobe16(sanctum->cathedral_nat_port);
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1)
+	if (sanctum_packet_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -526,7 +552,6 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	    SANCTUM_CATHEDRAL_KDF_LABEL, &cipher, op->hdr.seed,
 	    sizeof(op->hdr.seed), sanctum->cathedral_flock, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
-		sanctum_packet_release(pkt);
 		return;
 	}
 
@@ -536,6 +561,13 @@ chapel_cathedral_packet(struct sanctum_packet *pkt, u_int64_t now)
 	}
 
 	nyfe_zeroize(&cipher, sizeof(cipher));
+
+	if (sanctum_offer_recall(&offer_cache, op, 0) == -1) {
+		sanctum_log(LOG_NOTICE, "dropping duplicate cathedral offer");
+		return;
+	}
+
+	sanctum_offer_record(&offer_cache, op, 0);
 
 	op->hdr.spi = be32toh(op->hdr.spi);
 	if (op->hdr.spi != sanctum->cathedral_id) {
@@ -584,11 +616,11 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO);
 
 	info = &op->data.offer.info;
-	old_ip = sanctum_atomic_read(&sanctum->peer_ip);
-	old_port = sanctum_atomic_read(&sanctum->peer_port);
+	old_ip = sanctum_atomic_read(&shared->peer_ip);
+	old_port = sanctum_atomic_read(&shared->peer_port);
 
-	sanctum_atomic_write(&sanctum->local_ip, info->local_ip);
-	sanctum_atomic_write(&sanctum->local_port, info->local_port);
+	sanctum_atomic_write(&shared->local_ip, info->local_ip);
+	sanctum_atomic_write(&shared->local_port, info->local_port);
 
 	/* We do not update the peer if it was configured by user. */
 	if (!(sanctum->flags & SANCTUM_FLAG_PEER_CONFIGURED) &&
@@ -597,8 +629,8 @@ chapel_cathedral_p2p(struct sanctum_offer *op, u_int64_t now)
 
 		if (info->peer_ip != info->local_ip &&
 		    (old_ip != info->peer_ip || old_port != info->peer_port) &&
-		    info->peer_ip != sanctum->cathedral.sin_addr.s_addr)
-			sanctum_atomic_write(&sanctum->holepunch, 1);
+		    info->peer_ip != shared->cathedral.sin_addr.s_addr)
+			sanctum_atomic_write(&shared->holepunch, 1);
 	}
 }
 
@@ -655,6 +687,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	struct sanctum_cipher		cipher;
 	u_int16_t			tunnel;
 	u_int64_t			flock_src, flock_dst;
+	u_int8_t			ss[SANCTUM_KEY_LENGTH];
 	u_int8_t			kek[SANCTUM_AMBRY_KEK_LEN];
 	u_int8_t			nonce[SANCTUM_NONCE_LENGTH];
 
@@ -672,6 +705,7 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 		return;
 	}
 
+	nyfe_zeroize_register(ss, sizeof(ss));
 	nyfe_zeroize_register(&key, sizeof(key));
 	nyfe_zeroize_register(&kdf, sizeof(kdf));
 	nyfe_zeroize_register(&cipher, sizeof(cipher));
@@ -723,13 +757,15 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	cipher.nonce_len = sizeof(nonce);
 	cipher.nonce = nonce;
 
-	cipher.pt = ambry->key;
+	cipher.pt = ss;
 	cipher.ct = ambry->key;
 	cipher.tag = &ambry->tag[0];
 	cipher.data_len = sizeof(ambry->key);
 
 	if (sanctum_cipher_decrypt(&cipher) == -1) {
 		sanctum_cipher_cleanup(cipher.ctx);
+		nyfe_zeroize(ss, sizeof(ss));
+		nyfe_zeroize(&cipher, sizeof(cipher));
 		sanctum_log(LOG_NOTICE, "ambry integrity check failed");
 		return;
 	}
@@ -739,12 +775,14 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
 
 	ambry->expires = be16toh(ambry->expires);
 	if (sanctum_ambry_expired(ambry->expires) == -1) {
+		nyfe_zeroize(ss, sizeof(ss));
 		sanctum_log(LOG_NOTICE, "ambry generation 0x%08x is expired",
 		    be32toh(ambry->generation));
 		return;
 	}
 
-	chapel_ambry_write(ambry, now);
+	chapel_ambry_write(ambry, ss, sizeof(ss), now);
+	nyfe_zeroize(ss, sizeof(ss));
 }
 
 /*
@@ -752,12 +790,15 @@ chapel_ambry_unwrap(struct sanctum_ambry_offer *ambry, u_int64_t now)
  * secret file so it can be used by chapel.
  */
 static void
-chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
+chapel_ambry_write(struct sanctum_ambry_offer *ambry,
+    const u_int8_t *key, size_t klen, u_int64_t now)
 {
 	int		fd, len;
 	char		path[1024];
 
 	PRECOND(ambry != NULL);
+	PRECOND(key != NULL);
+	PRECOND(klen == SANCTUM_KEY_LENGTH);
 
 	len = snprintf(path, sizeof(path), "%s.new", sanctum->secret);
 	if (len < 0 || (size_t)len >= sizeof(path))
@@ -770,7 +811,7 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry, u_int64_t now)
 	}
 
 	fd = nyfe_file_open(path, NYFE_FILE_CREATE);
-	nyfe_file_write(fd, ambry->key, sizeof(ambry->key));
+	nyfe_file_write(fd, key, klen);
 	nyfe_file_close(fd);
 
 	if (rename(path, sanctum->secret) == -1) {
@@ -816,7 +857,7 @@ chapel_offer_check(u_int64_t now)
 
 	PRECOND(offer == NULL);
 
-	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
+	if (sanctum_atomic_read(&shared->peer_ip) == 0)
 		return;
 
 	if (now < offer_next)
@@ -837,25 +878,27 @@ chapel_offer_check(u_int64_t now)
 		offer_now = 1;
 		offer_force = 0;
 		reason = "re-sync";
-	} else if (sanctum_atomic_read(&sanctum->rx.spi) != 0) {
-		age = sanctum_atomic_read(&sanctum->rx.age);
-		pkt = sanctum_atomic_read(&sanctum->rx.pkt);
-		hb = sanctum_atomic_read(&sanctum->heartbeat);
+	} else if (sanctum_atomic_read(&shared->rx.spi) != 0) {
+		age = sanctum_atomic_read(&shared->rx.age);
+		pkt = sanctum_atomic_read(&shared->rx.pkt);
+		hb = sanctum_atomic_read(&shared->heartbeat);
 
-		if ((now - hb) >= SANCTUM_GRACE_HEARTBEAT_INTERVAL * 2) {
+		if (now > hb &&
+		    (now - hb) >= SANCTUM_GRACE_HEARTBEAT_INTERVAL * 2) {
 			offer_now = 1;
 			reason = "grace heartbeat timeout";
 		} else if (pkt >= SANCTUM_SA_PACKET_SOFT) {
 			offer_now = 1;
 			reason = "SA packet limit";
-		} else  if (now - age >= SANCTUM_SA_LIFETIME_SOFT) {
+		} else  if (now > age &&
+		    (now - age) >= SANCTUM_SA_LIFETIME_SOFT) {
 			offer_now = 1;
 			reason = "SA age limit";
 		}
 	} else {
 		offer_now = 1;
 		reason = "no keys";
-		sanctum_atomic_write(&sanctum->heartbeat, now);
+		sanctum_atomic_write(&shared->heartbeat, now);
 	}
 
 	if (offer_now == 0)
@@ -873,7 +916,7 @@ chapel_offer_create(u_int64_t now, const char *reason)
 	PRECOND(offer == NULL);
 	PRECOND(reason != NULL);
 
-	if (sanctum_atomic_read(&sanctum->peer_ip) == 0)
+	if (sanctum_atomic_read(&shared->peer_ip) == 0)
 		return;
 
 	if (sanctum->kek != NULL && ambry_generation == 0)
@@ -1037,7 +1080,7 @@ chapel_offer_encrypt(int which, u_int8_t frag)
 
 	sanctum_offer_tfc(pkt);
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1)
+	if (sanctum_packet_queue(io->offer, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
@@ -1054,6 +1097,8 @@ chapel_offer_clear(void)
 	sanctum_log(LOG_INFO,
 	    "key exchange cleared (spi=%08x)", offer->local.spi);
 
+	chapel_spi_history_add(offer->local.spi);
+
 	offer_ttl = 15;
 	offer_next = 0;
 	offer_next_send = 1;
@@ -1061,6 +1106,36 @@ chapel_offer_clear(void)
 	nyfe_zeroize(offer, sizeof(*offer));
 	free(offer);
 	offer = NULL;
+}
+
+/*
+ * Remember a local spi we used for an exchange.
+ */
+static void
+chapel_spi_history_add(u_int32_t spi)
+{
+	spi_history[spi_history_idx % CHAPEL_SPI_HISTORY] = spi;
+	spi_history_idx++;
+}
+
+/*
+ * Check if we recently saw the given SPI for an exchange.
+ * Returns -1 if we saw it, otherwise 0.
+ */
+static int
+chapel_spi_history_seen(u_int32_t spi)
+{
+	u_int32_t	idx;
+
+	if (spi == 0)
+		return (0);
+
+	for (idx = 0; idx < CHAPEL_SPI_HISTORY; idx++) {
+		if (spi_history[idx] == spi)
+			return (-1);
+	}
+
+	return (0);
 }
 
 /*
@@ -1100,6 +1175,11 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 	if (op->data.type != SANCTUM_OFFER_TYPE_EXCHANGE)
 		return;
 
+	if (sanctum_offer_recall(&offer_cache, op, 0) == -1) {
+		sanctum_log(LOG_NOTICE, "dropping duplicate exchange offer");
+		return;
+	}
+
 	exchange = &op->data.offer.exchange;
 	exchange->id = be64toh(exchange->id);
 
@@ -1108,6 +1188,7 @@ chapel_offer_decrypt(struct sanctum_packet *pkt, u_int64_t now)
 		return;
 	}
 
+	sanctum_offer_record(&offer_cache, op, 0);
 	op->hdr.spi = be32toh(op->hdr.spi);
 
 	chapel_session_key_exchange(op, now);
@@ -1162,8 +1243,6 @@ chapel_session_key_exchange(struct sanctum_offer *op, u_int64_t now)
 		sanctum_log(LOG_NOTICE, "ignoring unknown offer packet");
 		return;
 	}
-
-	peer_id = exchange->id;
 }
 
 /*
@@ -1197,6 +1276,8 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 		if (xchg->id != peer_id && offer != NULL) {
 			chapel_offer_clear();
 			chapel_offer_create(now, "peer restarted");
+			if (offer == NULL)
+				return;
 		} else {
 			return;
 		}
@@ -1207,6 +1288,15 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 		    xchg->fragment);
 		return;
 	}
+
+	if (offer->pk_frag != 0 && xchg->spi != offer->pk_spi) {
+		offer->pk_frag = 0;
+		sanctum_log(LOG_NOTICE,
+		    "new exchange from peer, resetting pk fragments");
+	}
+
+	if (offer->pk_frag == 0)
+		offer->pk_spi = xchg->spi;
 
 	if (offer->pk_frag & (1 << xchg->fragment)) {
 		sanctum_log(LOG_INFO, "pk fragment %u already seen",
@@ -1226,7 +1316,9 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 	offer->remote.salt = xchg->salt;
 	offer->flags |= OFFER_INCLUDE_KEM_CT;
 
+	peer_id = xchg->id;
 	last_spi = xchg->spi;
+
 	sanctum_mlkem1024_encapsulate(&offer->remote.kem);
 	chapel_session_key_derive(op, SANCTUM_KEY_DIRECTION_RX);
 }
@@ -1251,15 +1343,23 @@ chapel_session_decapsulate(struct sanctum_offer *op)
 	xchg = &op->data.offer.exchange;
 
 	if (xchg->spi != offer->local.spi) {
+		if (chapel_spi_history_seen(xchg->spi) == -1)
+			return;
+
 		sanctum_log(LOG_INFO,
 		    "ct fragment, wrong spi (got:%08x - expected:%08x)",
 		    xchg->spi, offer->local.spi);
+
+		chapel_spi_history_add(xchg->spi);
 		chapel_offer_clear();
 		offer_force = 1;
 		return;
 	}
 
 	if (offer->remote.spi == 0)
+		return;
+
+	if (op->hdr.spi != offer->remote.spi)
 		return;
 
 	if (!(offer->flags & OFFER_INCLUDE_KEM_PK))
@@ -1441,7 +1541,7 @@ chapel_erase_tx(void)
 {
 	u_int32_t	spi;
 
-	if ((spi = sanctum_atomic_read(&sanctum->tx.spi)) != 0) {
+	if ((spi = sanctum_atomic_read(&shared->tx.spi)) != 0) {
 		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 		chapel_erase(io->tx, spi);
 		sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
@@ -1457,7 +1557,7 @@ chapel_erase_rx(void)
 {
 	u_int32_t	spi;
 
-	if ((spi = sanctum_atomic_read(&sanctum->rx.spi)) != 0) {
+	if ((spi = sanctum_atomic_read(&shared->rx.spi)) != 0) {
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);
 		chapel_erase(io->rx, spi);
 		sanctum_proc_wakeup(SANCTUM_PROC_CONFESS);

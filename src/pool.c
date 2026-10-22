@@ -21,12 +21,18 @@
 
 #include "sanctum.h"
 
+/* Pool entries are aligned on a 16-byte boundary. */
 #define POOL_ALIGN		16
 
+/* Each entry gets an entry tacked before it. */
+#define POOL_HDR_LEN		\
+    ((sizeof(struct entry) + (POOL_ALIGN - 1)) & ~(POOL_ALIGN - 1))
+
 struct entry {
-	int		free;
-	void		*uptr;
+	volatile u_int32_t	free;
 };
+
+static struct entry	*pool_entry(struct sanctum_pool *, u_int32_t);
 
 /*
  * Allocate a pool that can be shared between different processes.
@@ -34,38 +40,33 @@ struct entry {
 struct sanctum_pool *
 sanctum_pool_init(size_t elm, size_t len)
 {
+	u_int32_t		idx;
 	struct sanctum_pool	*pool;
 	struct entry		*entry;
-	size_t			total, idx;
 
 	PRECOND(len > 0);
-	PRECOND(elm <= 4096);
-	PRECOND(SIZE_MAX / elm >= len);
+	PRECOND(elm > 0 && elm <= SANCTUM_RING_MAX);
+	PRECOND(len <= SIZE_MAX - POOL_HDR_LEN - POOL_ALIGN);
 
-	len = sizeof(*entry) + len;
+	if ((pool = calloc(1, sizeof(*pool))) == NULL)
+		fatal("calloc: failed to allocate pool");
+
+	len = POOL_HDR_LEN + len;
 	len = (len + (POOL_ALIGN - 1)) & ~(POOL_ALIGN - 1);
 
-	total = (sizeof(*pool) + (POOL_ALIGN - 1)) & ~(POOL_ALIGN - 1);
-	total = total + (len * elm);
+	PRECOND(SIZE_MAX / elm >= len);
 
-	pool = sanctum_alloc_shared(total);
-
-	memset(pool, 0, sizeof(*pool));
+	pool->elm = elm;
 	pool->len = len;
-
-	sanctum_ring_init(&pool->queue, elm);
-
-	total = (sizeof(*pool) + (POOL_ALIGN - 1)) & ~(POOL_ALIGN - 1);
-	pool->base = (u_int8_t *)pool + total;
+	pool->queue = sanctum_ring_alloc(elm);
+	pool->base = sanctum_alloc_shared(len * elm);
 
 	for (idx = 0; idx < elm; idx++) {
-		entry = (struct entry *)(pool->base + (idx * pool->len));
-
+		entry = pool_entry(pool, idx);
 		entry->free = 1;
-		entry->uptr = (u_int8_t *)entry + sizeof(*entry);
 
-		if (sanctum_ring_queue(&pool->queue, entry) == -1)
-			fatal("failed to queue %zu", idx);
+		if (sanctum_ring_queue(pool->queue, idx) == -1)
+			fatal("failed to queue %u", idx);
 	}
 
 	return (pool);
@@ -78,17 +79,21 @@ sanctum_pool_init(size_t elm, size_t len)
 void *
 sanctum_pool_get(struct sanctum_pool *pool)
 {
+	u_int32_t		idx;
 	struct entry		*entry;
 
 	PRECOND(pool != NULL);
 
-	if ((entry = sanctum_ring_dequeue(&pool->queue)) == NULL)
+	if (sanctum_ring_dequeue(pool->queue, &idx) == -1)
 		return (NULL);
+
+	if ((entry = pool_entry(pool, idx)) == NULL)
+		fatal("invalid pool index %u", idx);
 
 	if (!sanctum_atomic_cas_simple(&entry->free, 1, 0))
 		fatal("failed to mark entry as busy");
 
-	return (entry->uptr);
+	return ((u_int8_t *)entry + POOL_HDR_LEN);
 }
 
 /*
@@ -97,18 +102,95 @@ sanctum_pool_get(struct sanctum_pool *pool)
 void
 sanctum_pool_put(struct sanctum_pool *pool, void *ptr)
 {
-	uintptr_t		uptr;
+	u_int32_t		idx;
 	struct entry		*entry;
 
 	PRECOND(pool != NULL);
 	PRECOND(ptr != NULL);
 
-	uptr = (uintptr_t)ptr - sizeof(*entry);
-	entry = (struct entry *)uptr;
+	idx = sanctum_pool_index(pool, ptr);
+	entry = pool_entry(pool, idx);
+	VERIFY(entry != NULL);
 
 	if (!sanctum_atomic_cas_simple(&entry->free, 0, 1))
 		fatal("failed to mark %p as free", ptr);
 
-	if (sanctum_ring_queue(&pool->queue, (void *)uptr) == -1)
+	if (sanctum_ring_queue(pool->queue, idx) == -1)
 		fatal("failed to requeue a free element");
+}
+
+/*
+ * Return the expected pointer in the pool for the given index.
+ */
+void *
+sanctum_pool_entry(struct sanctum_pool *pool, u_int32_t idx)
+{
+	struct entry		*entry;
+
+	PRECOND(pool != NULL);
+
+	if ((entry = pool_entry(pool, idx)) == NULL)
+		return (NULL);
+
+	return ((u_int8_t *)entry + POOL_HDR_LEN);
+}
+
+/*
+ * Check if the given pool owns the given pointer.
+ * Returns 0 if it owns it, -1 otherwise.
+ */
+int
+sanctum_pool_owns(struct sanctum_pool *pool, const void *ptr)
+{
+	uintptr_t		off, base;
+
+	PRECOND(pool != NULL);
+	PRECOND(ptr != NULL);
+
+	base = (uintptr_t)pool->base + POOL_HDR_LEN;
+
+	if ((uintptr_t)ptr < base)
+		return (-1);
+
+	off = (uintptr_t)ptr - base;
+
+	if ((off % pool->len) != 0 || (off / pool->len) >= pool->elm)
+		return (-1);
+
+	return (0);
+}
+
+/*
+ * Return the expected index in the pool for the given pointer.
+ */
+u_int32_t
+sanctum_pool_index(struct sanctum_pool *pool, const void *ptr)
+{
+	u_int32_t	idx;
+	uintptr_t	base;
+
+	PRECOND(pool != NULL);
+	PRECOND(ptr != NULL);
+
+	if (sanctum_pool_owns(pool, ptr) == -1)
+		fatal("%p is not part of the pool", ptr);
+
+	base = (uintptr_t)pool->base + POOL_HDR_LEN;
+	idx = (u_int32_t)(((uintptr_t)ptr - base) / pool->len);
+
+	return (idx);
+}
+
+/*
+ * Returns the pool entry for the given index.
+ */
+static struct entry *
+pool_entry(struct sanctum_pool *pool, u_int32_t idx)
+{
+	PRECOND(pool != NULL);
+
+	if (idx >= pool->elm)
+		return (NULL);
+
+	return ((struct entry *)(pool->base + ((size_t)idx * pool->len)));
 }

@@ -3,224 +3,202 @@
 <html lang="en">
 
 <head>
-<title>Sanctum || Privilege Separation</title>
-<link rel="stylesheet" href="/sanctum.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privilege Separation — Sanctum</title>
+<meta name="description" content="How Sanctum splits itself into sandboxed single-purpose processes so packets can never cross the encryption boundary unencrypted.">
+<link rel="stylesheet" href="sanctum.css?v=1792287433">
 </head>
 
 <body>
 
-<div class="nav">
-    <div class="menu">
-        <h3>Introduction</h3>
-        <a href="/">About</a>
-        <br>
-        <a href="/topologies.html">Topologies</a>
-        <h3>Releases</h3>
-        <a href="/releases.html">Getting Sanctum</a>
-        <br>
-        <a href="/building.html">Building Sanctum</a>
-        <h3>Security</h3>
-        <a href="/errata.html">Errata</a>
-        <br>
-        <a href="/crypto.html">Cryptography</a>
-        <br>
-        <a href="/shroud.html">Traffic Analysis</a>
-        <br>
-        <a href="/privsep.html">Privilege Separation</a>
-        <h3>Resources</h3>
-        <a href="/guide.html">Setup Guide</a>
-        <br>
-        <a href="/liturgy.html">Liturgy Guide</a>
-        <br>
-        <a href="/cathedral.html">Cathedral Guide</a>
-        <h3>Community</h3>
-        <a href="/contributing.html">Contributing</a>
-        <br>
-        <a href="https://reliquary.se">The Reliquary</a>
-        <br>
-        <a href="https://conclave.se">The Conclave</a>
-        <br>
-        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
-        <br>
-        <br>
-        <small>Made in Sweden</small>
-    </div>
+<header>
+<p class="site"><a href="index.html">SANCTUM</a></p>
+<nav>
+<ul class="bar">
+<li><a href="index.html">Overview</a></li>
+<li><a href="releases.html">Releases</a></li>
+<li><a href="topologies.html">Topologies</a></li>
+<li class="drop current"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
+<li><a href="errata.html">Errata</a></li>
+<li><a href="crypto.html">Cryptography</a></li>
+<li><a href="privsep.html" class="current">Privilege Separation</a></li>
+<li><a href="shroud.html">Traffic Analysis</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
+<li><a href="building.html">Building</a></li>
+<li><a href="contributing.html">Contributing</a></li>
+<li><a href="guide.html">Setup Guide</a></li>
+<li><a href="liturgy.html">Liturgy Guide</a></li>
+<li><a href="cathedral.html">Cathedral Guide</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
+<li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
+<li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
+<li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
+<li><a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub" class="gh"></a></li>
+</ul></li>
+<li class="get"><a href="releases.html">Get Sanctum</a></li>
+</ul>
+</nav>
+</header>
+
+<main>
+
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
+
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#privilege-separation">Privilege separation</a>
+<a href="#multi-process">Multi-process</a>
+<a href="#sandbox">Sandbox</a>
+<a href="#packet-flow">Packet flow</a>
+<a href="#processes">Processes</a>
+</aside>
+
+<div class="prose">
+
+<h2 id="privilege-separation">Privilege separation</h2>
+<p>
+Sanctum is the only ISC licensed, free and open VPN software in the
+world designed from the ground up in a fully privilege separated way.
+</p>
+
+<h2 id="multi-process">Multi-process</h2>
+<p>
+Sanctum is built using a multi-process approach where each process is
+only doing one thing. This allows for more fine-grained sandboxing in
+relation to permissions or allowed system calls. Packets flow between
+these processes in a well-defined manner making it impossible to move a
+packet straight from the red side to the black side without passing the
+encryption process and vice-versa.
+</p>
+
+<h2 id="sandbox">Sandbox</h2>
+<p>
+Its unique privilege separation design in combination with strong
+modern sandboxing guarantee that all of its important assets are
+separated from processes that talk to the internet or handle
+non-cryptography related things. Each process receives its own sandbox
+with only the system calls it requires to function and only access to
+the files it needs.
+</p>
+<div class="diagram-frame"><img src="privsep.png" alt="Sanctum privilege separation packet flow diagram"></div>
+
+<h2 id="packet-flow">Packet flow</h2>
+<p>
+The processes share packets between each other in a very well defined
+way. For incoming packets:
+</p>
+<pre>purgatory-rx (black) -> confess (decryption) -> heaven-tx (red)</pre>
+<p>
+For outgoing packets:
+</p>
+<pre>heaven-rx (red) -> bless (encrypt) -> purgatory-tx (black)</pre>
+<p>
+When the processes start they will remove any of the queues they do not
+need for operating making sure only the correct processes have access
+to the queues they require.
+</p>
+
+<h2 id="processes">Processes</h2>
+<p>
+Below is a list of all the processes that make up sanctum and their
+responsibility, what processes are active is determined by what mode
+sanctum runs under. For example: pilgrim (the sender mode for one-way
+tunnels) does not have the heaven-tx or purgatory-rx processes active,
+meaning it is impossible for it to receive any packets.
+</p>
+
+<div class="callout good">
+<p><strong>Example:</strong> pilgrim mode cannot receive traffic,
+because the processes needed to do so are simply not present in
+that mode. There's no setting to disable or misconfigure.</p>
 </div>
 
-<div class="content">
-    <div class="release">
-    Latest release: <a href="/releases/sanctum-1.4.0.tgz">sanctum 1.4.0</a>
-    </div>
-
-    <div class="sep"></div>
-
-    <h2>Privilege separation</h2>
-
-    <p>
-        Sanctum is the only ISC licensed, free and open VPN software in the
-        world designed from the ground up in a fully privilege separated way.
-    </p>
-
-    <h2>Multi-process</h2>
-
-    <p>
-        Sanctum is built using a multi-process approach where each process
-        is only doing one thing. This allows for more fine-grained sandboxing
-        in relation to permissions or allowed system calls.
-    </p>
-
-    <p>
-        Packets flow between these processes in a well-defined manner
-        making it impossible to move a packet straight from the red
-        side to the black side without passing the encryption process and
-        vice-versa.
-    </p>
-
-    <h2>Sandbox</h2>
-
-    <p>
-        Its unique privilege separation design in combination with
-        strong modern sandboxing guarantee that all of its important assets
-        are separated from processes that talk to the internet or handle
-        non-cryptography related things.
-    </p>
-
-    <p>
-        Each process receives its own sandbox with only the system calls
-        it requires to function and only access to the files it needs.
-    </p>
-
-    <img src="/privsep.png" style="width: 640px; height: auto; margin-top: -45px">
-
-    <h2>Packet flow</h2>
-
-    <p>
-        The processes share packets between each other in a very well
-        defined way.
-
-        For incoming packets:
-
-        <pre>purgatory-rx (black) -> confess (decryption) -> heaven-tx (red)</pre>
-
-        For outgoing packets:
-
-        <pre>heaven-rx (red) -> bless (encrypt) -> purgatory-tx (black)</pre>
-
-        When the processes start they will remove any of the queues they do not
-        need for operating making sure only the correct processes have access
-        to the queues they require.
-    </p>
-
-    <h2>Processes</h2>
-
-    <p>
-        Below is a list of all the processes that make up sanctum and
-        their responsibility, what processes are active is determined
-        by what mode sanctum runs under.
-    </p>
-
-    <p>
-        <strong>For example</strong>: pilgrim (the sender
-        mode for one-way tunnels) does not have the heaven-tx or purgatory-rx
-        processes active, meaning it is impossible for it to receive any
-        packets.
-    </p>
-
-    <br>
-
-    <table>
-    <tr>
-        <th width="120px">Process Name</th>
-        <th>Description</th>
-    </tr>
-
-    <tr>
-        <td>bless</td>
-        <td>The process responsible for encrypting packets.</td>
-    </tr>
-
-    <tr>
-        <td>confess</td>
-        <td>The process responsible for decrypting packets.</td>
-    </tr>
-
-    <tr>
-        <td>chapel</td>
-        <td>The process responsible for deriving new TX/RX keys from a key.</td>
-    </tr>
-
-    <tr>
-        <td>heaven-rx</td>
-        <td>The process receiving packets on the inner interface.</td>
-    </tr>
-
-    <tr>
-        <td>heaven-tx</td>
-        <td>The process sending packets on the inner interface.</td>
-    </tr>
-
-    <tr>
-        <td>purgatory-rx</td>
-        <td>The process receiving packets on the outer interface.</td>
-    </tr>
-
-    <tr>
-        <td>purgatory-tx</td>
-        <td>The process sending packets on the outer interface.</td>
-    </tr>
-
-    <tr>
-        <td>pilgrim</td>
-        <td>
-            The process handling TX keys when running in pilgrim mode
-            (pilgrim is the sender mode for one-way tunnels).
-        </td>
-    </tr>
-
-    <tr>
-        <td>shrine</td>
-        <td>
-            The process handling RX keys running in shrine mode
-            (shrine is the receiver mode for one-way tunnels).
-        </td>
-    </tr>
-
-    <tr>
-        <td>cathedral</td>
-        <td>
-            The process handling discovery, relay and key distribution
-            for connected peers.
-        </td>
-    </tr>
-
-    <tr>
-        <td>liturgy</td>
-        <td>
-            The process responsible for autodiscovery of peers in a cathedral.
-        </td>
-    </tr>
-
-    <tr>
-        <td>bishop</td>
-        <td>
-            The process responsible for configuring tunnels discovered by
-            the liturgy process.
-        </td>
-    </tr>
-
-    <tr>
-        <td>guardian</td>
-        <td>
-            The process monitoring all other processes. It is responsible for
-            setting MTU values and updating the sanctum uptime once every
-            second. This uptime is used by other processes who need timestamps.
-        </td>
-    </tr>
-
-    </table>
-    <br>
+<table>
+<thead>
+<tr><th>Process Name</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>bless</code></td><td>The process responsible for encrypting packets.</td></tr>
+<tr><td><code>confess</code></td><td>The process responsible for decrypting packets.</td></tr>
+<tr><td><code>chapel</code></td><td>The process responsible for deriving new TX/RX keys from a key.</td></tr>
+<tr><td><code>heaven-rx</code></td><td>The process receiving packets on the inner interface.</td></tr>
+<tr><td><code>heaven-tx</code></td><td>The process sending packets on the inner interface.</td></tr>
+<tr><td><code>purgatory-rx</code></td><td>The process receiving packets on the outer interface.</td></tr>
+<tr><td><code>purgatory-tx</code></td><td>The process sending packets on the outer interface.</td></tr>
+<tr><td><code>pilgrim</code></td><td>The process handling TX keys when running in pilgrim mode (pilgrim is the sender mode for one-way tunnels).</td></tr>
+<tr><td><code>shrine</code></td><td>The process handling RX keys running in shrine mode (shrine is the receiver mode for one-way tunnels).</td></tr>
+<tr><td><code>cathedral</code></td><td>The process handling discovery, relay and key distribution for connected peers.</td></tr>
+<tr><td><code>liturgy</code></td><td>The process responsible for autodiscovery of peers in a cathedral.</td></tr>
+<tr><td><code>bishop</code></td><td>The process responsible for configuring tunnels discovered by the liturgy process.</td></tr>
+<tr><td><code>guardian</code></td><td>The process monitoring all other processes. It is responsible for setting MTU values and updating the sanctum uptime once every second. This uptime is used by other processes who need timestamps.</td></tr>
+</tbody>
+</table>
 
 </div>
+</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A PQ-secure and fully privilege separated VPN daemon and protocol
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
+the ISC license.</p>
+</div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Ite, missa est.</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
 
 </body>
 </html>

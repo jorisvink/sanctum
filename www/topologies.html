@@ -3,136 +3,209 @@
 <html lang="en">
 
 <head>
-<title>Sanctum || Topologies</title>
-<link rel="stylesheet" href="/sanctum.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topologies — Sanctum</title>
+<meta name="description" content="Sanctum supports site-to-site, roadwarrior, full-mesh, one-way diode and cathedral relay topologies from a single protocol.">
+<link rel="stylesheet" href="sanctum.css?v=1792287433">
 </head>
 
 <body>
 
-<div class="nav">
-    <div class="menu">
-        <h3>Introduction</h3>
-        <a href="/">About</a>
-        <br>
-        <a href="/topologies.html">Topologies</a>
-        <h3>Releases</h3>
-        <a href="/releases.html">Getting Sanctum</a>
-        <br>
-        <a href="/building.html">Building Sanctum</a>
-        <h3>Security</h3>
-        <a href="/errata.html">Errata</a>
-        <br>
-        <a href="/crypto.html">Cryptography</a>
-        <br>
-        <a href="/shroud.html">Traffic Analysis</a>
-        <br>
-        <a href="/privsep.html">Privilege Separation</a>
-        <h3>Resources</h3>
-        <a href="/guide.html">Setup Guide</a>
-        <br>
-        <a href="/liturgy.html">Liturgy Guide</a>
-        <br>
-        <a href="/cathedral.html">Cathedral Guide</a>
-        <h3>Community</h3>
-        <a href="/contributing.html">Contributing</a>
-        <br>
-        <a href="https://reliquary.se">The Reliquary</a>
-        <br>
-        <a href="https://conclave.se">The Conclave</a>
-        <br>
-        <a href="https://discord.gg/RRNtzJB7P3">Join us on Discord</a>
-        <br>
-        <br>
-        <small>Made in Sweden</small>
-    </div>
+<header>
+<p class="site"><a href="index.html">SANCTUM</a></p>
+<nav>
+<ul class="bar">
+<li><a href="index.html">Overview</a></li>
+<li><a href="releases.html">Releases</a></li>
+<li><a href="topologies.html" class="current">Topologies</a></li>
+<li class="drop"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
+<li><a href="errata.html">Errata</a></li>
+<li><a href="crypto.html">Cryptography</a></li>
+<li><a href="privsep.html">Privilege Separation</a></li>
+<li><a href="shroud.html">Traffic Analysis</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
+<li><a href="building.html">Building</a></li>
+<li><a href="contributing.html">Contributing</a></li>
+<li><a href="guide.html">Setup Guide</a></li>
+<li><a href="liturgy.html">Liturgy Guide</a></li>
+<li><a href="cathedral.html">Cathedral Guide</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
+<li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
+<li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
+<li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
+<li><a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub" class="gh"></a></li>
+</ul></li>
+<li class="get"><a href="releases.html">Get Sanctum</a></li>
+</ul>
+</nav>
+</header>
+
+<main>
+
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
+
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#modes">Modes at a glance</a>
+<a href="#tunnel">Tunnel mode</a>
+<a href="#pilgrim">Pilgrim-shrine mode</a>
+<a href="#liturgy">Liturgy mode</a>
+<a href="#cathedral">Cathedral mode</a>
+<a href="#roaming">Roaming</a>
+</aside>
+
+<div class="prose">
+
+<h2 id="modes">Sanctum modes</h2>
+
+<table>
+<thead>
+<tr><th>Mode</th><th>Use case</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>Tunnel</td>
+<td>Site-to-site &amp; roadwarrior</td>
+<td>When connecting different sites, or client to sites. This mode is also used for cathedral clients, where peer discovery happens automatically.</td>
+</tr>
+<tr>
+<td>Pilgrim-shrine</td>
+<td>One-way tunnels</td>
+<td>For networks with a diode enforcing unidirectional traffic.</td>
+</tr>
+<tr>
+<td>Cathedral</td>
+<td>Relay, discovery, keying</td>
+<td>A discovery, relay and key distribution point for your networks.</td>
+</tr>
+<tr>
+<td>Liturgy</td>
+<td>Auto-discovery &amp; mesh</td>
+<td>Automatic peer discovery via a cathedral with possibility to use DNS resolving for hosts.</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="tunnel">Tunnel mode</h2>
+<p>
+This mode supports the classic site-to-site and client-to-site setups.
+Sanctum is configured with the IP address of its peer (if known) and its
+local address.
+</p>
+<p>
+This mode is also used when configuring Sanctum as a cathedral client.
+In this case a cathedral endpoint is configured instead of an IP address
+for your peer — discovery and the establishment of a P2P E2EE tunnel
+happen automatically.
+</p>
+
+<h2 id="pilgrim">Pilgrim-shrine mode</h2>
+<p>
+Use this mode when you have a diode in your network path that enforces
+unidirectional traffic. The <strong>pilgrim</strong> is the sender while
+the <strong>shrine</strong> is the receiver. Because of how privilege
+separation works in Sanctum, no return traffic is possible — a great
+choice for implementing software diodes.
+</p>
+
+<h2 id="liturgy">Liturgy mode</h2>
+<p>
+Liturgy mode allows Sanctum to use cathedrals to auto-discover multiple
+peers belonging to the same flock. When peers are discovered, a tunnel
+is automatically established; if a peer goes offline, the tunnel goes
+offline automatically too.
+</p>
+<p>
+Because it uses cathedrals, both peers may live behind NAT or firewalls.
+Cathedrals help establish a direct P2P connection when possible,
+otherwise traffic is relayed over the cathedral.
+</p>
+<div class="callout good">
+<p><strong>Note:</strong> cathedrals can never read any traffic — they
+are only ever able to relay it.</p>
+</div>
+<p><a href="liturgy.html">Read the full liturgy guide →</a></p>
+
+<h2 id="cathedral">Cathedral mode</h2>
+<p>
+In this mode Sanctum only acts as a cathedral — a peer discovery,
+traffic relay and key distribution point. Cathedrals can federate with
+each other to create resilient infrastructure that becomes hard to take
+down.
+</p>
+<p><a href="cathedral.html">Read the full cathedral setup guide →</a></p>
+
+<h2 id="roaming">Roaming</h2>
+<p>
+Roaming just works in Sanctum — tunnels update their peer endpoints
+automatically as devices move between networks.
+</p>
+
+</div>
+</div>
+</div>
 </div>
 
-<div class="content">
-    <div class="release">
-    Latest release: <a href="/releases/sanctum-1.4.0.tgz">sanctum 1.4.0</a>
-    </div>
+</main>
 
-    <div class="sep"></div>
-
-    <h2>Topologies</h2>
-
-    <p>
-        Sanctum out of the box, supports different modes that can be used to
-        build different types of topologies.
-    </p>
-
-    <h2>Modes</h2>
-
-    <ul>
-        <li>Tunnel mode (classic site-to-site, or roadwarrior setup).</li>
-        <li>Pilgrim-shrine mode (one-way tunnels, in case of diodes).</li>
-        <li>Liturgy mode (auto discovery of peers and tunnel management).</li>
-        <li>Cathedral mode (relay, discovery and key distribution).</li>
-    </ul>
-
-    <h2>Tunnel mode</h2>
-
-    <p>
-        This mode supports the classic site-to-site and client-to-site
-        setups. Sanctum is configured with the IP address of its peer
-        (if known) and its local address.
-    </p>
-
-    <p>
-        This mode is also used when configuring sanctum as a cathedral
-        client. In this case a cathedral endpoint is configured instead
-        of an IP address for our peer. The discovery of our peer and
-        the establishment of a P2P E2EE tunnel happens automatically.
-    </p>
-
-    <h2>Pilgrim-shrine mode</h2>
-
-    <p>
-        Use this mode when you have a diode in your network path that
-        enforces unidirectional traffic. The pilgrim mode is the sender
-        while the shrine is the receiver. Because of how the privilege
-        seperation works in sanctum, no return traffic is possible. This
-        is a great choice for implementing software diodes.
-    </p>
-
-    <h2>Liturgy mode</h2>
-
-    <p>
-        Liturgy mode allows sanctum to use cathedrals to autodiscover multiple
-        peers belonging to the same flock. When peers are discovered a
-        tunnel is automatically established to them, if the peers go offline
-        the tunnel goes offline automatically.
-    </p>
-
-    <p>
-        Because it uses cathedrals, both peers may live behind NAT or
-        firewalls. The cathedrals will help in establishing a P2P connection
-        between the two peers if possible, otherwise traffic is relayed
-        over a cathedral.
-    </p>
-
-    <p>
-        <strong>Note:</strong> cathedrals can never read any traffic, they
-        are only able to relay traffic.
-    </p>
-
-    <h2>Cathedral mode</h2>
-
-    <p>
-        In this mode sanctum only acts as a cathedral. A cathedral is a
-        peer discovery, traffic relay and key distribution point. Cathedrals
-        can federate with each other to create a resilient network that
-        becomes hard to take down.
-    </p>
-
-    <h2>Roaming</h2>
-
-    <p>
-        Roaming just works in sanctum, tunnels update their peer endpoints
-        automatically.
-    </p>
-        
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A PQ-secure and fully privilege separated VPN daemon and protocol
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
+the ISC license.</p>
 </div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Ite, missa est.</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
 
 </body>
 </html>

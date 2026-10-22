@@ -141,7 +141,16 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	}
 
 	iov[cnt].iov_base = data;
-	iov[cnt].iov_len = sanctum_atomic_read(&sanctum->mtu_size);
+	iov[cnt].iov_len = sanctum_atomic_read(&shared->mtu_size);
+
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		iov[cnt].iov_len += sizeof(struct sanctum_ether) + 4;
+
+	if (iov[cnt].iov_len > SANCTUM_MTU_SIZE_MAX) {
+		fatal("tundev read mtu %zu > %d",
+		    iov[cnt].iov_len, SANCTUM_MTU_SIZE_MAX);
+	}
+
 	cnt++;
 
 	/*
@@ -196,6 +205,17 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 {
 	PRECOND(fd > 0);
 	PRECOND(on == 0 || on == 1);
+
+	/* no-op on OpenBSD. */
+}
+
+/*
+ * Configure the purgatory-tx sending socket (if required).
+ */
+void
+sanctum_platform_purgatory_config(int fd)
+{
+	PRECOND(fd >= 0);
 
 	/* no-op on OpenBSD. */
 }
@@ -415,6 +435,7 @@ openbsd_configure_bridge(const char *dev)
 	PRECOND(dev != NULL);
 	PRECOND(sanctum->bridge != NULL);
 
+	memset(&ifr, 0, sizeof(ifr));
 	memset(&ifbr, 0, sizeof(ifbr));
 
 	if (strlcpy(ifr.ifr_name, sanctum->bridge,
@@ -439,6 +460,9 @@ openbsd_configure_bridge(const char *dev)
 		if (errno != EEXIST)
 			fatal("ioctl(SIOCBRDGADD): %s", errno_s);
 	}
+
+	if (ioctl(fd, SIOCGIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCGIFFLAGS): %s", errno_s);
 
 	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)

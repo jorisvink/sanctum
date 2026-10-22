@@ -145,10 +145,11 @@ purgatory_rx_drop_access(void)
 	sanctum_shm_detach(io->tx);
 	sanctum_shm_detach(io->rx);
 	sanctum_shm_detach(io->stx);
-	sanctum_shm_detach(io->bishop);
 	sanctum_shm_detach(io->offer);
 	sanctum_shm_detach(io->bless);
+	sanctum_shm_detach(io->bishop);
 	sanctum_shm_detach(io->heaven);
+	sanctum_shm_detach(io->purgatory);
 
 	io->tx = NULL;
 	io->rx = NULL;
@@ -157,6 +158,7 @@ purgatory_rx_drop_access(void)
 	io->bless = NULL;
 	io->heaven = NULL;
 	io->bishop = NULL;
+	io->purgatory = NULL;
 }
 
 /*
@@ -228,13 +230,13 @@ purgatory_rx_recv_packets(int fd)
 
 		switch (target) {
 		case SANCTUM_PROC_CONFESS:
-			ret = sanctum_ring_queue(io->confess, pkt);
+			ret = sanctum_packet_queue(io->confess, pkt);
 			break;
 		case SANCTUM_PROC_CHAPEL:
 		case SANCTUM_PROC_SHRINE:
 		case SANCTUM_PROC_LITURGY:
 		case SANCTUM_PROC_CATHEDRAL:
-			ret = sanctum_ring_queue(io->chapel, pkt);
+			ret = sanctum_packet_queue(io->chapel, pkt);
 			break;
 		default:
 			ret = -1;
@@ -336,8 +338,8 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 		return (0);
 	}
 
-	if (spi != sanctum_atomic_read(&sanctum->rx.spi)) {
-		if (spi == sanctum_atomic_read(&sanctum->rx_pending))
+	if (spi != sanctum_atomic_read(&shared->rx.spi)) {
+		if (spi == sanctum_atomic_read(&shared->rx_pending))
 			return (0);
 		return (-1);
 	}
@@ -345,7 +347,7 @@ purgatory_rx_packet_check(struct sanctum_packet *pkt)
 	if ((pn & 0xffffffff) != seq)
 		return (-1);
 
-	last = sanctum_atomic_read(&sanctum->last_pn);
+	last = sanctum_atomic_read(&shared->last_pn);
 
 	if (pn > last)
 		return (0);
@@ -376,7 +378,7 @@ purgatory_rx_unshroud(struct sanctum_packet *pkt)
 	VERIFY(sanctum->mode != SANCTUM_MODE_CATHEDRAL);
 
 	if ((sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) &&
-	    pkt->addr.sin_addr.s_addr == sanctum->cathedral.sin_addr.s_addr) {
+	    pkt->addr.sin_addr.s_addr == shared->cathedral.sin_addr.s_addr) {
 		ret = sanctum_packet_unshroud(pkt,
 		    shroud_cathedral, sizeof(shroud_cathedral));
 	} else {

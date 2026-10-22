@@ -22,6 +22,11 @@ Attach a bridge interface to an existing tunnel.
 .BR cathedral
 Change the configured cathedral for an existing tunnel.
 .TP
+.BR commixtion
+Toggle the cathedral commixtion feature, if turned on your packets will hop
+several times inside of the cathedral network before being delivered to your
+peer.
+.TP
 .BR del
 Removes a tunnel from the system.
 .TP
@@ -47,12 +52,23 @@ throughout all other
 .I hymn
 commands.
 .TP
+.BR psk
+Generate a symmetrical secret from a given passphrase. This is
+.BR NOT
+recommend.
+.TP
 .BR status
 Show the status for a given tunnel, or all tunnels if no argument was given.
 .TP
+.BR shroud
+Toggle the use of shroud on an existing tunnel.
+.TP
 .BR remembrance
 Toggle the use of a remembrance on an existing tunnel.
-.TO
+.TP
+.BR refresh
+Refresh all hymn configurations to get the latest changes.
+.TP
 .BR resolve
 Toggles a liturgy host its resolving via /etc/hosts.
 .TP

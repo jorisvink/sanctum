@@ -32,11 +32,13 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <inttypes.h>
+#include <paths.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -49,6 +51,7 @@
 
 #define HYMN_HOSTS_PATH		"/etc/hosts"
 #define HYMN_HOSTS_TMP_PATH	"/etc/hosts.sanctum"
+#define HYMN_HOSTS_LOCK		"/var/run/hymn/hosts.lock"
 
 #define HYMN_BASE_PATH		"/etc/hymn"
 #define HYMN_RUN_PATH		"/var/run/hymn"
@@ -59,6 +62,7 @@
 #define HYMN_DIR_PERMISSIONS	(S_IWUSR | S_IRUSR | S_IXUSR | S_IRGRP | \
 				 S_IXGRP | S_IROTH | S_IXOTH)
 
+#define HYMN_PSK_KDF_LABEL	"HYMN.PSK.DERIVE.KDF"
 #define HYMN_HOST_SEP		"# Hymn hosts below, do not touch the divine"
 
 #define HYMN_TUNNEL		(1 << 1)
@@ -118,6 +122,7 @@ struct config {
 	int			tap;
 	int			new;
 	int			shroud;
+	int			commixtion;
 	int			is_liturgy;
 	int			remembrance;
 	int			peer_cathedral;
@@ -156,6 +161,7 @@ static void	usage_add(void) __attribute__((noreturn));
 static void	usage_del(void) __attribute__((noreturn));
 static void	usage_mtu(void) __attribute__((noreturn));
 static void	usage_nat(void) __attribute__((noreturn));
+static void	usage_psk(void) __attribute__((noreturn));
 static void	usage_name(void) __attribute__((noreturn));
 static void	usage_route(void) __attribute__((noreturn));
 static void	usage_shroud(void) __attribute__((noreturn));
@@ -163,7 +169,10 @@ static void	usage_bridge(void) __attribute__((noreturn));
 static void	usage_keygen(void) __attribute__((noreturn));
 static void	usage_liturgy(void) __attribute__((noreturn));
 static void	usage_cathedral(void) __attribute__((noreturn));
+static void	usage_commixtion(void) __attribute__((noreturn));
 static void	usage_remembrance(void) __attribute__((noreturn));
+
+static size_t	hymn_psk_fill(int, u_int8_t *, size_t);
 
 static int	hymn_dir_exists(const char *);
 static void	hymn_mkdir(const char *, int, mode_t);
@@ -196,6 +205,7 @@ static int	hymn_add(int, char **);
 static int	hymn_del(int, char **);
 static int	hymn_mtu(int, char **);
 static int	hymn_nat(int, char **);
+static int	hymn_psk(int, char **);
 static int	hymn_list(int, char **);
 static int	hymn_down(int, char **);
 static int	hymn_name(int, char **);
@@ -210,6 +220,7 @@ static int	hymn_refresh(int, char **);
 static int	hymn_liturgy(int, char **);
 static int	hymn_restart(int, char **);
 static int	hymn_cathedral(int, char **);
+static int	hymn_commixtion(int, char **);
 static int	hymn_remembrance(int, char **);
 
 static void	hymn_config_init(struct config *);
@@ -237,16 +248,20 @@ static void	hymn_config_parse_accept(struct config *, char *);
 static void	hymn_config_parse_secret(struct config *, char *);
 static void	hymn_config_parse_shroud(struct config *, char *);
 
+
 static void	hymn_config_parse_cathedral(struct config *, char *);
 static void	hymn_config_parse_cathedral_id(struct config *, char *);
 static void	hymn_config_parse_cathedral_cosk(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock(struct config *, char *);
+static void	hymn_config_parse_cathedral_mixing(struct config *, char *);
 static void	hymn_config_parse_cathedral_secret(struct config *, char *);
+static void	hymn_config_parse_cathedral_remember(struct config *, char *);
 static void	hymn_config_parse_cathedral_nat_port(struct config *, char *);
 static void	hymn_config_parse_cathedral_flock_dst(struct config *, char *);
 
 static void	hymn_config_parse_liturgy_group(struct config *, char *);
 static void	hymn_config_parse_liturgy_prefix(struct config *, char *);
+static void	hymn_config_parse_liturgy_discover(struct config *, char *);
 
 static int	hymn_ctl_status(const char *,
 		    struct sanctum_ctl_status_response *);
@@ -283,6 +298,7 @@ static const struct {
 	{ "del",		hymn_del, 		1 },
 	{ "mtu",		hymn_mtu, 		1 },
 	{ "nat",		hymn_nat, 		1 },
+	{ "psk",		hymn_psk,		0 },
 	{ "status",		hymn_status, 		0 },
 	{ "list",		hymn_list, 		0 },
 	{ "down",		hymn_down, 		1 },
@@ -291,12 +307,13 @@ static const struct {
 	{ "shroud",		hymn_shroud, 		1 },
 	{ "bridge",		hymn_bridge, 		1 },
 	{ "accept",		hymn_accept, 		1 },
-	{ "keygen",		hymn_keygen, 		1 },
+	{ "keygen",		hymn_keygen, 		0 },
 	{ "liturgy",		hymn_liturgy, 		1 },
 	{ "resolve",		hymn_resolve, 		1 },
 	{ "refresh",		hymn_refresh,		1 },
 	{ "restart",		hymn_restart, 		1 },
 	{ "cathedral",		hymn_cathedral, 	1 },
+	{ "commixtion",		hymn_commixtion, 	1 },
 	{ "remembrance",	hymn_remembrance, 	1 },
 	{ NULL,			NULL, 			1 },
 };
@@ -305,29 +322,32 @@ static const struct {
 	const char		*option;
 	void			(*cb)(struct config *, char *);
 } keywords[] = {
-	{ "run",		hymn_config_parse_run },
-	{ "tap",		hymn_config_parse_tap },
-	{ "kek",		hymn_config_parse_kek },
-	{ "mode",		hymn_config_parse_mode },
-	{ "peer",		hymn_config_parse_peer },
-	{ "descr",		hymn_config_parse_descr },
-	{ "local",		hymn_config_parse_local },
-	{ "route",		hymn_config_parse_route },
-	{ "bridge",		hymn_config_parse_bridge },
-	{ "accept",		hymn_config_parse_accept },
-	{ "tunnel",		hymn_config_parse_tunnel },
-	{ "secret",		hymn_config_parse_secret },
-	{ "shroud",		hymn_config_parse_shroud },
-	{ "cathedral",		hymn_config_parse_cathedral },
-	{ "cathedral_id",	hymn_config_parse_cathedral_id },
-	{ "cathedral_flock",	hymn_config_parse_cathedral_flock },
-	{ "cathedral_cosk",	hymn_config_parse_cathedral_cosk },
-	{ "cathedral_secret",	hymn_config_parse_cathedral_secret },
-	{ "cathedral_nat_port",	hymn_config_parse_cathedral_nat_port },
-	{ "cathedral_flock_dst",hymn_config_parse_cathedral_flock_dst },
-	{ "liturgy_group",	hymn_config_parse_liturgy_group },
-	{ "liturgy_prefix",	hymn_config_parse_liturgy_prefix },
-	{ NULL,			NULL },
+	{ "run",			hymn_config_parse_run },
+	{ "tap",			hymn_config_parse_tap },
+	{ "kek",			hymn_config_parse_kek },
+	{ "mode",			hymn_config_parse_mode },
+	{ "peer",			hymn_config_parse_peer },
+	{ "descr",			hymn_config_parse_descr },
+	{ "local",			hymn_config_parse_local },
+	{ "route",			hymn_config_parse_route },
+	{ "bridge",			hymn_config_parse_bridge },
+	{ "accept",			hymn_config_parse_accept },
+	{ "tunnel",			hymn_config_parse_tunnel },
+	{ "secret",			hymn_config_parse_secret },
+	{ "shroud",			hymn_config_parse_shroud },
+	{ "cathedral",			hymn_config_parse_cathedral },
+	{ "cathedral_id",		hymn_config_parse_cathedral_id },
+	{ "cathedral_flock",		hymn_config_parse_cathedral_flock },
+	{ "cathedral_cosk",		hymn_config_parse_cathedral_cosk },
+	{ "cathedral_secret",		hymn_config_parse_cathedral_secret },
+	{ "cathedral_remembrance",	hymn_config_parse_cathedral_remember },
+	{ "cathedral_nat_port",		hymn_config_parse_cathedral_nat_port },
+	{ "cathedral_flock_dst",	hymn_config_parse_cathedral_flock_dst },
+	{ "cathedral_commixtion",	hymn_config_parse_cathedral_mixing },
+	{ "liturgy_group",		hymn_config_parse_liturgy_group },
+	{ "liturgy_prefix",		hymn_config_parse_liturgy_prefix },
+	{ "liturgy_discoverable",	hymn_config_parse_liturgy_discover },
+	{ NULL,				NULL },
 };
 
 static const struct {
@@ -358,6 +378,7 @@ usage(void)
 	fprintf(stderr, "  add            - add a new tunnel\n");
 	fprintf(stderr, "  bridge         - attach to a bridge interface\n");
 	fprintf(stderr, "  cathedral      - change cathedral for a tunnel\n");
+	fprintf(stderr, "  commixtion     - toggle commixtion for a tunnel\n");
 	fprintf(stderr, "  del            - delete an existing tunnel\n");
 	fprintf(stderr, "  down           - brings down the tunnel\n");
 	fprintf(stderr, "  nat            - change NAT detection port\n");
@@ -365,6 +386,7 @@ usage(void)
 	fprintf(stderr, "  list           - list all configured tunnels\n");
 	fprintf(stderr, "  liturgy        - configure a liturgy\n");
 	fprintf(stderr, "  name           - sets the name for a tunnel\n");
+	fprintf(stderr, "  psk            - derive a secret from a psk\n");
 	fprintf(stderr, "  status         - show a specific tunnel its info\n");
 	fprintf(stderr, "  shroud         - toggle shroud for a tunnel\n");
 	fprintf(stderr, "  remembrance    - toggle remembrance for a tunnel\n");
@@ -421,6 +443,7 @@ main(int argc, char *argv[])
 	if (cmds[idx].name == NULL)
 		fatal("unknown command '%s'", argv[0]);
 
+	nyfe_zeroize_warn();
 	nyfe_zeroize_all();
 
 	return (ret);
@@ -614,6 +637,7 @@ hymn_add(int argc, char *argv[])
 	const char		*flock;
 	char			secret[PATH_MAX];
 	char			confpath[PATH_MAX];
+	u_int64_t 		flock_src, flock_dst;
 
 	if (argc < 5)
 		usage_add();
@@ -727,8 +751,6 @@ hymn_add(int argc, char *argv[])
 		if (config.peer_cathedral == 0)
 			fatal("a flock is only relevant for a cathedral");
 
-		u_int64_t flock_src, flock_dst;
-
 		flock_dst = 0;
 		flock_src = 0;
 
@@ -742,6 +764,9 @@ hymn_add(int argc, char *argv[])
 
 		config.cathedral_flock = flock_src;
 		config.cathedral_flock_dst = flock_dst;
+	} else {
+		if (config.peer_cathedral == 1)
+			fatal("a cathedral tunnel requires a flock");
 	}
 
 	if (which & HYMN_KEK) {
@@ -981,10 +1006,118 @@ hymn_nat(int argc, char *argv[])
 
 	config.cathedral_nat_port = port;
 
+	if (config.cathedral_nat_port != 0 && config.commixtion == 1) {
+		printf("turning off commixtion, makes no sense with p2p\n");
+		config.commixtion = 0;
+	}
+
 	hymn_config_save(path, flock, &config);
 
 	printf("%s-%02x-%02x nat has been turned %s\n",
 	    flock, config.src, config.dst, (port == 0) ? "off" : "on");
+
+	return (0);
+}
+
+static void
+usage_psk(void)
+{
+	fprintf(stderr, "usage: hymn psk [out]\n");
+	exit(1);
+}
+
+static size_t
+hymn_psk_fill(int fd, u_int8_t *passphrase, size_t len)
+{
+	size_t		off;
+
+	off = 0;
+
+	while (off != len) {
+		if (read(fd, &passphrase[off], 1) == -1) {
+			if (errno == EINTR)
+				continue;
+			fatal("%s: read failed: %s", __func__, errno_s);
+		}
+
+		if (passphrase[off] == '\n')
+			break;
+
+		off++;
+	}
+
+	return (off);
+}
+
+static int
+hymn_psk(int argc, char *argv[])
+{
+	int			fd;
+	struct termios		cur, old;
+	u_int8_t		zeroes[32];
+	size_t			len_0, len_1;
+	u_int8_t		okm[64], passphrase[256], verify[256];
+
+	if (argc != 1)
+		usage_psk();
+
+	if ((fd = open(_PATH_TTY, O_RDWR)) == -1)
+		fatal("open(%s): %s", _PATH_TTY, strerror(errno));
+
+	if (tcgetattr(fd, &old) == -1)
+		fatal("tcgetattr: %s", strerror(errno));
+
+	cur = old;
+	cur.c_lflag &= ~(ECHO | ECHONL);
+
+	if (tcsetattr(fd, TCSAFLUSH, &cur) == -1) {
+		(void)tcsetattr(fd, TCSANOW, &old);
+		fatal("tcsetattr: %s", strerror(errno));
+	}
+
+	nyfe_zeroize_register(okm, sizeof(okm));
+	nyfe_zeroize_register(verify, sizeof(verify));
+	nyfe_zeroize_register(passphrase, sizeof(passphrase));
+
+	nyfe_mem_zero(zeroes, sizeof(zeroes));
+	nyfe_mem_zero(verify, sizeof(verify));
+	nyfe_mem_zero(passphrase, sizeof(passphrase));
+
+	fprintf(stderr, "passphrase: ");
+	fflush(stderr);
+
+	len_0 = hymn_psk_fill(fd, passphrase, sizeof(passphrase));
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "repeat passphrase: ");
+	fflush(stderr);
+
+	len_1 = hymn_psk_fill(fd, verify, sizeof(verify));
+
+	if (tcsetattr(fd, TCSANOW, &old) == -1)
+		fatal("tcsetattr: %s", strerror(errno));
+
+	fprintf(stderr, "\n");
+	(void)close(fd);
+
+	if (len_0 != len_1 || nyfe_mem_cmp(passphrase, verify, len_0))
+		fatal("passphrases do not match");
+
+	if (len_0 == 0)
+		fatal("no passphrase specified");
+
+	nyfe_passphrase_kdf(passphrase, sizeof(passphrase),
+	    zeroes, sizeof(zeroes), okm, sizeof(okm),
+	    HYMN_PSK_KDF_LABEL, sizeof(HYMN_PSK_KDF_LABEL) - 1);
+
+	nyfe_zeroize(verify, sizeof(verify));
+	nyfe_zeroize(passphrase, sizeof(passphrase));
+
+	fd = nyfe_file_open(argv[0], NYFE_FILE_CREATE);
+	nyfe_file_write(fd, okm, sizeof(okm));
+	nyfe_file_close(fd);
+
+	nyfe_zeroize(okm, sizeof(okm));
 
 	return (0);
 }
@@ -1031,7 +1164,6 @@ hymn_route(int argc, char *argv[])
 
 	if (!strcmp(argv[0], "add")) {
 		hymn_netlist_add("route", &config.routes, net);
-		hymn_netlist_add("accept", &config.accepts, net);
 	} else if (!strcmp(argv[0], "del")) {
 		hymn_netlist_del("route", &config.routes, net);
 		hymn_netlist_del("accept", &config.accepts, net);
@@ -1080,6 +1212,11 @@ hymn_shroud(int argc, char *argv[])
 		config.shroud = 0;
 	else
 		fatal("unknown option '%s', please use on|off", argv[1]);
+
+	if (config.shroud == 0 && config.commixtion == 1) {
+		printf("turning off commixtion as it requires shroud\n");
+		config.commixtion = 0;
+	}
 
 	hymn_config_save(path, flock, &config);
 
@@ -1193,7 +1330,7 @@ hymn_up(int argc, char *argv[])
 	case 1:
 	case 2:
 		if (hymn_tunnel_parse(argv[0], &flock, &src, &dst, 1) == -1)
-			usage_simple("status");
+			usage_simple("[up | down]");
 
 		if (argc == 1 && dst != 0 &&
 		    hymn_tunnel_auto_configured(flock, src, &name) != -1) {
@@ -1450,6 +1587,59 @@ hymn_cathedral(int argc, char *argv[])
 
 	printf("%s-%02x-%02x cathedral modified to %s\n",
 	    flock, src, dst, argv[1]);
+
+	return (0);
+}
+
+static void
+usage_commixtion(void)
+{
+	fprintf(stderr,
+	    "usage: hymn commixtion [name | [<flock>-]<src>-<dst>] [on|off]\n");
+	exit(1);
+}
+
+static int
+hymn_commixtion(int argc, char *argv[])
+{
+	struct config		config;
+	const char		*flock;
+	char			path[PATH_MAX];
+
+	if (argc != 2)
+		usage_commixtion();
+
+	hymn_config_init(&config);
+
+	if (hymn_tunnel_parse(argv[0],
+	    &flock, &config.src, &config.dst, 1) == -1)
+		usage_commixtion();
+
+	hymn_conf_path(path, sizeof(path), flock, config.src, config.dst);
+	hymn_config_load(path, &config);
+
+	if (config.peer_cathedral != 1)
+		fatal("commixtion only makes sense on cathedral tunnels");
+
+	if (!strcmp(argv[1], "on")) {
+		if (config.cathedral_nat_port != 0)
+			fatal("commixtion only makes sense if p2p is disabled");
+
+		if (config.shroud != 1)
+			fatal("commixtion only makes sense with shroud");
+
+		config.commixtion = 1;
+	} else if (!strcmp(argv[1], "off")) {
+		config.commixtion = 0;
+	} else {
+		fatal("unknown option '%s', please use on|off", argv[1]);
+	}
+
+	hymn_config_save(path, flock, &config);
+
+	printf("%s-%02x-%02x commixtion has been turned %s\n",
+	    flock, config.src, config.dst,
+	    (config.commixtion == 0) ? "off" : "on");
 
 	return (0);
 }
@@ -2278,7 +2468,6 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		}
 	}
 
-
 	if (config.name != NULL)
 		printf("  name\t\t%s\n", config.name);
 
@@ -2294,6 +2483,9 @@ hymn_tunnel_status(const char *flock, u_int8_t src, u_int8_t dst)
 		printf("  shroud\tyes\n");
 	else
 		printf("  shroud\tno\n");
+
+	if (config.commixtion)
+		printf("  commixtion\tyes\n");
 
 	if (config.tap && config.bridge != NULL)
 		printf("  bridge\t%s\n", config.bridge);
@@ -2446,8 +2638,8 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 {
 	time_t		now;
 	struct tm	*tm;
-	struct addr	*net;
 	const char	*user;
+	struct addr	*net, *rt;
 	int		fd, len, saved_errno;
 	char		tmp[PATH_MAX], tbuf[64];
 
@@ -2603,6 +2795,9 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 			    flock, cfg->src, cfg->dst);
 		}
 
+		if (cfg->commixtion)
+			hymn_config_write(fd, "cathedral_commixtion yes\n");
+
 		hymn_config_write(fd, "cathedral_nat_port %u\n",
 		    cfg->cathedral_nat_port);
 		hymn_config_write(fd, "cathedral %s\n", cfg->cathedral);
@@ -2618,8 +2813,20 @@ hymn_config_save(const char *path, const char *flock, struct config *cfg)
 	LIST_FOREACH(net, &cfg->routes, list)
 		hymn_config_write(fd, "route %s\n", hymn_ip_mask_str(net));
 
-	LIST_FOREACH(net, &cfg->accepts, list)
+	LIST_FOREACH(net, &cfg->routes, list)
 		hymn_config_write(fd, "accept %s\n", hymn_ip_mask_str(net));
+
+	LIST_FOREACH(net, &cfg->accepts, list) {
+		LIST_FOREACH(rt, &cfg->routes, list) {
+			if (rt->ip == net->ip && rt->mask == net->mask)
+				break;
+		}
+
+		if (rt == NULL) {
+			hymn_config_write(fd,
+			    "accept %s\n", hymn_ip_mask_str(net));
+		}
+	}
 
 	hymn_config_write(fd, "\n");
 
@@ -2867,6 +3074,12 @@ hymn_config_parse_cathedral_secret(struct config *cfg, char *secret)
 }
 
 static void
+hymn_config_parse_cathedral_remember(struct config *cfg, char *path)
+{
+	cfg->remembrance = 1;
+}
+
+static void
 hymn_config_parse_cathedral_cosk(struct config *cfg, char *secret)
 {
 	if (cfg->cosk_path != NULL)
@@ -2883,6 +3096,18 @@ hymn_config_parse_cathedral_nat_port(struct config *cfg, char *natport)
 }
 
 static void
+hymn_config_parse_cathedral_mixing(struct config *cfg, char *opt)
+{
+	if (!strcmp(opt, "yes")) {
+		cfg->commixtion = 1;
+	} else if (!strcmp(opt, "no")) {
+		cfg->commixtion = 0;
+	} else {
+		fatal("invalid commixtion option '%s'", opt);
+	}
+}
+
+static void
 hymn_config_parse_liturgy_group(struct config *cfg, char *group)
 {
 	cfg->group = hymn_number(group, 16, 0, USHRT_MAX);
@@ -2896,6 +3121,17 @@ hymn_config_parse_liturgy_prefix(struct config *cfg, char *prefix)
 
 	if ((cfg->prefix = strdup(prefix)) == NULL)
 		fatal("strdup");
+}
+
+static void
+hymn_config_parse_liturgy_discover(struct config *cfg, char *opt)
+{
+	if (!strcmp(opt, "yes"))
+		cfg->liturgy_hidden = 0;
+	else if (!strcmp(opt, "no"))
+		cfg->liturgy_hidden = 1;
+	else
+		fatal("unknown liturgy_discoverable option '%s'", opt);
 }
 
 static void
@@ -3028,7 +3264,8 @@ hymn_ctl_request(int fd, const char *path, const void *req, size_t len)
 		    (const struct sockaddr *)&sun, sizeof(sun))) == -1) {
 			if (errno == EINTR)
 				continue;
-			if (errno == EACCES)
+			if (errno == EACCES || errno == ENOENT ||
+			    errno == ECONNREFUSED)
 				return (-1);
 			fatal("%s: %s", path, errno_s);
 		}
@@ -3140,7 +3377,7 @@ static void
 hymn_hosts_load(struct hosts *hosts)
 {
 	FILE		*fp;
-	int		fd, orig;
+	int		orig, fd;
 	struct host	*host, *next;
 	char		*line, buf[1024];
 
@@ -3149,13 +3386,16 @@ hymn_hosts_load(struct hosts *hosts)
 	TAILQ_INIT(&hosts->ours);
 	TAILQ_INIT(&hosts->current);
 
-	if ((fp = fopen(HYMN_HOSTS_PATH, "r")) == NULL)
-		fatal("failed to open %s: %s", HYMN_HOSTS_PATH, errno_s);
-
-	fd = fileno(fp);
+	if ((fd = open(HYMN_HOSTS_LOCK, O_CREAT | O_RDWR, 0600)) == -1)
+		fatal("failed to open %s: %s", HYMN_HOSTS_LOCK, errno_s);
 
 	if (flock(fd, LOCK_EX) == -1)
 		fatal("failed to grab hosts lock: %s", errno_s);
+
+	if ((fp = fopen(HYMN_HOSTS_PATH, "r")) == NULL)
+		fatal("failed to open %s: %s", HYMN_HOSTS_PATH, errno_s);
+
+	host = NULL;
 
 	while ((line = hymn_config_read(fp, buf, sizeof(buf), orig)) != NULL) {
 		if (orig == 1 && !strcmp(line, HYMN_HOST_SEP)) {
@@ -3183,7 +3423,11 @@ hymn_hosts_load(struct hosts *hosts)
 			break;
 	}
 
-	host = TAILQ_NEXT(host, list);
+	if (host == NULL)
+		host = TAILQ_FIRST(&hosts->current);
+	else
+		host = TAILQ_NEXT(host, list);
+
 	while (host != NULL) {
 		next = TAILQ_NEXT(host, list);
 		TAILQ_REMOVE(&hosts->current, host, list);
@@ -3193,9 +3437,10 @@ hymn_hosts_load(struct hosts *hosts)
 	}
 
 	/*
-	 * We do not close the hosts file on purpose, we want the flock
+	 * We do not close the hosts lock file on purpose, we want the flock
 	 * to stick around until we exit. This is by design.
 	 */
+	(void)fclose(fp);
 }
 
 static void

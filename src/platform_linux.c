@@ -106,7 +106,6 @@ static struct sock_filter common_seccomp_filter[] = {
 #if defined(SYS_send)
 	KORE_SYSCALL_ALLOW(send),
 #endif
-	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getpid),
 	KORE_SYSCALL_ALLOW(exit_group),
 	KORE_SYSCALL_ALLOW(rt_sigreturn),
@@ -114,6 +113,7 @@ static struct sock_filter common_seccomp_filter[] = {
 	KORE_SYSCALL_ALLOW(rt_sigprocmask),
 	KORE_SYSCALL_ALLOW(clock_nanosleep),
 	KORE_SYSCALL_ALLOW(restart_syscall),
+	KORE_SYSCALL_ALLOW_ARG(sendto, 4, 0),
 	KORE_SYSCALL_ALLOW_ARG(write, 0, STDOUT_FILENO),
 	KORE_SYSCALL_ALLOW_ARG(writev, 0, STDOUT_FILENO),
 #if defined(SYS_sigreturn)
@@ -166,6 +166,7 @@ static struct sock_filter purgatory_rx_seccomp_filter[] = {
 };
 
 static struct sock_filter purgatory_tx_seccomp_filter[] = {
+	KORE_SYSCALL_ALLOW(sendto),
 	KORE_SYSCALL_ALLOW(getrandom),
 	KORE_SYSCALL_ALLOW(setsockopt),
 };
@@ -297,7 +298,13 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	PRECOND(pkt != NULL);
 
 	data = sanctum_packet_data(pkt);
-	mtu = sanctum_atomic_read(&sanctum->mtu_size);
+	mtu = sanctum_atomic_read(&shared->mtu_size);
+
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		mtu += sizeof(struct sanctum_ether) + 4;
+
+	if (mtu > SANCTUM_MTU_SIZE_MAX)
+		fatal("tundev read mtu %zu > %d", mtu, SANCTUM_MTU_SIZE_MAX);
 
 	return (read(fd, data, mtu));
 }
@@ -337,6 +344,21 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 	if (setsockopt(fd, IPPROTO_IP,
 	    IP_MTU_DISCOVER, &val, sizeof(val)) == -1)
 		fatal("%s: setsockopt: %s", __func__, errno_s);
+}
+
+/*
+ * Configure the purgatory-tx sending socket (if required).
+ */
+void
+sanctum_platform_purgatory_config(int fd)
+{
+	PRECOND(fd >= 0);
+
+	if (sanctum->fwmark != 0) {
+		if (setsockopt(fd, SOL_SOCKET, SO_MARK,
+		    &sanctum->fwmark, sizeof(sanctum->fwmark)) == -1)
+			fatal("failed to set SO_MARK on fd: %s", errno_s);
+	}
 }
 
 /*
@@ -657,6 +679,9 @@ linux_configure_bridge(void)
 		if (errno != EEXIST)
 			fatal("ioctl(SIOCBRADDBR): %s", errno_s);
 	}
+
+	if (ioctl(fd, SIOCGIFFLAGS, &ifr) == -1)
+		fatal("ioctl(SIOCGIFFLAGS): %s", errno_s);
 
 	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr) == -1)

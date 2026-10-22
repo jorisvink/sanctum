@@ -29,6 +29,9 @@
 #include "sanctum.h"
 #include "libnyfe.h"
 
+/* We have our own lifetime before we rekey, to get restarted shrines back. */
+#define SHRINE_SA_LIFETIME	300
+
 /*
  * A key offer sent to our peer, this is wrapped with a key derived
  * from a shared secret.
@@ -57,12 +60,12 @@ static struct key_offer		*offer = NULL;
 static u_int64_t		offer_next = 0;
 
 /*
- * We pulse out the current offer every 30 seconds with a max ttl
- * of 115, resulting in a total offer time of 3450 seconds, 50 seconds
- * less than SANCTUM_SA_LIFETIME_SOFT.
+ * We pulse out the current offer every 27 seconds with a max ttl
+ * of 10, resulting in a total offer time of 270 seconds, 30 seconds
+ * less than our SHRINE_SA_LIFETIME.
  */
-static u_int64_t		offer_ttl = 115;
-static u_int64_t		offer_next_send = 30;
+static u_int64_t		offer_ttl = 10;
+static u_int64_t		offer_next_send = 27;
 
 /* Randomly generated local ID. */
 static u_int64_t		local_id = 0;
@@ -109,7 +112,7 @@ sanctum_pilgrim(struct sanctum_proc *proc)
 		}
 
 		sanctum_proc_suspend(1);
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		if (offer != NULL) {
 			if (now >= offer->pulse)
@@ -169,16 +172,16 @@ pilgrim_offer_check(u_int64_t now)
 	offer_now = 0;
 	reason = NULL;
 
-	if (sanctum_atomic_read(&sanctum->tx.spi) != 0) {
-		age = sanctum_atomic_read(&sanctum->tx.age);
-		if (now - age >= SANCTUM_SA_LIFETIME_SOFT) {
+	if (sanctum_atomic_read(&shared->tx.spi) != 0) {
+		age = sanctum_atomic_read(&shared->tx.age);
+		if (now - age >= SHRINE_SA_LIFETIME) {
 			offer_now = 1;
 			reason = "SA age limit";
 		}
 	} else {
 		offer_now = 1;
 		reason = "no keys";
-		sanctum_atomic_write(&sanctum->heartbeat, now);
+		sanctum_atomic_write(&shared->heartbeat, now);
 	}
 
 	if (offer_now == 0)
@@ -201,7 +204,7 @@ pilgrim_offer_check(u_int64_t now)
 	    "(spi=0x%08x, ttl=%" PRIu64 ", next=%" PRIu64 ")",
 	    reason, offer->spi, offer_ttl, offer_next_send);
 
-	offer_next = now + SANCTUM_SA_LIFETIME_SOFT;
+	offer_next = now + SHRINE_SA_LIFETIME;
 	sanctum_proc_wakeup(SANCTUM_PROC_BLESS);
 }
 
@@ -213,27 +216,28 @@ static void
 pilgrim_offer_encrypt(u_int64_t now)
 {
 	struct sanctum_offer		*op;
-	struct sanctum_packet		*pkt;
 	struct sanctum_key_offer	*key;
 	struct sanctum_key		cipher;
+	struct sanctum_packet		pkt, *out;
+	void				*src, *dst;
 
 	PRECOND(offer != NULL);
 
 	offer->ttl--;
 	offer->pulse = now + offer_next_send;
 
-	if ((pkt = sanctum_packet_get()) == NULL)
-		goto cleanup;
+	memset(&pkt, 0, sizeof(pkt));
 
-	op = sanctum_offer_init(pkt, offer->spi,
+	nyfe_zeroize_register(&pkt, sizeof(pkt));
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
+
+	op = sanctum_offer_init(&pkt, offer->spi,
 	    SANCTUM_KEY_OFFER_MAGIC, SANCTUM_OFFER_TYPE_KEY);
 
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_offer_kdf(sanctum->secret,
 	    SANCTUM_SHRINE_PILGRIM_DERIVE_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed), 0, 0) == -1) {
 		nyfe_zeroize(&cipher, sizeof(cipher));
-		sanctum_packet_release(pkt);
 		goto cleanup;
 	}
 
@@ -245,17 +249,27 @@ pilgrim_offer_encrypt(u_int64_t now)
 	sanctum_offer_encrypt(&cipher, op);
 	nyfe_zeroize(&cipher, sizeof(cipher));
 
-	pkt->length = sizeof(*op);
-	pkt->target = SANCTUM_PROC_PURGATORY_TX;
+	if ((out = sanctum_packet_get()) == NULL)
+		goto cleanup;
 
-	if (sanctum_ring_queue(io->offer, pkt) == -1)
-		sanctum_packet_release(pkt);
+	src = sanctum_packet_head(&pkt);
+	dst = sanctum_packet_head(out);
+
+	memcpy(dst, src, sizeof(*op));
+
+	out->length = sizeof(*op);
+	out->target = SANCTUM_PROC_PURGATORY_TX;
+
+	if (sanctum_packet_queue(io->offer, out) == -1)
+		sanctum_packet_release(out);
 	else
 		sanctum_proc_wakeup(SANCTUM_PROC_PURGATORY_TX);
 
 cleanup:
 	if (offer->ttl == 0)
 		pilgrim_offer_clear();
+
+	nyfe_zeroize(&pkt, sizeof(pkt));
 }
 
 /*

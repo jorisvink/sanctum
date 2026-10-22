@@ -74,7 +74,7 @@ sanctum_proc_init(char **argv)
 	proc_title_max = 0;
 
 	for (i = 0; i < SANCTUM_PROC_MAX; i++)
-		sanctum->wstate[i] = 1;
+		shared->wstate[i] = 1;
 
 	for (i = 0; environ[i] != NULL; i++) {
 		if ((p = strdup(environ[i])) == NULL)
@@ -196,13 +196,19 @@ sanctum_proc_start(void)
 		fatal("unknown mode %u", sanctum->mode);
 	}
 
+	(void)close(io.nat);
 	(void)close(io.clear);
 	(void)close(io.crypto);
 
+	sanctum_packet_drop_access();
+
 	sanctum_shm_detach(io.tx);
 	sanctum_shm_detach(io.rx);
+	sanctum_shm_detach(io.stx);
+	sanctum_shm_detach(io.srx);
 	sanctum_shm_detach(io.bless);
 	sanctum_shm_detach(io.offer);
+	sanctum_shm_detach(io.bishop);
 	sanctum_shm_detach(io.chapel);
 	sanctum_shm_detach(io.heaven);
 	sanctum_shm_detach(io.confess);
@@ -268,6 +274,8 @@ sanctum_proc_create(u_int16_t type,
 
 		process = proc;
 		proc->pid = getpid();
+
+		sanctum_packet_drop_access();
 		proc->entry(proc);
 		/* NOTREACHED */
 	}
@@ -275,18 +283,18 @@ sanctum_proc_create(u_int16_t type,
 	timeo.tv_sec = 0;
 	timeo.tv_nsec = 20000000;
 
-	for (i = 0; i < 50; i++) {
+	for (i = 0; i < 150; i++) {
 		nanosleep(&timeo, NULL);
 
 #if defined(__linux__)
 		sanctum_linux_trace_start(proc);
 #endif
 
-		if (sanctum_atomic_read(&sanctum->started[type]))
+		if (sanctum_atomic_read(&shared->started[type]))
 			break;
 	}
 
-	if (i == 50)
+	if (i == 150)
 		fatal("failed to start %s", proc->name);
 
 	sanctum_log(LOG_INFO, "started %s (pid=%d)", proc->name, proc->pid);
@@ -334,7 +342,7 @@ sanctum_proc_started(struct sanctum_proc *proc)
 {
 	PRECOND(proc != NULL);
 
-	sanctum_atomic_write(&sanctum->started[proc->type], 1);
+	sanctum_atomic_write(&shared->started[proc->type], 1);
 }
 
 /*
@@ -454,7 +462,7 @@ sanctum_proc_suspend(int64_t sleep)
 {
 	PRECOND(process != NULL);
 
-	sanctum_platform_suspend(&sanctum->wstate[process->type], sleep);
+	sanctum_platform_suspend(&shared->wstate[process->type], sleep);
 }
 
 /*
@@ -477,5 +485,5 @@ sanctum_proc_wakeup(u_int16_t type)
 	    type == SANCTUM_PROC_LITURGY ||
 	    type == SANCTUM_PROC_BISHOP);
 
-	sanctum_platform_wakeup(&sanctum->wstate[type]);
+	sanctum_platform_wakeup(&shared->wstate[type]);
 }

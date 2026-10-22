@@ -141,31 +141,31 @@ sanctum_peer_update(u_int32_t ip, u_int16_t port)
 	u_int32_t		local;
 	u_int64_t		now, next;
 
-	local = sanctum_atomic_read(&sanctum->local_ip);
+	local = sanctum_atomic_read(&shared->local_ip);
 	if (local == ip)
 		return;
 
 	if (sanctum->flags & SANCTUM_FLAG_CATHEDRAL_ACTIVE) {
-		now = sanctum_atomic_read(&sanctum->uptime);
-		next = sanctum_atomic_read(&sanctum->peer_update);
+		now = sanctum_atomic_read(&shared->uptime);
+		next = sanctum_atomic_read(&shared->peer_update);
 
-		if (ip == sanctum->cathedral.sin_addr.s_addr) {
+		if (ip == shared->cathedral.sin_addr.s_addr) {
 			if (next != 0 && now < next)
 				return;
-			sanctum_atomic_write(&sanctum->peer_update, 0);
+			sanctum_atomic_write(&shared->peer_update, 0);
 		} else {
-			sanctum_atomic_write(&sanctum->peer_update, now + 10);
+			sanctum_atomic_write(&shared->peer_update, now + 10);
 		}
 	}
 
-	if (ip != sanctum->peer_ip || port != sanctum->peer_port) {
+	if (ip != shared->peer_ip || port != shared->peer_port) {
 		in.s_addr = ip;
 		sanctum_log(LOG_NOTICE, "peer address change (new=%s:%u)",
 		    inet_ntoa(in), ntohs(port));
 
-		sanctum_atomic_write(&sanctum->peer_ip, ip);
-		sanctum_atomic_write(&sanctum->peer_port, port);
-		sanctum_atomic_write(&sanctum->mtu_start, 1);
+		sanctum_atomic_write(&shared->peer_ip, ip);
+		sanctum_atomic_write(&shared->peer_port, port);
+		sanctum_atomic_write(&shared->mtu_start, 1);
 	}
 }
 
@@ -237,7 +237,7 @@ sanctum_key_install(struct sanctum_key *key, struct sanctum_sa *sa)
 	sa->pending = 1;
 	sa->spi = sanctum_atomic_read(&key->spi);
 	sa->salt = sanctum_atomic_read(&key->salt);
-	sa->age = sanctum_atomic_read(&sanctum->uptime);
+	sa->age = sanctum_atomic_read(&shared->uptime);
 
 	if (!sanctum_atomic_cas_simple(&key->state,
 	    SANCTUM_KEY_INSTALLING, SANCTUM_KEY_EMPTY))
@@ -1044,8 +1044,9 @@ sanctum_offer_install(struct sanctum_key *state, struct sanctum_offer *op)
 void
 sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 {
-	int					fd, i;
 	struct sanctum_remembrance_offer	*list;
+	char					path[1024];
+	int					fd, i, len;
 
 	PRECOND(op != NULL);
 	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
@@ -1056,15 +1057,28 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 		return;
 	}
 
-	if ((fd = open(sanctum->cathedral_remembrance,
-	    O_CREAT | O_TRUNC | O_WRONLY, 0400)) == -1) {
-		sanctum_log(LOG_NOTICE, "failed to open '%s': %s",
-		    sanctum->cathedral_remembrance, errno_s);
-		return;
+	fd = -1;
+
+	len = snprintf(path, sizeof(path), "%s.new",
+	    sanctum->cathedral_remembrance);
+	if (len < 0 || (size_t)len >= sizeof(path))
+		fatal("failed to create tmp remembrance path");
+
+	if (unlink(path) == -1 && errno != ENOENT) {
+		sanctum_log(LOG_NOTICE,
+		    "failed to remove tmp file %s (%s)", path, errno_s);
+	} else {
+		if ((fd = open(path,
+		    O_CREAT | O_TRUNC | O_WRONLY | O_EXCL, 0400)) == -1) {
+			sanctum_log(LOG_NOTICE,
+			    "failed to open '%s': %s", path, errno_s);
+		}
 	}
 
 	sanctum->cathedral_idx = 0;
 	list = &op->data.offer.remembrance;
+
+	nyfe_mem_zero(sanctum->cathedrals, sizeof(sanctum->cathedrals));
 
 	for (i = 0; i < SANCTUM_CATHEDRALS_MAX; i++) {
 		if (list->ips[i] == 0 || list->ports[i] == 0)
@@ -1073,13 +1087,94 @@ sanctum_offer_remembrance(struct sanctum_offer *op, u_int64_t now)
 		sanctum->cathedrals[i].sin_addr.s_addr = list->ips[i];
 	}
 
-	nyfe_file_write(fd, list->ips, sizeof(list->ips));
-	nyfe_file_write(fd, list->ports, sizeof(list->ports));
+	if (fd != -1) {
+		nyfe_file_write(fd, list->ips, sizeof(list->ips));
+		nyfe_file_write(fd, list->ports, sizeof(list->ports));
 
-	if (close(fd) == -1) {
-		sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
-		    sanctum->cathedral_remembrance, errno_s);
+		if (close(fd) == -1) {
+			sanctum_log(LOG_NOTICE, "close() failed on '%s': %s",
+			    path, errno_s);
+			(void)unlink(path);
+		} else {
+			if (rename(path,
+			    sanctum->cathedral_remembrance) == -1) {
+				sanctum_log(LOG_NOTICE,
+				    "failed to rename remembrance file: %s",
+				    errno_s);
+				(void)unlink(path);
+			}
+		}
+	} else {
+		sanctum_log(LOG_NOTICE, "remembrance not saved");
 	}
+}
+
+/*
+ * Prune an offer cache of entries that should be expired.
+ */
+void
+sanctum_offer_prune(struct sanctum_offer_cache *cache)
+{
+	u_int64_t			now;
+	struct sanctum_offer_entry	*entry, *next;
+
+	PRECOND(cache != NULL);
+
+	now = sanctum_ms();
+
+	for (entry = LIST_FIRST(cache); entry != NULL; entry = next) {
+		next = LIST_NEXT(entry, list);
+
+		if ((now - entry->age) >= SANCTUM_OFFER_CACHE_MAX_AGE) {
+			LIST_REMOVE(entry, list);
+			free(entry);
+		}
+	}
+}
+
+/*
+ * Recall if the given offer has been seen before from a cached list.
+ */
+int
+sanctum_offer_recall(struct sanctum_offer_cache *cache,
+    struct sanctum_offer *op, int nat)
+{
+	struct sanctum_offer_entry	*entry;
+
+	PRECOND(cache != NULL);
+	PRECOND(op != NULL);
+	PRECOND(nat == 0 || nat == 1);
+
+	LIST_FOREACH(entry, cache, list) {
+		if (entry->nat == nat &&
+		    !memcmp(op->extra.sig, entry->sig, sizeof(entry->sig)))
+			return (-1);
+	}
+
+	return (0);
+}
+
+/*
+ * Record an offer that we just received in the given offer cache.
+ */
+void
+sanctum_offer_record(struct sanctum_offer_cache *cache,
+    struct sanctum_offer *op, int nat)
+{
+	struct sanctum_offer_entry	*entry;
+
+	PRECOND(cache != NULL);
+	PRECOND(op != NULL);
+	PRECOND(nat == 0 || nat == 1);
+
+	if ((entry = calloc(1, sizeof(*entry))) == NULL)
+		fatal("calloc: failed to allocate offer entry");
+
+	entry->nat = nat;
+	entry->age = sanctum_ms();
+	memcpy(entry->sig, op->extra.sig, sizeof(op->extra.sig));
+
+	LIST_INSERT_HEAD(cache, entry, list);
 }
 
 /*
@@ -1257,7 +1352,7 @@ sanctum_cathedral_timeout(u_int64_t now)
 	if (sanctum->cathedral_alive == 0 && sanctum->cathedral_pkts > 0) {
 		sanctum->cathedral_alive = 1;
 		sanctum_log(LOG_INFO, "cathedral %s alive",
-		    sanctum_inet_string(&sanctum->cathedral));
+		    sanctum_inet_string(&shared->cathedral));
 	}
 
 	if ((now - sanctum->cathedral_last) < SANCTUM_CATHEDRAL_TIMEOUT)
@@ -1265,7 +1360,7 @@ sanctum_cathedral_timeout(u_int64_t now)
 
 	sanctum->cathedral_last = now;
 	sanctum_log(LOG_INFO, "cathedral %s is unresponsive",
-	    sanctum_inet_string(&sanctum->cathedral));
+	    sanctum_inet_string(&shared->cathedral));
 
 	if (sanctum->cathedrals[0].sin_addr.s_addr == 0)
 		return;
@@ -1278,11 +1373,11 @@ sanctum_cathedral_timeout(u_int64_t now)
 
 	sanctum->cathedral_pkts = 0;
 	sanctum->cathedral_alive = 0;
-	sanctum->cathedral_last = sanctum_atomic_read(&sanctum->uptime);
-	sanctum->cathedral = sanctum->cathedrals[sanctum->cathedral_idx];
+	sanctum->cathedral_last = sanctum_atomic_read(&shared->uptime);
+	shared->cathedral = sanctum->cathedrals[sanctum->cathedral_idx];
 
 	sanctum_log(LOG_INFO, "switching to cathedral %s",
-	    sanctum_inet_string(&sanctum->cathedral));
+	    sanctum_inet_string(&shared->cathedral));
 }
 
 /*
@@ -1349,6 +1444,19 @@ sanctum_ambry_expired(u_int16_t days)
 }
 
 /*
+ * Returns the current monotonic timestamp as milliseconds.
+ */
+u_int64_t
+sanctum_ms(void)
+{
+	struct timespec		ts;
+
+	(void)clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	return ((u_int64_t)(ts.tv_sec * 1000 + (ts.tv_nsec / 1000000)));
+}
+
+/*
  * Helper function to log offers rejected for both integrity failures
  * and timestamp failures within the given OFFER_REJECT_LOG_WINDOW.
  */
@@ -1361,7 +1469,7 @@ utils_offer_rejected(u_int32_t *which)
 
 	*which = *which + 1;
 
-	now = sanctum_atomic_read(&sanctum->uptime);
+	now = sanctum_atomic_read(&shared->uptime);
 	if (now - last_reject_log < OFFER_REJECT_LOG_WINDOW)
 		return;
 

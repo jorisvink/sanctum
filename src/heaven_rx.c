@@ -134,7 +134,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 	pfd.events = POLLIN;
 
 	running = 1;
-	now = sanctum_atomic_read(&sanctum->uptime);
+	now = sanctum_atomic_read(&shared->uptime);
 
 	memset(&heartbeats, 0, sizeof(heartbeats));
 	heartbeats.interval = 1;
@@ -160,7 +160,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 			fatal("poll: %s", errno_s);
 		}
 
-		now = sanctum_atomic_read(&sanctum->uptime);
+		now = sanctum_atomic_read(&shared->uptime);
 
 		heaven_rx_holepunch();
 		heaven_rx_grace_mtu();
@@ -256,7 +256,7 @@ heaven_rx_recv_packets(int fd)
 		pkt->type = SANCTUM_PACKET_IP;
 		pkt->target = SANCTUM_PROC_BLESS;
 
-		if (sanctum_ring_queue(io->bless, pkt) == -1)
+		if (sanctum_packet_queue(io->bless, pkt) == -1)
 			sanctum_packet_release(pkt);
 		else
 			bless_wakeup = 1;
@@ -280,7 +280,7 @@ heaven_rx_grace_mtu_reset(void)
 static void
 heaven_rx_holepunch(void)
 {
-	if (sanctum_atomic_cas_simple(&sanctum->holepunch, 1, 0)) {
+	if (sanctum_atomic_cas_simple(&shared->holepunch, 1, 0)) {
 		heartbeats.next = now;
 		heartbeats.interval = 1;
 		heartbeats.reset = now + SANCTUM_GRACE_HEARTBEAT_INTERVAL;
@@ -299,7 +299,7 @@ heaven_rx_grace_heartbeat(void)
 	struct sanctum_packet		*pkt;
 	struct sanctum_grace		*grace;
 
-	if (sanctum_atomic_read(&sanctum->tx.spi) == 0)
+	if (sanctum_atomic_read(&shared->tx.spi) == 0)
 		return;
 
 	if (heartbeats.next == 0 || now < heartbeats.next)
@@ -315,7 +315,7 @@ heaven_rx_grace_heartbeat(void)
 	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
 
-	if (sanctum_ring_queue(io->bless, pkt) == -1)
+	if (sanctum_packet_queue(io->bless, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		bless_wakeup = 1;
@@ -336,17 +336,17 @@ heaven_rx_grace_mtu(void)
 	if (sanctum->mode != SANCTUM_MODE_TUNNEL)
 		return;
 
-	if (sanctum_atomic_read(&sanctum->tx.spi) == 0)
+	if (sanctum_atomic_read(&shared->tx.spi) == 0)
 		return;
 
-	if (sanctum_atomic_cas_simple(&sanctum->mtu_start, 1, 0)) {
+	if (sanctum_atomic_cas_simple(&shared->mtu_start, 1, 0)) {
 		heaven_rx_grace_mtu_reset();
 		mtu_probes.next = now;
 	}
 
 	if ((sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY) &&
 	    mtu_probes.next != 0 && now >= mtu_probes.next) {
-		if (sanctum_atomic_cas_simple(&sanctum->mtu_cancel, 1, 0)) {
+		if (sanctum_atomic_cas_simple(&shared->mtu_cancel, 1, 0)) {
 			heaven_rx_grace_mtu_reset();
 			return;
 		}
@@ -367,6 +367,9 @@ heaven_rx_grace_mtu(void)
 			overhead += sizeof(struct sanctum_shroud_hdr);
 			overhead += SANCTUM_SHROUD_TRAIL_LEN;
 		}
+
+		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+			overhead += sizeof(struct sanctum_ether) + 4;
 
 		if (mtu_step < MTU_DISCOVERY_FIRST_PROBES) {
 			if (mtu_step == 0) {
@@ -391,10 +394,10 @@ heaven_rx_grace_mtu(void)
 		heaven_rx_grace_mtu_probe(mtu_size);
 	}
 
-	if ((mtu = sanctum_atomic_read(&sanctum->mtu_probe_ack)) == 0)
+	if ((mtu = sanctum_atomic_read(&shared->mtu_probe_ack)) == 0)
 		return;
 
-	if (!sanctum_atomic_cas_simple(&sanctum->mtu_probe_ack, mtu, 0)) {
+	if (!sanctum_atomic_cas_simple(&shared->mtu_probe_ack, mtu, 0)) {
 		sanctum_log(LOG_INFO, "mtu_probe_ack changed unexpected");
 		return;
 	}
@@ -430,7 +433,7 @@ heaven_rx_grace_mtu_ack(u_int16_t mtu)
 	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
 
-	if (sanctum_ring_queue(io->bless, pkt) == -1)
+	if (sanctum_packet_queue(io->bless, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		bless_wakeup = 1;
@@ -459,7 +462,10 @@ heaven_rx_grace_mtu_probe(u_int16_t mtu)
 	pkt->type = SANCTUM_PACKET_GRACE;
 	pkt->target = SANCTUM_PROC_BLESS;
 
-	if (sanctum_ring_queue(io->bless, pkt) == -1)
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		pkt->length += sizeof(struct sanctum_ether) + 4;
+
+	if (sanctum_packet_queue(io->bless, pkt) == -1)
 		sanctum_packet_release(pkt);
 	else
 		bless_wakeup = 1;

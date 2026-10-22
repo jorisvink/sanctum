@@ -169,7 +169,7 @@ nyfe_passphrase_kdf(const void *passphrase, u_int32_t passphrase_len,
 		nyfe_sha3_final(&shake, buf, PASSPHRASE_KDF_STEP_LEN);
 
 		for (idx = 0; idx < PASSPHRASE_KDF_STEP_LEN; idx++)
-			tmp[offset] ^= buf[idx];
+			tmp[offset + idx] ^= buf[idx];
 	}
 
 	/* No longer need any of these intermediates. */

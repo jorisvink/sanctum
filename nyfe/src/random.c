@@ -118,6 +118,8 @@ random_rekey(void)
 	u_int8_t			add[RANDOM_ADD_SIZE];
 	u_int8_t			seed[64], key[NYFE_KEY_LEN];
 
+	nyfe_zeroize_register(seed, sizeof(seed));
+
 #if !defined(NYFE_LIBRARY_ONLY)
 	/* Load in the entropy file, if its not present, complain. */
 	if ((fd = open(nyfe_entropy_path(), O_RDWR)) == -1) {
@@ -153,6 +155,7 @@ random_rekey(void)
 	 */
 	nyfe_kmac256_init(&kmac, seed, sizeof(seed),
 	    RANDOM_LABEL, sizeof(RANDOM_LABEL) - 1);
+	nyfe_zeroize(seed, sizeof(seed));
 
 	len = RANDOM_ADD_SIZE;
 	nyfe_kmac256_update(&kmac, &len, sizeof(len));

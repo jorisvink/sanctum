@@ -170,7 +170,12 @@ sanctum_platform_tundev_read(int fd, struct sanctum_packet *pkt)
 	iov[0].iov_base = &protocol;
 	iov[0].iov_len = sizeof(protocol);
 	iov[1].iov_base = data;
-	iov[1].iov_len = sanctum_atomic_read(&sanctum->mtu_size);
+	iov[1].iov_len = sanctum_atomic_read(&shared->mtu_size);
+
+	if (iov[1].iov_len > SANCTUM_MTU_SIZE_MAX) {
+		fatal("tundev read mtu %zu > %d",
+		    iov[1].iov_len, SANCTUM_MTU_SIZE_MAX);
+	}
 
 	/*
 	 * We have to adjust the total data read with the protocol
@@ -220,6 +225,17 @@ sanctum_platform_ip_fragmentation(int fd, int on)
 
 	if (setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &on, sizeof(on)) == -1)
 		fatal("%s: setsockopt: %s", __func__, errno_s);
+}
+
+/*
+ * Configure the purgatory-tx sending socket (if required).
+ */
+void
+sanctum_platform_purgatory_config(int fd)
+{
+	PRECOND(fd >= 0);
+
+	/* no-op on Darwin. */
 }
 
 /*

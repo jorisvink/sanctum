@@ -50,6 +50,7 @@ static void	config_parse_local(char *);
 static void	config_parse_route(char *);
 static void	config_parse_descr(char *);
 static void	config_parse_runas(char *);
+static void	config_parse_fwmark(char *);
 static void	config_parse_accept(char *);
 static void	config_parse_bridge(char *);
 static void	config_parse_shroud(char *);
@@ -61,6 +62,7 @@ static void	config_parse_instance(char *);
 static void	config_parse_secretdir(char *);
 static void	config_parse_cathedral(char *);
 static void	config_parse_settings(char *);
+static void	config_parse_shrine_relic(char *);
 static void	config_parse_liturgy_group(char *);
 static void	config_parse_liturgy_prefix(char *);
 static void	config_parse_cathedral_id(char *);
@@ -101,6 +103,7 @@ static const struct {
 	{ "route",			config_parse_route },
 	{ "run",			config_parse_runas },
 	{ "descr",			config_parse_descr },
+	{ "fwmark",			config_parse_fwmark },
 	{ "accept",			config_parse_accept },
 	{ "bridge",			config_parse_bridge },
 	{ "shroud",			config_parse_shroud },
@@ -112,6 +115,7 @@ static const struct {
 	{ "cathedral",			config_parse_cathedral },
 	{ "secretdir",			config_parse_secretdir },
 	{ "settings",			config_parse_settings },
+	{ "shrine_relic",		config_parse_shrine_relic },
 	{ "liturgy_group",		config_parse_liturgy_group },
 	{ "liturgy_prefix",		config_parse_liturgy_prefix },
 	{ "liturgy_discoverable",	config_parse_liturgy_discoverable },
@@ -160,6 +164,7 @@ void
 sanctum_config_init(void)
 {
 	PRECOND(sanctum != NULL);
+	PRECOND(shared != NULL);
 
 	LIST_INIT(&routes);
 	LIST_INIT(&routable);
@@ -180,6 +185,7 @@ sanctum_config_load(const char *file)
 
 	PRECOND(file != NULL);
 	PRECOND(sanctum != NULL);
+	PRECOND(shared != NULL);
 
 	if ((fp = fopen(file, "r")) == NULL)
 		fatal("failed to open '%s': %s", file, errno_s);
@@ -237,9 +243,9 @@ sanctum_config_load(const char *file)
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
 		config_mtu_check();
-		if (sanctum->cathedral.sin_addr.s_addr == 0) {
-			memcpy(&sanctum->cathedral,
-			    &sanctum->local, sizeof(sanctum->cathedral));
+		if (shared->cathedral.sin_addr.s_addr == 0) {
+			memcpy(&shared->cathedral,
+			    &sanctum->local, sizeof(shared->cathedral));
 		}
 		break;
 	case SANCTUM_MODE_LITURGY:
@@ -262,6 +268,11 @@ sanctum_config_load(const char *file)
 		config_mtu_check();
 		break;
 	case SANCTUM_MODE_SHRINE:
+		if (sanctum->shrine_relic == NULL)
+			fatal("shrine requires a shrine_relic option");
+		config_l2_check();
+		config_mtu_check();
+		break;
 	case SANCTUM_MODE_PILGRIM:
 		config_l2_check();
 		config_mtu_check();
@@ -275,6 +286,8 @@ sanctum_config_load(const char *file)
 			fatal("tfc is enabled but no mtu has been set");
 		if (sanctum->flags & SANCTUM_FLAG_MTU_DISCOVERY)
 			fatal("tfc is enabled but mtu discovery is active");
+		if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+			fatal("tfc is enabled but using tap device");
 	}
 
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL &&
@@ -290,7 +303,7 @@ sanctum_config_load(const char *file)
 			fatal("kek is only used in tunnel mode");
 	}
 
-	if (sanctum->peer_ip == 0)
+	if (shared->peer_ip == 0)
 		sanctum->flags |= SANCTUM_FLAG_PEER_AUTO;
 
 	if (sanctum->instance[0] == '\0')
@@ -314,8 +327,9 @@ sanctum_config_release(void)
 	free(sanctum->kek);
 	free(sanctum->secret);
 	free(sanctum->pidfile);
-	free(sanctum->secretdir);
 	free(sanctum->settings);
+	free(sanctum->secretdir);
+	free(sanctum->shrine_relic);
 	free(sanctum->cathedral_cosk);
 	free(sanctum->cathedral_name);
 	free(sanctum->cathedral_secret);
@@ -487,8 +501,8 @@ config_parse_peer(char *peer)
 	}
 
 	config_parse_ip_port(peer, &addr);
-	sanctum_atomic_write(&sanctum->peer_port, addr.sin_port);
-	sanctum_atomic_write(&sanctum->peer_ip, addr.sin_addr.s_addr);
+	sanctum_atomic_write(&shared->peer_port, addr.sin_port);
+	sanctum_atomic_write(&shared->peer_ip, addr.sin_addr.s_addr);
 
 	sanctum->flags |= SANCTUM_FLAG_PEER_CONFIGURED;
 }
@@ -601,13 +615,13 @@ config_parse_tunnel(char *opt)
 			fatal("tunnel <ip/mask> auto");
 
 		sanctum->tun_mtu = 0;
-		sanctum->mtu_size = 0;
+		shared->mtu_size = 0;
 	} else {
-		if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+		if (mtu > SANCTUM_MTU_SIZE_MAX || mtu < 576)
 			fatal("mtu (%u) invalid", mtu);
 
 		sanctum->tun_mtu = mtu;
-		sanctum->mtu_size = mtu;
+		shared->mtu_size = mtu;
 	}
 
 	config_parse_ip_mask(ip, &sanctum->tun_ip, &sanctum->tun_mask);
@@ -631,6 +645,32 @@ config_parse_route(char *opt)
 	LIST_INSERT_HEAD(&routes, rt, list);
 }
 
+/*
+ * Parse a fwmark configuration option.
+ * Note: This is a linux specific option.
+ */
+static void
+config_parse_fwmark(char *opt)
+{
+#if defined(__linux__)
+	char			*ep;
+	unsigned long long	mark;
+
+	PRECOND(opt != NULL);
+
+	errno = 0;
+	mark = strtoull(opt, &ep, 16);
+	if (errno != 0 || *ep != '\0')
+		fatal("fwmark '%s' invalid <hex>", opt);
+
+	if (mark > UINT_MAX)
+		fatal("fwmark '%s' too large", opt);
+
+	sanctum->fwmark = mark;
+#else
+	fatal("fwmark is a linux-only option");
+#endif
+}
 /*
  * Parse an accept configuration option.
  */
@@ -777,8 +817,8 @@ config_parse_cathedral(char *cathedral)
 	if (rp == NULL)
 		fatal("cathedral '%s' failed to resolve", cathedral);
 
-	VERIFY(rp->ai_addrlen == sizeof(sanctum->cathedral));
-	memcpy(&sanctum->cathedral, rp->ai_addr, rp->ai_addrlen);
+	VERIFY(rp->ai_addrlen == sizeof(shared->cathedral));
+	memcpy(&shared->cathedral, rp->ai_addr, rp->ai_addrlen);
 
 	freeaddrinfo(res);
 	sanctum->flags |= SANCTUM_FLAG_CATHEDRAL_ACTIVE;
@@ -813,7 +853,7 @@ config_parse_cathedral_ip(char *ip)
 	if (sanctum->mode != SANCTUM_MODE_CATHEDRAL)
 		fatal("cathedral_ip is only for cathedral mode");
 
-	config_parse_ip_port(ip, &sanctum->cathedral);
+	config_parse_ip_port(ip, &shared->cathedral);
 }
 
 /*
@@ -832,11 +872,11 @@ config_parse_cathedral_mtu(char *opt)
 	if (sscanf(opt, "%hu", &mtu) != 1)
 		fatal("invalid cathedral_mtu specified (%s)", opt);
 
-	if (mtu > SANCTUM_PACKET_DATA_LEN || mtu < 576)
+	if (mtu > SANCTUM_MTU_SIZE_MAX || mtu < 576)
 		fatal("cathedral_mtu (%u) invalid", mtu);
 
 	sanctum->tun_mtu = mtu;
-	sanctum->mtu_size = mtu;
+	shared->mtu_size = mtu;
 }
 
 /*
@@ -1030,6 +1070,21 @@ config_parse_liturgy_discoverable(char *opt)
 }
 
 /*
+ * Parse the shrine_relic configuration option.
+ */
+static void
+config_parse_shrine_relic(char *opt)
+{
+	PRECOND(opt != NULL);
+
+	if (sanctum->shrine_relic != NULL)
+		fatal("shrine_relic already specified");
+
+	if ((sanctum->shrine_relic = strdup(opt)) == NULL)
+		fatal("strdup failed");
+}
+
+/*
  * Parse the liturgy_group option.
  */
 static void
@@ -1181,7 +1236,10 @@ config_mtu_check(void)
 		overhead += SANCTUM_SHROUD_TRAIL_LEN;
 	}
 
-	VERIFY(SANCTUM_PACKET_DATA_LEN > overhead);
+	if (sanctum->flags & SANCTUM_FLAG_USE_TAP)
+		overhead += sizeof(struct sanctum_ether) + 4;
+
+	VERIFY(SANCTUM_MTU_SIZE_MAX > overhead);
 
 	if (sanctum->tun_mtu == 0) {
 		if (sanctum->mode != SANCTUM_MODE_TUNNEL)
@@ -1189,7 +1247,7 @@ config_mtu_check(void)
 
 		sanctum->flags |= SANCTUM_FLAG_MTU_DISCOVERY;
 		sanctum->tun_mtu = SANCTUM_MTU_SIZE_MAX - overhead;
-		sanctum->mtu_size = sanctum->tun_mtu;
+		shared->mtu_size = sanctum->tun_mtu;
 	}
 
 	if (sanctum->tun_mtu < sizeof(struct sanctum_offer)) {
@@ -1253,11 +1311,11 @@ config_cathedral_check(void)
 
 	if (sanctum->mode == SANCTUM_MODE_TUNNEL ||
 	    sanctum->mode == SANCTUM_MODE_LITURGY) {
-		if (sanctum->peer_ip == 0) {
-			sanctum_atomic_write(&sanctum->peer_port,
-			    sanctum->cathedral.sin_port);
-			sanctum_atomic_write(&sanctum->peer_ip,
-			    sanctum->cathedral.sin_addr.s_addr);
+		if (shared->peer_ip == 0) {
+			sanctum_atomic_write(&shared->peer_port,
+			    shared->cathedral.sin_port);
+			sanctum_atomic_write(&shared->peer_ip,
+			    shared->cathedral.sin_addr.s_addr);
 		}
 	}
 }
