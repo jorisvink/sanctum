@@ -85,6 +85,53 @@ sanctum, do not download release tarballs from other sites.</p>
 <details class="version-card" open>
 <summary>
 <div class="version-head">
+<h3>1.4.2</h3>
+<div class="version-meta">released 2026-10-22 · sha256 <span class="sha">886cb491742e0ed788744126b01653dcaa81ea35d502dd8886794fcc5d63c1d5</span></div>
+</div>
+</summary>
+<p><a href="/releases/sanctum-1.4.2.tgz">Download sanctum-1.4.2.tgz</a> (3.7MB)</p>
+<h4>Highlights</h4>
+<ul>
+<li>Added support for Linux its SO_MARK.</li>
+<li>Fixed many small bugs related to useability.</li>
+<li>Improved the key exchange under heavy packet loss.</li>
+<li>Hymn has gotten new commands: psk, commixtion, shroud, refresh.</li>
+<li>Rewrote the bless/confess code to be even more readable than before.</li>
+<li>Fixed a small window in one-way tunnel mode where replay was possible.</li>
+<li>
+Hymn now adds tunnel names under a liturgy to /etc/hosts allowing
+resolving of the online hosts.
+</li>
+<li>
+Cathedrals can now exist in different meshed configurations. You no longer
+need to full-mesh them.
+</li>
+<li>
+Added offer caching so that duplicate type of offers within the validity
+time window are no longer replayable.
+</li>
+<li>
+Added commixtion, allowing a client to instruct cathedrals how many hops
+in between cathedrals a packet should travel before being delivered. This
+is yet another traffic analysis prevention mechanism.
+</li>
+<li>
+Take privilege separation even further. Split the pktpool into two distinct
+sides such that black processes do not have access to red processes their
+packets until they are encrypted, protecting plaintext user-data even more.
+</li>
+<li>
+Move all of the shared state out of the sanctum state structure and
+have it exist as a separate entity so its easier to think about what is
+shared. This way we also prevent rogue processes from fiddling with
+paths for different processes.
+</li>
+</ul>
+</details>
+
+<details class="version-card">
+<summary>
+<div class="version-head">
 <h3>1.4.1</h3>
 <div class="version-meta">released 2026-09-26 · sha256 <span class="sha">3e92fd47c2d8046cda09e3c3b5fb826c38cf2851ea0aebfce1dee60b0f3f30b9</span></div>
 </div>
