@@ -484,8 +484,6 @@ chapel_cathedral_send_info(u_int64_t magic)
 	info->instance = htobe64(local_id);
 	info->tunnel = htobe16(sanctum->tun_spi);
 	info->ambry_generation = htobe32(ambry_generation);
-	info->rx_active = sanctum_atomic_read(&shared->rx.spi);
-	info->rx_pending = sanctum_atomic_read(&shared->rx_pending);
 
 	if (sanctum->cathedral_remembrance != NULL)
 		info->flags = SANCTUM_INFO_FLAG_REMEMBRANCE;

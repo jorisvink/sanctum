@@ -311,8 +311,8 @@ struct sanctum_info_offer {
 	u_int16_t		tunnel;
 	u_int32_t		ambry_generation;
 
-	u_int32_t		rx_active;
-	u_int32_t		rx_pending;
+	u_int32_t		unused_0;
+	u_int32_t		unused_1;
 
 	u_int64_t		instance;
 } __attribute__((packed));

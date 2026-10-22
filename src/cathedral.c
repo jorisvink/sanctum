@@ -39,7 +39,7 @@
 #define CATHEDRAL_HOP_BITS		56
 
 /* The number of seconds in between allowed federation for offers. */
-#define CATHEDRAL_FEDERATE_NEXT		(3 * 1000)
+#define CATHEDRAL_FEDERATE_NEXT		(1 * 1000)
 
 /* The number of seconds before consider a link stale for offer federation. */
 #define CATHEDRAL_OFFER_TIMEOUT		(30 * 1000)
@@ -139,8 +139,6 @@ struct tunnel {
 	u_int64_t		instance;
 	int			peerinfo;
 	int			federated;
-	u_int32_t		rx_active;
-	u_int32_t		rx_pending;
 
 	/* Mixnet hops. */
 	u_int8_t		hops[SANCTUM_CATHEDRAL_HOPS];
@@ -1042,8 +1040,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 
 	tun->age = now;
 	tun->instance = info->instance;
-	tun->rx_active = info->rx_active;
-	tun->rx_pending = info->rx_pending;
 
 	info->tunnel = htobe16(info->tunnel);
 	info->instance = htobe64(info->instance);
@@ -1843,12 +1839,6 @@ cathedral_forward_data(struct sanctum_packet *pkt, u_int32_t spi, u_int64_t now)
 	tid = spi >> 16;
 	if ((tunnel = cathedral_tunnel_lookup(dst, src, tid)) == NULL) {
 		sanctum_log(LOG_INFO, "receiver %s not found for traffic",
-		    cathedral_tunnel_name(dst, src, tid));
-		return (-1);
-	}
-
-	if (tunnel->rx_active != spi && tunnel->rx_pending != spi) {
-		sanctum_log(LOG_INFO, "receiver %s has wrong spi for traffic",
 		    cathedral_tunnel_name(dst, src, tid));
 		return (-1);
 	}
