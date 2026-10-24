@@ -288,7 +288,7 @@ ambry_kek_renew(int argc, char **argv)
 	if (errno != 0 || argv[1] == ep || *ep != '\0')
 		fatal("not a number: %s", argv[1]);
 
-	if (kek > UCHAR_MAX)
+	if (kek == 0 || kek >= UCHAR_MAX)
 		fatal("'%s': out of range", argv[1]);
 
 	ambry_mkdir(flock, "kek-data", 1);
