@@ -2576,10 +2576,6 @@ cathedral_liturgy_signal(struct flockent *flock, struct liturgy *src,
 
 	if (cathedral_offer_send(flock, secret, pkt, &sin) == -1)
 		sanctum_packet_release(pkt);
-
-	sanctum_log(LOG_INFO, "%" PRIx64 "-%02x is signaling %" PRIx64 "-%02x",
-	    flock->id | flock->domain->id, src->id,
-	    flock->id | flock->domain->id, dst->id);
 }
 
 /*
