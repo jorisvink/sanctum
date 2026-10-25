@@ -317,8 +317,10 @@ struct sanctum_info_offer {
 	u_int64_t		instance;
 } __attribute__((packed));
 
-/* Liturgy offer flags. */
+/* Set in a liturgy offer if peer wants remembrance. */
 #define SANCTUM_LITURGY_FLAG_REMEMBRANCE	SANCTUM_INFO_FLAG_REMEMBRANCE
+
+/* Set in a liturgy offer if its used for signaling. */
 #define SANCTUM_LITURGY_FLAG_SIGNALING		(1 << 1)
 
 struct sanctum_liturgy_offer {

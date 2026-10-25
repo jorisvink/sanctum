@@ -217,16 +217,26 @@ struct shroud_reject {
  * A client that will receive a liturgy update inside of a flock.
  */
 struct liturgy {
+	u_int8_t		id;
 	u_int64_t		at;
 	u_int64_t		age;
-	u_int16_t		id;
+	u_int64_t		update;
+
+	u_int32_t		ip;
+	u_int16_t		port;
+
+	u_int32_t		cid;
 	u_int32_t		flags;
+
 	u_int16_t		group;
 	u_int8_t		hidden;
-	u_int64_t		update;
+
 	int			federated;
 	u_int8_t		peers[SANCTUM_PEERS_PER_FLOCK];
+
 	struct offer_link	offerdb;
+	struct shroud		*shroud;
+
 	LIST_ENTRY(liturgy)	list;
 };
 
@@ -380,6 +390,8 @@ static void	cathedral_info_send(struct tunnel *, struct flockent *,
 		    struct sockaddr_in *, u_int32_t, u_int64_t);
 static void	cathedral_liturgy_send(struct flockent *,
 		    struct liturgy *, struct sockaddr_in *, u_int32_t);
+static void	cathedral_liturgy_signal(struct flockent *, struct liturgy *,
+		    struct liturgy *);
 static void	cathedral_p2pinfo_send(struct flockent *,
 		    struct flockent *, struct tunnel *, u_int32_t);
 static void	cathedral_remembrance_send(struct flockent *,
@@ -1156,6 +1168,13 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		return;
 	}
 
+	if ((lit->flags & SANCTUM_LITURGY_FLAG_SIGNALING) && lit->hidden) {
+		sanctum_log(LOG_NOTICE,
+		    "%s is asking to signaling while hidden",
+		    cathedral_tunnel_name(flock, flock, lit->id));
+		return;
+	}
+
 	if (cathedral_tunnel_update_allowed(flock, lit->id, id, NULL) == -1) {
 		sanctum_log(LOG_NOTICE, "%s is not tied to %08x",
 		    cathedral_tunnel_name(flock, flock, lit->id), id);
@@ -1173,12 +1192,32 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		if ((entry = calloc(1, sizeof(*entry))) == NULL)
 			fatal("calloc: failed to allocate liturgy");
 
+		entry->cid = id;
 		entry->id = lit->id;
 		entry->update = now;
 		entry->flags = lit->flags;
 
 		if (catacomb != NULL)
 			entry->federated = 1;
+
+		if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+			LIST_FOREACH(entry->shroud, &shrouds, list) {
+				if (entry->shroud->flock_src == flock->id &&
+				    entry->shroud->flock_dst == flock->id &&
+				    entry->shroud->identity == entry->cid)
+					break;
+			}
+
+			if (entry->shroud == NULL) {
+				sanctum_log(LOG_INFO, "%s has no shroud",
+				    cathedral_tunnel_name(flock,
+				    flock, lit->id));
+				free(entry);
+				return;
+			}
+		} else {
+			entry->shroud = NULL;
+		}
 
 		cathedral_peerstat_inc(&liturgies, entry->federated);
 		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
@@ -1199,6 +1238,8 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 	entry->age = now;
 	entry->group = group;
 	entry->hidden = lit->hidden;
+	entry->port = pkt->addr.sin_port;
+	entry->ip = pkt->addr.sin_addr.s_addr;
 
 	memcpy(entry->peers, lit->peers, sizeof(lit->peers));
 
@@ -1249,6 +1290,13 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		}
 
 		entry->federated = 1;
+
+		/*
+		 * We have to send out signaling pushes here, in the case a peer
+		 * is signaling a peer that is currently on our cathedral.
+		 */
+		if (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
+			cathedral_liturgy_send(flock, entry, &pkt->addr, id);
 
 		cathedral_offer_link_seen(&entry->offerdb, catacomb, now);
 		if (cathedral_offer_repack(flock, flock, pkt, catacomb) == -1)
@@ -2410,8 +2458,11 @@ cathedral_info_send(struct tunnel *tun, struct flockent *flock,
 }
 
 /*
- * Send a liturgy offering to a client. In this message we will include
- * all peers in the same flock domain that are part of the same liturgy.
+ * Send a discovery liturgy offering to a client. In this message we will
+ * include all peers in the same flock domain that are part of the same liturgy.
+ *
+ * Signaling liturgies are pushed when relevant (eg, when another peer is
+ * signaling us, not when we are signaling others).
  */
 static void
 cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
@@ -2421,50 +2472,114 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 	struct sanctum_packet		*pkt;
 	struct sanctum_liturgy_offer	*lit;
 	struct liturgy			*entry;
+	struct shroud			*shroud;
+	int				visible;
 	char				secret[1024];
-	int				visible, wanted;
 
 	PRECOND(flock != NULL);
 	PRECOND(flock->domain != NULL);
 	PRECOND(src != NULL);
 	PRECOND(sin != NULL);
 
+	if (src->flags & SANCTUM_LITURGY_FLAG_SIGNALING) {
+		LIST_FOREACH(entry, &flock->domain->liturgies, list) {
+			if (entry == src)
+				continue;
+
+			if (entry->federated == 1)
+				continue;
+
+			if (!(entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING))
+				continue;
+
+			if (entry->group != src->group)
+				continue;
+
+			/*
+			 * We are sending to another peer than the one who sent
+			 * the request, so fiddle with last known shroud.
+			 */
+			if (src->peers[entry->id] == 1) {
+				shroud = shroud_last;
+				shroud_last = entry->shroud;
+				cathedral_liturgy_signal(flock, src, entry);
+				shroud_last = shroud;
+			}
+		}
+	} else {
+		if ((pkt = sanctum_packet_get()) == NULL)
+			return;
+
+		op = sanctum_offer_init(pkt, id,
+		    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
+
+		lit = &op->data.offer.liturgy;
+		lit->group = htobe16(src->group);
+
+		LIST_FOREACH(entry, &flock->domain->liturgies, list) {
+			if (entry == src)
+				continue;
+
+			if (src->hidden == 0 || entry->hidden == 0)
+				visible = 1;
+			else
+				visible = 0;
+
+			if (entry->group == src->group && visible)
+				lit->peers[entry->id] = 1;
+		}
+
+		cathedral_secret_path(secret, sizeof(secret), flock->id, id);
+
+		if (cathedral_offer_send(flock, secret, pkt, sin) == -1)
+			sanctum_packet_release(pkt);
+	}
+}
+
+/*
+ * Signal another signaling liturgy a peer wants to reach them.
+ */
+static void
+cathedral_liturgy_signal(struct flockent *flock, struct liturgy *src,
+    struct liturgy *dst)
+{
+	struct sockaddr_in		sin;
+	struct sanctum_offer		*op;
+	struct sanctum_packet		*pkt;
+	struct sanctum_liturgy_offer	*lit;
+	char				secret[1024];
+
+	PRECOND(flock != NULL);
+	PRECOND(src != NULL);
+	PRECOND(dst != NULL);
+
+	VERIFY(src->group == dst->group);
+	VERIFY(dst->flags & SANCTUM_LITURGY_FLAG_SIGNALING);
+	VERIFY(src->flags & SANCTUM_LITURGY_FLAG_SIGNALING);
+
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;
 
-	op = sanctum_offer_init(pkt, id,
+	op = sanctum_offer_init(pkt, dst->cid,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_OFFER_TYPE_LITURGY);
 
 	lit = &op->data.offer.liturgy;
-	lit->group = htobe16(src->group);
+	lit->group = htobe16(dst->group);
+	lit->peers[src->id] = 1;
 
-	LIST_FOREACH(entry, &flock->domain->liturgies, list) {
-		if (entry == src)
-			continue;
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_port = dst->port;
+	sin.sin_addr.s_addr = dst->ip;
 
-		if (src->hidden == 0 || entry->hidden == 0)
-			visible = 1;
-		else
-			visible = 0;
+	cathedral_secret_path(secret, sizeof(secret), flock->id, dst->cid);
 
-		if ((entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING) &&
-		    (src->flags & SANCTUM_LITURGY_FLAG_SIGNALING)) {
-			if (src->peers[entry->id] || entry->peers[src->id])
-				wanted = 1;
-			else
-				wanted = 0;
-		} else {
-			wanted = 1;
-		}
-
-		if (entry->group == src->group && visible && wanted)
-			lit->peers[entry->id] = 1;
-	}
-
-	cathedral_secret_path(secret, sizeof(secret), flock->id, id);
-
-	if (cathedral_offer_send(flock, secret, pkt, sin) == -1)
+	if (cathedral_offer_send(flock, secret, pkt, &sin) == -1)
 		sanctum_packet_release(pkt);
+
+	sanctum_log(LOG_INFO, "%" PRIx64 "-%02x is signaling %" PRIx64 "-%02x",
+	    flock->id | flock->domain->id, src->id,
+	    flock->id | flock->domain->id, dst->id);
 }
 
 /*
