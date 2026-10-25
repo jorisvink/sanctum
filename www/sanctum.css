@@ -1054,3 +1054,25 @@ footer a:hover  { color: var(--amber); }
 .vs thead .us   { color: var(--amber); box-shadow: inset 0 2px var(--amber), inset 1px 0 var(--amber-dim), inset -1px 0 var(--amber-dim); }
 .vs .us b.y     { color: var(--amber); }
 .vs tbody tr:last-child .us     { border-bottom-color: var(--amber); box-shadow: inset 0 -1px var(--amber), inset 1px 0 var(--amber-dim), inset -1px 0 var(--amber-dim); }
+
+.shots {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    margin: 18px 0 14px;
+}
+
+.shots figure           { margin: 0; }
+.shots figure img       { padding: 8px; }
+
+.shots figcaption {
+    margin-top: 8px;
+    font: 11.5px var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+@media (max-width: 680px) {
+    .shots              { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+}

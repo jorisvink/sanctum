@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vigil — Sanctum</title>
+<meta name="description" content="Vigil is the ISC licensed Sanctum companion app for iOS and Android: tunnels, liturgies, tier6 and end-to-end encrypted calls and messaging.">
+<link rel="stylesheet" href="sanctum.css?v=1792954310">
+</head>
+
+<body>
+
+<header>
+<p class="site"><a href="index.html">SANCTUM</a></p>
+<nav>
+<ul class="bar">
+<li><a href="index.html">Overview</a></li>
+<li><a href="releases.html">Releases</a></li>
+<li><a href="topologies.html">Topologies</a></li>
+<li><a href="vigil.html" class="current">Vigil</a></li>
+<li class="drop"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
+<li><a href="errata.html">Errata</a></li>
+<li><a href="crypto.html">Cryptography</a></li>
+<li><a href="privsep.html">Privilege Separation</a></li>
+<li><a href="shroud.html">Traffic Analysis</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
+<li><a href="building.html">Building</a></li>
+<li><a href="contributing.html">Contributing</a></li>
+<li><a href="guide.html">Setup Guide</a></li>
+<li><a href="liturgy.html">Liturgy Guide</a></li>
+<li><a href="cathedral.html">Cathedral Guide</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
+<li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
+<li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
+<li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
+<li><a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub" class="gh"></a></li>
+</ul></li>
+<li class="get"><a href="releases.html">Get Sanctum</a></li>
+</ul>
+</nav>
+</header>
+
+<main>
+
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
+
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#vigil">Vigil</a>
+<a href="#screenshots">Screenshots</a>
+<a href="#modes">Modes</a>
+<a href="#calls-and-messages">Calls and messages</a>
+<a href="#building">Building</a>
+<a href="#configuration">Configuration</a>
+</aside>
+
+<div class="prose">
+
+<h2 id="vigil">Vigil</h2>
+<p>
+Vigil is an ISC licensed Sanctum companion app for iOS and Android, using
+<a href="https://github.com/jorisvink/libkyrka" target="_blank" rel="noopener">libkyrka</a>,
+and is fully interoperable with sanctum or tier6. It is distributed as source-only.
+</p>
+
+<a class="btn" href="https://github.com/jorisvink/vigil" target="_blank" rel="noopener">Get Vigil</a>
+
+<h2 id="screenshots">Screenshots</h2>
+<div class="shots">
+<figure><img src="vigil/vigil.png" alt="Vigil tunnel overview showing a connected tunnel and stored tunnels" loading="lazy" width="600" height="1298"><figcaption>Tunnels</figcaption></figure>
+<figure><img src="vigil/status.png" alt="Vigil status screen showing uptime, peers and session details" loading="lazy" width="600" height="1298"><figcaption>Status</figcaption></figure>
+<figure><img src="vigil/status2.png" alt="Vigil network view showing liturgy peers connected via cathedrals" loading="lazy" width="600" height="1298"><figcaption>Network</figcaption></figure>
+<figure><img src="vigil/gospel.png" alt="Vigil gospel view listing chats and peers in a flock" loading="lazy" width="600" height="1298"><figcaption>Gospel</figcaption></figure>
+<figure><img src="vigil/voice.png" alt="Vigil gospel view showing call and chat signaling tunnels" loading="lazy" width="600" height="1298"><figcaption>Signaling</figcaption></figure>
+<figure><img src="vigil/video.png" alt="Vigil during an end-to-end encrypted video call" loading="lazy" width="600" height="1298"><figcaption>Video call</figcaption></figure>
+</div>
+
+<h2 id="modes">Modes</h2>
+<p>
+Vigil can talk to the sanctum daemon using one of the following modes:
+</p>
+<table>
+<thead>
+<tr><th>Mode</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tunnel</code></td><td>A normal client-to-site tunnel towards a sanctum instance.</td></tr>
+<tr><td><code>cathedral</code></td><td>Device-to-device tunnels via a <a href="cathedral.html">cathedral</a> with NAT holepunching.</td></tr>
+<tr><td><code>liturgy</code></td><td>Automatic discovery of cathedral tunnels in a full-mesh, see <a href="liturgy.html">liturgies</a>.</td></tr>
+</tbody>
+</table>
+
+<p>
+Or it can talk to the
+<a href="https://github.com/jorisvink/tier6" target="_blank" rel="noopener">tier6</a>
+daemon, giving you the possibility to join your phone into an L2 network.
+</p>
+
+<h2 id="calls-and-messages">Calls and messages</h2>
+<p>
+On top of tunnels, Vigil implements the sanctum
+<a href="https://github.com/jorisvink/confessions" target="_blank" rel="noopener">confessions</a>
+and
+<a href="https://github.com/jorisvink/gospel" target="_blank" rel="noopener">gospel</a>
+protocols to support:
+</p>
+<ul>
+<li>Voice calls</li>
+<li>Video calls</li>
+<li>Text messaging, including the ability to send images or files</li>
+</ul>
+
+<h2 id="building">Building</h2>
+<h3>Android</h3>
+<p>
+Make sure Android Studio is installed. Can be compiled on Linux or macOS.
+</p>
+<pre>$ make android
+$ adb install -r app/build/app/outputs/flutter-apk/app-release.apk</pre>
+
+<h3>iOS</h3>
+<p>
+Requires macOS with Xcode installed.
+</p>
+<pre>$ echo "DEVELOPMENT_TEAM = &lt;team&gt;" &gt; app/ios/Team.xcconfig
+$ make ios
+$ xcrun devicectl list devices
+$ xcrun devicectl device install app --device &lt;device&gt; \
+    app/build/ios/iphoneos/Runner.app</pre>
+
+<h2 id="configuration">Configuration</h2>
+<p>
+Vigil is configured using a short text configuration, usually imported
+as a QR code. Below are a few examples.
+</p>
+
+<h3>A standard tunnel</h3>
+<pre>vigil 1
+instance office
+tunnel 10.77.0.2/24 1408
+peer vpn.example.com:4500
+secret &lt;64 hex characters&gt;
+route 0.0.0.0/0
+dns 10.77.0.1</pre>
+
+<h3>A tunnel using a cathedral</h3>
+<pre>vigil 1
+instance laptop
+tunnel 10.88.0.2/24
+spi 0c0d
+kek &lt;64 hex characters&gt;
+cathedral cathedral.reliquary.se:4469
+cathedral_id 5eb2411f
+cathedral_flock 493abf95a07e0c00
+cathedral_secret &lt;64 hex characters&gt;
+cathedral_cosk &lt;128 hex characters&gt;</pre>
+
+<h3>A liturgy via a cathedral</h3>
+<pre>vigil 1
+instance mesh
+mode liturgy
+spi 0c
+kek &lt;64 hex characters&gt;
+liturgy_group 0001
+liturgy_prefix 172.31.0.0
+cathedral cathedral.reliquary.se:4469
+cathedral_id 5eb2411f
+cathedral_flock 493abf95a07e0c00
+cathedral_secret &lt;64 hex characters&gt;
+cathedral_cosk &lt;128 hex characters&gt;</pre>
+
+<h3>A tier6 configuration</h3>
+<pre>vigil 1
+instance flock
+mode liturgy
+tier6 yes
+spi 0c
+kek &lt;64 hex characters&gt;
+cathedral cathedral.reliquary.se:4469
+cathedral_id 5eb2411f
+cathedral_flock 493abf95a07e0c00
+cathedral_secret &lt;64 hex characters&gt;
+cathedral_cosk &lt;128 hex characters&gt;</pre>
+<p>
+Do not specify a tunnel ip if you want tier6 to auto-assign addresses.
+</p>
+
+<h3>A gospel configuration</h3>
+<pre>vigil 1
+instance calls
+mode gospel
+spi 0c
+kek &lt;64 hex characters&gt;
+liturgy_group 0001
+cathedral cathedral.reliquary.se:4469
+cathedral_id 5eb2411f
+cathedral_flock 493abf95a07e0c00
+cathedral_secret &lt;64 hex characters&gt;
+cathedral_cosk &lt;128 hex characters&gt;</pre>
+
+<h3>Common options</h3>
+<table>
+<thead>
+<tr><th>Option</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>shroud</code></td><td>Turn <a href="shroud.html">shroud</a> off or on.</td></tr>
+<tr><td><code>dns</code></td><td>Configures the DNS server to use.</td></tr>
+<tr><td><code>mtu</code></td><td>Set to <code>auto</code> for MTU discovery.</td></tr>
+<tr><td><code>route</code></td><td>Add explicit routes over the tunnel.</td></tr>
+<tr><td><code>block_ipv6</code></td><td>Defaults to yes when you have a 0.0.0.0/0 route.</td></tr>
+</tbody>
+</table>
+
+<h3>Generating a QR code</h3>
+<p>
+The <code>tools/vigil-config</code> shell script can take existing
+sanctum key material and convert them into a vigil configuration
+shown as a QR code or plaintext configuration.
+</p>
+<pre>$ ./tools/vigil-config cathedral -i laptop -c cathedral.reliquary.se:4469 \
+    -f 493abf95a07e0c00 -x 0c0d -k kek-0x0c -I 5eb2411f \
+    -C id-5eb2411f -K cosk-5eb2411f -t 10.88.0.2/24 -q</pre>
+
+</div>
+</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A PQ-secure and fully privilege separated VPN daemon and protocol
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
+the ISC license.</p>
+</div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+<a href="vigil.html">Vigil</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Ite, missa est.</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
+
+</body>
+</html>
