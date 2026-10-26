@@ -2565,7 +2565,7 @@ cathedral_liturgy_signal(struct flockent *flock, struct liturgy *src,
 
 	lit = &op->data.offer.liturgy;
 	lit->group = htobe16(dst->group);
-	lit->peers[src->id] = 1;
+	lit->peers[src->id] = src->peers[dst->id];
 
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
