@@ -2499,7 +2499,7 @@ cathedral_liturgy_send(struct flockent *flock, struct liturgy *src,
 			 * We are sending to another peer than the one who sent
 			 * the request, so fiddle with last known shroud.
 			 */
-			if (src->peers[entry->id] == 1) {
+			if (src->peers[entry->id] != 0) {
 				shroud = shroud_last;
 				shroud_last = entry->shroud;
 				cathedral_liturgy_signal(flock, src, entry);
