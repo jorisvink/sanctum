@@ -38,6 +38,9 @@
 /* The position where the hop count is placed in the packet sequence number. */
 #define CATHEDRAL_HOP_BITS		56
 
+/* The interval at which we check tunnels and liturgies. */
+#define CATHEDRAL_MANAGEMENT_NEXT	(1 * 1000)
+
 /* The number of seconds in between allowed federation for offers. */
 #define CATHEDRAL_FEDERATE_NEXT		(1 * 1000)
 
@@ -55,9 +58,6 @@
 
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(60 * 1000)
-
-/* The interval at which we check for expired tunnel and liturgy entries. */
-#define CATHEDRAL_TUNNEL_EXPIRE_NEXT	(10 * 1000)
 
 /* The interval at which we check if settings changed. */
 #define CATHEDRAL_SETTINGS_RELOAD_NEXT	(10 * 1000)
@@ -172,7 +172,6 @@ struct tunnel {
 	struct shroud		*shroud;
 
 	LIST_ENTRY(tunnel)	list;
-	LIST_ENTRY(tunnel)	remembrance_list;
 };
 
 LIST_HEAD(tunnel_list, tunnel);
@@ -244,7 +243,6 @@ struct liturgy {
 	struct offer_link	offerdb;
 
 	LIST_ENTRY(liturgy)	list;
-	LIST_ENTRY(liturgy)	remembrance_list;
 };
 
 LIST_HEAD(liturgy_list, liturgy);
@@ -317,7 +315,6 @@ struct xflock {
 
 static void		cathedral_status_log(void);
 static void		cathedral_status_reset(void);
-static void		cathedral_remembrances_push(u_int64_t);
 static void		cathedral_tunnel_free(struct tunnel *);
 static void		cathedral_liturgy_free(struct liturgy *);
 
@@ -358,6 +355,7 @@ static void	cathedral_peerstat_dec(struct peerstat *, int);
 static void	cathedral_flock_allows_clear(struct flockent *);
 static void	cathedral_flock_domain_clear(struct flockdom *);
 static void	cathedral_flock_domains_clear(struct flockent *);
+static void	cathedral_flock_check(struct flockent *, u_int64_t);
 static void	cathedral_packet_handle(struct sanctum_packet *, u_int64_t);
 
 static void	cathedral_secret_path(char *, size_t, u_int64_t, u_int32_t);
@@ -412,7 +410,6 @@ static void	cathedral_remembrance_send(struct flockent *,
 		    struct sockaddr_in *, u_int32_t);
 
 static void	cathedral_tunnel_prune(struct flockent *);
-static void	cathedral_tunnel_expire(struct flockent *, u_int64_t);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
 		    u_int8_t, u_int32_t, u_int32_t *);
 
@@ -445,12 +442,6 @@ static LIST_HEAD(, xflock)		xflocks;
 
 /* List of shrouds. */
 static LIST_HEAD(, shroud)		shrouds;
-
-/* List of peers that need remembrances. */
-static struct tunnel_list		remembrance_tunnels;
-
-/* List of liturgies that need remembrances */
-static struct liturgy_list		remembrance_liturgies;
 
 /*
  * List of recently received offers. We currently do a global lookup
@@ -502,8 +493,7 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	struct sanctum_packet	*pkt;
 	struct flockent		*flock;
 	int			sig, running;
-	u_int64_t		next_remembrances;
-	u_int64_t		now, next_expire, next_status;
+	u_int64_t		now, next_mgmt, next_status;
 	u_int64_t		next_commixtion, next_settings;
 
 	PRECOND(proc != NULL);
@@ -523,19 +513,15 @@ sanctum_cathedral(struct sanctum_proc *proc)
 	LIST_INIT(&federations);
 	LIST_INIT(&offer_cache);
 
-	LIST_INIT(&remembrance_tunnels);
-	LIST_INIT(&remembrance_liturgies);
-
 	sanctum_platform_sandbox(proc);
 	cathedral_settings_reload();
 	sanctum_proc_started(proc);
 
 	running = 1;
-	next_expire = 0;
+	next_mgmt = 0;
 	next_status = 0;
 	next_settings = 0;
 	next_commixtion = 0;
-	next_remembrances = 0;
 
 	if (sanctum_base_key(sanctum->secret, CATHEDRAL_CATACOMB_MAGIC,
 	    SANCTUM_CATHEDRAL_MAGIC, SANCTUM_KDF_PURPOSE_SHROUD_CATHEDRAL,
@@ -563,10 +549,10 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			cathedral_settings_reload();
 		}
 
-		if (now >= next_expire) {
-			next_expire = now + CATHEDRAL_TUNNEL_EXPIRE_NEXT;
+		if (now >= next_mgmt) {
+			next_mgmt = now + CATHEDRAL_MANAGEMENT_NEXT;
 			LIST_FOREACH(flock, &flocks, list)
-				cathedral_tunnel_expire(flock, now);
+				cathedral_flock_check(flock, now);
 		}
 
 		if ((sanctum->flags & SANCTUM_FLAG_COMMIXTION) &&
@@ -581,11 +567,6 @@ sanctum_cathedral(struct sanctum_proc *proc)
 			next_status = now + CATHEDRAL_STATUS_NEXT;
 			cathedral_status_log();
 			sanctum_offer_prune(&offer_cache);
-		}
-
-		if (now >= next_remembrances) {
-			next_remembrances = now + 1000;
-			cathedral_remembrances_push(now);
 		}
 
 		while ((pkt = sanctum_packet_dequeue(io->chapel))) {
@@ -1081,6 +1062,11 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 	info->instance = htobe64(info->instance);
 	info->ambry_generation = htobe32(info->ambry_generation);
 
+	if (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE)
+		tun->remembrance = 1;
+	else
+		tun->remembrance = 0;
+
 	if (catacomb != NULL) {
 		if (tun->federated == 0) {
 			cathedral_peerstat_dec(&peers, 0);
@@ -1089,11 +1075,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			tun->p2p_port = 0;
 			tun->peerinfo = 0;
 			tun->p2p_cooldown = now + CATHEDRAL_P2P_COOLDOWN;
-
-			if (tun->remembrance) {
-				tun->remembrance = 0;
-				LIST_REMOVE(tun, remembrance_list);
-			}
 		}
 
 		tun->federated = 1;
@@ -1118,12 +1099,6 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 		if (tun->federated) {
 			cathedral_peerstat_dec(&peers, 1);
 			cathedral_peerstat_inc(&peers, 0);
-
-			if (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE) {
-				tun->remembrance = 1;
-				LIST_INSERT_HEAD(&remembrance_tunnels,
-				    tun, remembrance_list);
-			}
 		}
 
 		hops = 0;
@@ -1233,13 +1208,11 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		entry->flags = lit->flags;
 		entry->flock = flock->id | flock->domain->id;
 
-		if (catacomb != NULL) {
+		if (catacomb != NULL)
 			entry->federated = 1;
-		} else if (entry->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE) {
+
+		if (entry->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE)
 			entry->remembrance = 1;
-			LIST_INSERT_HEAD(&remembrance_liturgies,
-			    entry, remembrance_list);
-		}
 
 		cathedral_peerstat_inc(&liturgies, entry->federated);
 		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
@@ -1283,12 +1256,6 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		if (entry->federated) {
 			cathedral_peerstat_dec(&liturgies, 1);
 			cathedral_peerstat_inc(&liturgies, 0);
-
-			if (entry->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE) {
-				entry->remembrance = 1;
-				LIST_INSERT_HEAD(&remembrance_liturgies,
-				    entry, remembrance_list);
-			}
 		}
 
 		entry->federated = 0;
@@ -1309,11 +1276,6 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		if (entry->federated == 0) {
 			cathedral_peerstat_dec(&liturgies, 0);
 			cathedral_peerstat_inc(&liturgies, 1);
-
-			if (entry->remembrance) {
-				entry->remembrance = 0;
-				LIST_REMOVE(entry, remembrance_list);
-			}
 		}
 
 		entry->federated = 1;
@@ -2244,12 +2206,6 @@ cathedral_tunnel_entry(struct flockent *flock, struct flockent *dst,
 		tun->distance = catacomb->hops;
 	} else {
 		tun->distance = 0;
-
-		if (info->flags & SANCTUM_INFO_FLAG_REMEMBRANCE) {
-			tun->remembrance = 1;
-			LIST_INSERT_HEAD(&remembrance_tunnels,
-			    tun, remembrance_list);
-		}
 	}
 
 	tun->cid = id;
@@ -2344,55 +2300,6 @@ cathedral_tunnel_prune(struct flockent *flock)
 				cathedral_peerstat_dec(&peers, tun->federated);
 				cathedral_tunnel_free(tun);
 			}
-		}
-	}
-}
-
-/*
- * Expire tunnel and liturgy entries that are too old and remove them
- * from the known list.
- */
-static void
-cathedral_tunnel_expire(struct flockent *flock, u_int64_t now)
-{
-	struct flockdom		*dom, *dom_next;
-	struct tunnel		*tunnel, *tunnel_next;
-	struct liturgy		*liturgy, *liturgy_next;
-
-	PRECOND(flock != NULL);
-
-	for (dom = LIST_FIRST(&flock->domains); dom != NULL; dom = dom_next) {
-		dom_next = LIST_NEXT(dom, list);
-
-		for (liturgy = LIST_FIRST(&dom->liturgies);
-		    liturgy != NULL; liturgy = liturgy_next) {
-			liturgy_next = LIST_NEXT(liturgy, list);
-
-			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
-				cathedral_peerstat_dec(&liturgies,
-				    liturgy->federated);
-				cathedral_liturgy_free(liturgy);
-			}
-		}
-
-		for (tunnel = LIST_FIRST(&dom->tunnels);
-		    tunnel != NULL; tunnel = tunnel_next) {
-			tunnel_next = LIST_NEXT(tunnel, list);
-
-			if ((now - tunnel->age) >=
-			    CATHEDRAL_TUNNEL_MAX_AGE) {
-				cathedral_peerstat_dec(&peers,
-				    tunnel->federated);
-				cathedral_tunnel_free(tunnel);
-			}
-		}
-
-		if (LIST_EMPTY(&dom->tunnels) &&
-		    LIST_EMPTY(&dom->liturgies)) {
-			if (flock->domain == dom)
-				flock->domain = NULL;
-			LIST_REMOVE(dom, list);
-			free(dom);
 		}
 	}
 }
@@ -2599,66 +2506,6 @@ cathedral_liturgy_signal(struct flockent *flock, struct liturgy *src,
 }
 
 /*
- * Push out remembrances to tunnels or liturgies who need to get them.
- */
-static void
-cathedral_remembrances_push(u_int64_t now)
-{
-	struct sockaddr_in	sin;
-	struct liturgy		*lit;
-	struct tunnel		*tun;
-	struct flockent		*flock;
-	struct shroud		*shroud;
-
-	LIST_FOREACH(lit, &remembrance_liturgies, remembrance_list) {
-		VERIFY(lit->federated == 0);
-		VERIFY(lit->remembrance == 1);
-
-		if (now < lit->update)
-			continue;
-
-		lit->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
-
-		sin.sin_port = lit->port;
-		sin.sin_addr.s_addr = lit->ip;
-
-		if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
-			if ((shroud = cathedral_shroud_liturgy(lit)) == NULL)
-				continue;
-		} else {
-			shroud = NULL;
-		}
-
-		if ((flock = cathedral_flock_lookup(lit->flock)) == NULL)
-			continue;
-
-		shroud_last = shroud;
-		cathedral_remembrance_send(flock, &sin, lit->cid);
-	}
-
-	LIST_FOREACH(tun, &remembrance_tunnels, remembrance_list) {
-		VERIFY(tun->federated == 0);
-		VERIFY(tun->remembrance == 1);
-
-		if (now < tun->update)
-			continue;
-
-		tun->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
-
-		sin.sin_port = tun->port;
-		sin.sin_addr.s_addr = tun->ip;
-
-		if ((flock = cathedral_flock_lookup(tun->src)) == NULL)
-			continue;
-
-		shroud_last = tun->shroud;
-		cathedral_remembrance_send(flock, &sin, tun->cid);
-	}
-
-	shroud_last = NULL;
-}
-
-/*
  * Send a list of all our currently configured federated cathedrals.
  * We include ourselves in this in the first slot of the response.
  */
@@ -2817,6 +2664,103 @@ cathedral_ambry_send(struct flockent *flock, struct flockent *dst,
 }
 
 /*
+ * Check tunnels and liturgies in a given flock to see if they need to
+ * get a remembrance sent to them or if they have expired and should be
+ * removed.
+ */
+static void
+cathedral_flock_check(struct flockent *flock, u_int64_t now)
+{
+	struct sockaddr_in	sin;
+	struct shroud		*shroud;
+	struct flockdom		*dom, *dom_next;
+	struct tunnel		*tunnel, *tunnel_next;
+	struct liturgy		*liturgy, *liturgy_next;
+
+	PRECOND(flock != NULL);
+
+	for (dom = LIST_FIRST(&flock->domains); dom != NULL; dom = dom_next) {
+		dom_next = LIST_NEXT(dom, list);
+
+		for (liturgy = LIST_FIRST(&dom->liturgies);
+		    liturgy != NULL; liturgy = liturgy_next) {
+			liturgy_next = LIST_NEXT(liturgy, list);
+
+			if ((now - liturgy->age) >= CATHEDRAL_TUNNEL_MAX_AGE) {
+				cathedral_peerstat_dec(&liturgies,
+				    liturgy->federated);
+				cathedral_liturgy_free(liturgy);
+				continue;
+			}
+
+			if (liturgy->federated == 1)
+				continue;
+
+			if (liturgy->remembrance == 0 || now < liturgy->update)
+				continue;
+
+			if (sanctum->flags & SANCTUM_FLAG_SHROUD) {
+				shroud = cathedral_shroud_liturgy(liturgy);
+				if (shroud == NULL)
+					continue;
+			} else {
+				shroud = NULL;
+			}
+
+			flock->domain = dom;
+			shroud_last = shroud;
+
+			sin.sin_port = liturgy->port;
+			sin.sin_addr.s_addr = liturgy->ip;
+
+			liturgy->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+			cathedral_remembrance_send(flock, &sin, liturgy->cid);
+		}
+
+		for (tunnel = LIST_FIRST(&dom->tunnels);
+		    tunnel != NULL; tunnel = tunnel_next) {
+			tunnel_next = LIST_NEXT(tunnel, list);
+
+			if ((now - tunnel->age) >=
+			    CATHEDRAL_TUNNEL_MAX_AGE) {
+				cathedral_peerstat_dec(&peers,
+				    tunnel->federated);
+				cathedral_tunnel_free(tunnel);
+				continue;
+			}
+
+			if (tunnel->ip == 0 || tunnel->port == 0)
+				continue;
+
+			if (tunnel->federated == 1)
+				continue;
+
+			if (tunnel->remembrance == 0 || now < tunnel->update)
+				continue;
+
+			flock->domain = dom;
+			shroud_last = tunnel->shroud;
+
+			sin.sin_port = tunnel->port;
+			sin.sin_addr.s_addr = tunnel->ip;
+
+			tunnel->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+			cathedral_remembrance_send(flock, &sin, tunnel->cid);
+		}
+
+		if (LIST_EMPTY(&dom->tunnels) &&
+		    LIST_EMPTY(&dom->liturgies)) {
+			if (flock->domain == dom)
+				flock->domain = NULL;
+			LIST_REMOVE(dom, list);
+			free(dom);
+		}
+	}
+
+	shroud_last = NULL;
+}
+
+/*
  * Lookup the flock for the given id, we explictly clear out the domain
  * bits so we can lookup the main flock. The returned flock has the
  * domain bits set inside of it, these are overwritten everytime
@@ -2934,16 +2878,12 @@ cathedral_flock_domain_clear(struct flockdom *domain)
 
 	while ((tunnel = LIST_FIRST(&domain->tunnels)) != NULL) {
 		cathedral_peerstat_dec(&peers, tunnel->federated);
-		if (tunnel->remembrance)
-			LIST_REMOVE(tunnel, remembrance_list);
 		LIST_REMOVE(tunnel, list);
 		free(tunnel);
 	}
 
 	while ((liturgy = LIST_FIRST(&domain->liturgies)) != NULL) {
 		cathedral_peerstat_dec(&liturgies, liturgy->federated);
-		if (liturgy->remembrance)
-			LIST_REMOVE(liturgy, remembrance_list);
 		LIST_REMOVE(liturgy, list);
 		free(liturgy);
 	}
@@ -3602,10 +3542,6 @@ cathedral_tunnel_free(struct tunnel *tun)
 	PRECOND(tun != NULL);
 
 	LIST_REMOVE(tun, list);
-
-	if (tun->remembrance)
-		LIST_REMOVE(tun, remembrance_list);
-
 	free(tun);
 }
 
@@ -3618,10 +3554,6 @@ cathedral_liturgy_free(struct liturgy *lit)
 	PRECOND(lit != NULL);
 
 	LIST_REMOVE(lit, list);
-
-	if (lit->remembrance)
-		LIST_REMOVE(lit, remembrance_list);
-
 	free(lit);
 }
 
