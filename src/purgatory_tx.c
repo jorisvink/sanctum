@@ -204,8 +204,10 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 		    (struct sockaddr *)&peer, sizeof(peer)) == -1) {
 			if (errno == EINTR)
 				continue;
+
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				break;
+
 			if (errno == EADDRNOTAVAIL) {
 				/*
 				 * XXX - we should act on this like we did
@@ -215,6 +217,7 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 				    "network change detected");
 				break;
 			}
+
 			if (errno == EMSGSIZE) {
 				sanctum_log(LOG_INFO,
 				    "packet (size=%zu) too large, "
@@ -225,21 +228,20 @@ purgatory_tx_send_packet(struct sanctum_packet *pkt)
 				sanctum_atomic_write(&shared->mtu_change, mtu);
 				break;
 			}
+
 			if (errno == ENETUNREACH || errno == EHOSTUNREACH) {
 				sanctum_log(LOG_INFO,
 				    "host %s unreachable (%s)",
 				    inet_ntoa(peer.sin_addr), errno_s);
 				break;
 			}
+
 			if (errno == ENETDOWN) {
 				sanctum_log(LOG_INFO, "network is down");
 				break;
 			}
-			if (errno == ENOBUFS) {
-				sanctum_log(LOG_NOTICE, "sendto: %s", errno_s);
-				break;
-			}
-			fatal("sendto: %s", errno_s);
+
+			sanctum_log(LOG_NOTICE, "sendto: %s", errno_s);
 		}
 
 		break;
