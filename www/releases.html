@@ -261,13 +261,16 @@ seconds.
 <summary>
 <div class="version-head">
 <h3>1.2.1</h3>
-<div class="version-meta">released 2026-11-02 · sha256 <span class="sha">f37921cad5091cd0846e27e78b1ad85cb502aa24988adb678e4dc2d1e178148a</span></div>
+<div class="version-meta">released 2026-11-02 · sha256 <span class="sha">d9450f3b626d34e7f2ebcc7fae8eeb7b1633a67dcf6eb9ebbe0b8c0ce0529fd2</span></div>
 </div>
 </summary>
 <p><a href="releases/libkyrka-1.2.1.tgz">Download libkyrka-1.2.1.tgz</a></p>
 <h4>Highlights</h4>
 <ul>
-<li>This very minor release syncs libkyrka nyfe with upstream nyfe.</li>
+<li>Sync nyfe with upstream.</li>
+<li>Get rid of INRI, it was a good idea badly executed.</li>
+<li>Get rid of kyrka_vicar_*(), no more need for this stuff.</li>
+<li>Improved key exchanges under heavy load or missing packets.</li>
 </ul>
 </details>
 
