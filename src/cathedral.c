@@ -207,17 +207,6 @@ struct shroud {
 };
 
 /*
- * A rejected shroud packet its origin and how many times we failed.
- */
-struct shroud_reject {
-	u_int32_t			ip;
-	u_int16_t			port;
-	u_int32_t			misses;
-	u_int64_t			last;
-	LIST_ENTRY(shroud_reject)	list;
-};
-
-/*
  * A client that will receive a liturgy update inside of a flock.
  */
 struct liturgy {
