@@ -1211,12 +1211,14 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		if (catacomb != NULL)
 			entry->federated = 1;
 
-		if (entry->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE)
-			entry->remembrance = 1;
-
 		cathedral_peerstat_inc(&liturgies, entry->federated);
 		LIST_INSERT_HEAD(&flock->domain->liturgies, entry, list);
 	}
+
+	if (lit->flags & SANCTUM_LITURGY_FLAG_REMEMBRANCE)
+		entry->remembrance = 1;
+	else
+		entry->remembrance = 0;
 
 	if (entry->flags & SANCTUM_LITURGY_FLAG_SIGNALING)
 		mode = "signaling";
