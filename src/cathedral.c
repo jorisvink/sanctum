@@ -784,8 +784,12 @@ cathedral_offer_send(struct flockent *flock, const char *secret,
 	PRECOND(sin != NULL);
 
 	op = sanctum_packet_head(pkt);
-	nyfe_zeroize_register(&cipher, sizeof(cipher));
+	if (sanctum_offer_sign(op) == -1) {
+		sanctum_log(LOG_NOTICE, "discarding offer, failed to sign");
+		return (-1);
+	}
 
+	nyfe_zeroize_register(&cipher, sizeof(cipher));
 	if (sanctum_offer_kdf(secret, SANCTUM_CATHEDRAL_KDF_LABEL,
 	    &cipher, op->hdr.seed, sizeof(op->hdr.seed),
 	    flock->id | flock->domain->id, 0) == -1) {

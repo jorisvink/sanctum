@@ -242,6 +242,8 @@ sanctum_config_load(const char *file)
 			fatal("cathedral: commixtion requires shroud");
 		if (sanctum->secretdir == NULL)
 			fatal("cathedral: no secretdir configured");
+		if (sanctum->cathedral_cosk == NULL)
+			fatal("cathedral: no cathedral_cosk configured");
 		config_mtu_check();
 		if (shared->cathedral.sin_addr.s_addr == 0) {
 			memcpy(&shared->cathedral,
@@ -971,9 +973,6 @@ static void
 config_parse_cathedral_cosk(char *key)
 {
 	PRECOND(key != NULL);
-
-	if (sanctum->tun_spi == 0)
-		fatal("spi prefix has been configured");
 
 	if (sanctum->cathedral_cosk != NULL)
 		fatal("cathedral_cosk specified multiple times");

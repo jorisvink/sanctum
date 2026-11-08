@@ -33,6 +33,8 @@ rm -f test/a.bundle
 rm -f test/b.bundle
 rm -f test/ab.bundle
 rm -f test/ambry.keys
+rm -f test/cathedral.pub
+rm -f test/cathedral.cosk
 
 cd test
 
@@ -54,6 +56,8 @@ cd test
 
 ../tools/ambry/ambry cosk-pair \
     secrets/fe.sign secrets/flock-cafeba00/000000fe.pub
+
+../tools/ambry/ambry cosk-pair cathedral.cosk cathedral.pub
 
 cd ..
 

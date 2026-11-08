@@ -858,9 +858,7 @@ sanctum_offer_encrypt(struct sanctum_key *key, struct sanctum_offer *op)
 }
 
 /*
- * Sign the offer using our private key, this should only be called
- * for offers being sent to a cathedral and not for offers going
- * to other peers.
+ * Sign the offer using the private key given in path.
  */
 int
 sanctum_offer_sign(struct sanctum_offer *op)
@@ -869,10 +867,19 @@ sanctum_offer_sign(struct sanctum_offer *op)
 	u_int8_t	sk[SANCTUM_ED25519_SIGN_SECRET_LENGTH];
 
 	PRECOND(op != NULL);
-	PRECOND(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
-	    op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
 
-	VERIFY(sanctum->mode != SANCTUM_MODE_CATHEDRAL);
+	VERIFY(sanctum->mode == SANCTUM_MODE_TUNNEL ||
+	    sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+
+	if (sanctum->mode == SANCTUM_MODE_TUNNEL) {
+		VERIFY(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
+		    op->data.type == SANCTUM_OFFER_TYPE_LITURGY);
+	} else {
+		VERIFY(op->data.type == SANCTUM_OFFER_TYPE_AMBRY ||
+		    op->data.type == SANCTUM_OFFER_TYPE_INFO ||
+		    op->data.type == SANCTUM_OFFER_TYPE_LITURGY ||
+		    op->data.type == SANCTUM_OFFER_TYPE_REMEMBRANCE);
+	}
 
 	if ((fd = sanctum_file_open(sanctum->cathedral_cosk, NULL)) == -1)
 		return (-1);
@@ -910,14 +917,34 @@ sanctum_offer_verify(const char *path, struct sanctum_offer *op)
 	u_int8_t	pk[SANCTUM_ED25519_SIGN_PUBLIC_LENGTH];
 
 	PRECOND(path != NULL);
-	VERIFY(sanctum->mode == SANCTUM_MODE_CATHEDRAL);
 
-	if (op->data.type != SANCTUM_OFFER_TYPE_INFO &&
-	    op->data.type != SANCTUM_OFFER_TYPE_LITURGY) {
-		sanctum_log(LOG_NOTICE,
-		    "a peer sent an invalid signed offer of type 0x%02x",
-		    op->data.type);
-		return (-1);
+	VERIFY(sanctum->mode == SANCTUM_MODE_TUNNEL ||
+	    sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+
+	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
+		switch (op->data.type) {
+		case SANCTUM_OFFER_TYPE_INFO:
+		case SANCTUM_OFFER_TYPE_LITURGY:
+			break;
+		default:
+			sanctum_log(LOG_NOTICE,
+			    "a peer sent an invalid signed offer (0x%02x)",
+			    op->data.type);
+			return (-1);
+		}
+	} else {
+		switch (op->data.type) {
+		case SANCTUM_OFFER_TYPE_INFO:
+		case SANCTUM_OFFER_TYPE_AMBRY:
+		case SANCTUM_OFFER_TYPE_LITURGY:
+		case SANCTUM_OFFER_TYPE_REMEMBRANCE:
+			break;
+		default:
+			sanctum_log(LOG_NOTICE,
+			    "a cathedral sent an invalid signed offer (0x%02x)",
+			    op->data.type);
+			return (-1);
+		}
 	}
 
 	if ((fd = sanctum_file_open(path, NULL)) == -1)
