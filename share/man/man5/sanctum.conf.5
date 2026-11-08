@@ -166,6 +166,9 @@ on this port for incoming packets to perform NAT detection.
 .TP
 .BR cathedral_p2p_sync " " <yes/no>
 Enables the cathedral-wide p2p information synchronization.
+.BR cathedral_cosk " " <path>
+Path to the Cathedral Offer Signing Key. This is an ed25519 secret
+key used by the cathedral to sign outgoing offers to peers.
 
 .SH LITURGY SPECIFIC OPTIONS
 .TP
