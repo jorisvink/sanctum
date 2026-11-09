@@ -869,7 +869,8 @@ sanctum_offer_sign(struct sanctum_offer *op)
 	PRECOND(op != NULL);
 
 	VERIFY(sanctum->mode == SANCTUM_MODE_TUNNEL ||
-	    sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+	    sanctum->mode == SANCTUM_MODE_CATHEDRAL ||
+	    sanctum->mode == SANCTUM_MODE_LITURGY);
 
 	if (sanctum->mode == SANCTUM_MODE_TUNNEL) {
 		VERIFY(op->data.type == SANCTUM_OFFER_TYPE_INFO ||
@@ -919,7 +920,8 @@ sanctum_offer_verify(const char *path, struct sanctum_offer *op)
 	PRECOND(path != NULL);
 
 	VERIFY(sanctum->mode == SANCTUM_MODE_TUNNEL ||
-	    sanctum->mode == SANCTUM_MODE_CATHEDRAL);
+	    sanctum->mode == SANCTUM_MODE_CATHEDRAL ||
+	    sanctum->mode == SANCTUM_MODE_LITURGY);
 
 	if (sanctum->mode == SANCTUM_MODE_CATHEDRAL) {
 		switch (op->data.type) {
