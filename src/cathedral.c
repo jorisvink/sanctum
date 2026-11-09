@@ -54,7 +54,7 @@
 #define CATHEDRAL_COMMIXTION_NEXT	(300 * 1000)
 
 /* The interval at which we send remembrances to peers who want them. */
-#define CATHEDRAL_REMEMBRANCE_NEXT	(10 * 1000)
+#define CATHEDRAL_REMEMBRANCE_NEXT	(15  * 1000)
 
 /* The maximum age in seconds for a cached tunnel or liturgy entries. */
 #define CATHEDRAL_TUNNEL_MAX_AGE	(60 * 1000)
@@ -397,6 +397,8 @@ static void	cathedral_p2pinfo_send(struct flockent *,
 		    struct flockent *, struct tunnel *, u_int32_t);
 static void	cathedral_remembrance_send(struct flockent *,
 		    struct sockaddr_in *, u_int32_t);
+
+static u_int64_t	cathedral_remembrance_next(u_int64_t, u_int32_t);
 
 static void	cathedral_tunnel_prune(struct flockent *);
 static int	cathedral_tunnel_update_allowed(struct flockent *,
@@ -1122,6 +1124,12 @@ cathedral_offer_info(struct sanctum_packet *pkt, struct flockent *flock,
 			    tun->distance, hops);
 			tun->distance = hops;
 		}
+
+		if (catacomb == NULL &&
+		    tun->update == now && tun->remembrance) {
+			tun->update = cathedral_remembrance_next(now, tun->ip);
+			cathedral_remembrance_send(flock, &pkt->addr, id);
+		}
 	}
 }
 
@@ -1251,6 +1259,12 @@ cathedral_offer_liturgy(struct sanctum_packet *pkt, struct flockent *flock,
 		if (entry->federated) {
 			cathedral_peerstat_dec(&liturgies, 1);
 			cathedral_peerstat_inc(&liturgies, 0);
+		}
+
+		if (entry->remembrance && entry->update == now) {
+			entry->update = cathedral_remembrance_next(now,
+			    entry->ip);
+			cathedral_remembrance_send(flock, &pkt->addr, id);
 		}
 
 		entry->federated = 0;
@@ -2501,6 +2515,41 @@ cathedral_liturgy_signal(struct flockent *flock, struct liturgy *src,
 }
 
 /*
+ * Returns when the next remembrance for the given peer should be sent out.
+ * We calculate this based on the ip address of our peer in such a way that
+ * each catehdral sending remembrances via different liturgies to said peer
+ * align on the same send slot (+- 1 second).
+ */
+static u_int64_t
+cathedral_remembrance_next(u_int64_t now, u_int32_t ip)
+{
+	struct timespec		ts;
+	u_int32_t		hash;
+	u_int64_t		ms, next, slot;
+
+	(void)clock_gettime(CLOCK_REALTIME, &ts);
+	ms = ((u_int64_t)(ts.tv_sec * 1000 + (ts.tv_nsec / 1000000)));
+
+	/*
+	 * Apply a murmur3 final step (fmix) on the peer address so bits are
+	 * mixed properly even if the IPs are close to each other.
+	 */
+	hash = be32toh(ip);
+	hash ^= hash >> 16;
+	hash *= 0x85ebca6b;
+	hash ^= hash >> 13;
+	hash *= 0xc2b2ae35;
+	hash ^= hash >> 16;
+
+	slot = hash % CATHEDRAL_REMEMBRANCE_NEXT;
+
+	next = (ms - slot) / CATHEDRAL_REMEMBRANCE_NEXT;
+	next = (next + 1) * CATHEDRAL_REMEMBRANCE_NEXT + slot;
+
+	return (now + (next - ms));
+}
+
+/*
  * Send a list of all our currently configured federated cathedrals.
  * We include ourselves in this in the first slot of the response.
  */
@@ -2708,7 +2757,8 @@ cathedral_flock_check(struct flockent *flock, u_int64_t now)
 			sin.sin_port = liturgy->port;
 			sin.sin_addr.s_addr = liturgy->ip;
 
-			liturgy->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+			liturgy->update = cathedral_remembrance_next(now,
+			    liturgy->ip);
 			cathedral_remembrance_send(flock, &sin, liturgy->cid);
 		}
 
@@ -2739,7 +2789,8 @@ cathedral_flock_check(struct flockent *flock, u_int64_t now)
 			sin.sin_port = tunnel->port;
 			sin.sin_addr.s_addr = tunnel->ip;
 
-			tunnel->update = now + CATHEDRAL_REMEMBRANCE_NEXT;
+			tunnel->update = cathedral_remembrance_next(now,
+			    tunnel->ip);
 			cathedral_remembrance_send(flock, &sin, tunnel->cid);
 		}
 
