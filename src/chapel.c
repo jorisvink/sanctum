@@ -1279,7 +1279,21 @@ chapel_session_encapsulate(struct sanctum_offer *op, u_int64_t now)
 			if (offer == NULL)
 				return;
 		} else {
-			return;
+			offer->pk_frag = 0;
+			offer->flags &= ~OFFER_INCLUDE_KEM_CT;
+
+			sanctum_random_bytes(offer->remote.random,
+			    sizeof(offer->remote.random));
+
+			if (sanctum_asymmetry_keygen(offer->remote.private,
+			    sizeof(offer->remote.private),
+			    offer->remote.public,
+			    sizeof(offer->remote.public)) == -1) {
+				sanctum_log(LOG_NOTICE,
+				    "failed to calculate ecdh public key "
+				    "(remote)");
+				return;
+			}
 		}
 	}
 
