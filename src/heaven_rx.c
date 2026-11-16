@@ -292,6 +292,8 @@ heaven_rx_holepunch(void)
 
 /*
  * Check if we should generate a grace heartbeat and send it to our peer.
+ * For automatic peers we only respond to heartbeats we have received and
+ * never generate our own.
  */
 static void
 heaven_rx_grace_heartbeat(void)
@@ -304,6 +306,11 @@ heaven_rx_grace_heartbeat(void)
 
 	if (heartbeats.next == 0 || now < heartbeats.next)
 		return;
+
+	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO) {
+		if (sanctum_atomic_cas_simple(&shared->hb_send, 1, 0) == 0)
+			return;
+	}
 
 	if ((pkt = sanctum_packet_get()) == NULL)
 		return;

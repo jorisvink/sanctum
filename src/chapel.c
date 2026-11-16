@@ -356,11 +356,15 @@ chapel_drop_access(void)
 /*
  * Do some form of dead peer detection and wipe keys if we find
  * the peer to be deadsies.
+ *
+ * If our peer is set to automatic (auto or 0.0.0.0/0) we consider it
+ * a roaming roadwarrior and we erase the keys after 3600 seconds instead.
  */
 static void
 chapel_peer_check(u_int64_t now)
 {
 	u_int64_t	hb;
+	size_t		count;
 
 	if (sanctum_atomic_read(&shared->rx.spi) == 0)
 		return;
@@ -368,10 +372,16 @@ chapel_peer_check(u_int64_t now)
 	if ((hb = sanctum_atomic_read(&shared->heartbeat)) == 0)
 		return;
 
-	if (now < hb || (now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * 8)
+	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO)
+		count = 240;
+	else
+		count = 8;
+
+	if (now < hb || (now - hb) < SANCTUM_GRACE_HEARTBEAT_INTERVAL * count)
 		return;
 
-	sanctum_log(LOG_NOTICE, "our peer is unresponsive, resetting");
+	sanctum_log(LOG_NOTICE, "our peer is unresponsive (%zu), resetting",
+	    count);
 
 	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO) {
 		offer_next = 0;
@@ -847,6 +857,8 @@ chapel_ambry_write(struct sanctum_ambry_offer *ambry,
  * its grace heartbeats must have stopped, or we reached some form of limit.
  *
  * If we have no keys at all, we always send an offer.
+ * For peers that are set to auto or are 0.0.0.0/0 we do not do anything here
+ * as the dead peer detection just kills the keys after an hour of inactivity.
  */
 static void
 chapel_offer_check(u_int64_t now)
@@ -858,6 +870,9 @@ chapel_offer_check(u_int64_t now)
 	PRECOND(offer == NULL);
 
 	if (sanctum_atomic_read(&shared->peer_ip) == 0)
+		return;
+
+	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO)
 		return;
 
 	if (now < offer_next)

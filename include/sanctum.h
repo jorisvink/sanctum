@@ -689,6 +689,9 @@ struct sanctum_shared {
 	volatile int		mtu_start;
 	volatile int		mtu_cancel;
 
+	/* Should we send a heartbeat response back when receiving a hb? */
+	volatile int		hb_send;
+
 	/* Last valid sequence number for the current RX SA. */
 	volatile u_int64_t	last_pn;
 

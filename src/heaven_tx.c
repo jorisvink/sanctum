@@ -209,6 +209,8 @@ heaven_tx_grace_packet(struct sanctum_packet *pkt)
 		heaven_tx_grace_mtu_ack(pkt);
 		break;
 	case SANCTUM_GRACE_TYPE_HEARTBEAT:
+		if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO)
+			(void)sanctum_atomic_cas_simple(&shared->hb_send, 0, 1);
 		break;
 	default:
 		sanctum_log(LOG_NOTICE, "peer sent invalid grace type %02x",
