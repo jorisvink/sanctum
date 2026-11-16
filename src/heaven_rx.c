@@ -154,7 +154,7 @@ sanctum_heaven_rx(struct sanctum_proc *proc)
 			}
 		}
 
-		if (poll(&pfd, 1, 1000) == -1) {
+		if (poll(&pfd, 1, 500) == -1) {
 			if (errno == EINTR)
 				continue;
 			fatal("poll: %s", errno_s);
