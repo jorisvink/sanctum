@@ -304,11 +304,11 @@ heaven_rx_grace_heartbeat(void)
 	if (sanctum_atomic_read(&shared->tx.spi) == 0)
 		return;
 
-	if (heartbeats.next == 0 || now < heartbeats.next)
-		return;
-
 	if (sanctum->flags & SANCTUM_FLAG_PEER_AUTO) {
 		if (sanctum_atomic_cas_simple(&shared->hb_send, 1, 0) == 0)
+			return;
+	} else {
+		if (heartbeats.next == 0 || now < heartbeats.next)
 			return;
 	}
 
