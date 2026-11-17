@@ -16,13 +16,6 @@ figure.shot .arw { position: absolute; left: calc(100% + 6px); transform: transl
 figure.shot .arw text { font: 700 15px var(--mono, monospace); fill: #fff; }
 .prose > ol > li           {}
 .prose > ol > li:last-child { margin-bottom: 0; }
-.prose ol p.btn, .prose ol .btn { margin: 18px 0 6px; }
-.prose ol details          { margin: 14px 0 0; padding: 0; border-bottom: 0; }
-.prose ol summary          { font: 13px var(--mono); color: var(--dim); }
-.prose ol summary:hover    { color: var(--fg-2); }
-.prose ol summary::before           { content: "\25B8  "; color: var(--amber); }
-.prose ol details[open] summary::before { content: "\25BE  "; color: var(--amber); }
-.prose ol details pre      { margin: 12px 0 4px; }
 </style>
 </head>
 
@@ -133,25 +126,19 @@ or friends, whether <a href="#nearby">next to you</a> or
 <h2 id="install">Install</h2>
 <ol>
 <li>Install <b>Vigil</b> on every phone that will join your flock: yours and those of your family or friends.
-<p><a class="btn" href="#">INSTALL VIGIL</a></p>
-<details>
-<summary>Or build it from source</summary>
+<p>Build it from source:</p>
 <pre>$ git clone https://github.com/jorisvink/vigil
 $ cd vigil
 $ make android
 $ adb install -r app/build/app/outputs/flutter-apk/app-release.apk</pre>
-</details>
 </li>
 <li>Install <b>Covenant</b> on your phone, the controller that hands out the keys
 to everyone in your group.
-<p><a class="btn" href="#">INSTALL COVENANT</a></p>
-<details>
-<summary>Or build it from source</summary>
+<p>Build it from source:</p>
 <pre>$ git clone https://github.com/jorisvink/covenant
 $ cd covenant
 $ make android
 $ adb install -r app/build/app/outputs/flutter-apk/app-release.apk</pre>
-</details>
 </li>
 <li>Set a screen lock on the controller phone (PIN, pattern or password).
 Covenant keeps its keys in the hardware vault and asks for this
