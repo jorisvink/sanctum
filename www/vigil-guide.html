@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setting up Vigil for you and your family or friends</title>
+<meta name="description" content="A guide on setting up Vigil for you and your family or friends, using Covenant for private voice, video and chat.">
+<link rel="stylesheet" href="sanctum.css?v=1792954310">
+<style>
+figure.shot { position: relative; width: -webkit-fit-content; width: -moz-fit-content; width: fit-content; }
+figure.shot img { display: block; }
+figure.shot .arw { position: absolute; left: calc(100% + 6px); transform: translateY(-50%); pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
+figure.shot .arw text { font: 700 15px var(--mono, monospace); fill: #fff; }
+.prose > ol > li           {}
+.prose > ol > li:last-child { margin-bottom: 0; }
+.prose ol p.btn, .prose ol .btn { margin: 18px 0 6px; }
+.prose ol details          { margin: 14px 0 0; padding: 0; border-bottom: 0; }
+.prose ol summary          { font: 13px var(--mono); color: var(--dim); }
+.prose ol summary:hover    { color: var(--fg-2); }
+.prose ol summary::before           { content: "\25B8  "; color: var(--amber); }
+.prose ol details[open] summary::before { content: "\25BE  "; color: var(--amber); }
+.prose ol details pre      { margin: 12px 0 4px; }
+</style>
+</head>
+
+<body>
+
+<header>
+<p class="site"><a href="index.html">SANCTUM</a></p>
+<nav>
+<ul class="bar">
+<li><a href="index.html">Overview</a></li>
+<li><a href="releases.html">Releases</a></li>
+<li><a href="topologies.html">Topologies</a></li>
+<li><a href="vigil.html">Vigil</a></li>
+<li class="drop"><button type="button" popovertarget="m-security">Security</button>
+<ul id="m-security" popover>
+<li><a href="errata.html">Errata</a></li>
+<li><a href="crypto.html">Cryptography</a></li>
+<li><a href="privsep.html">Privilege Separation</a></li>
+<li><a href="shroud.html">Traffic Analysis</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-docs">Docs</button>
+<ul id="m-docs" popover>
+<li><a href="building.html">Building</a></li>
+<li><a href="contributing.html">Contributing</a></li>
+<li><a href="guide.html">Setup Guide</a></li>
+<li><a href="liturgy.html">Liturgy Guide</a></li>
+<li><a href="cathedral.html">Cathedral Guide</a></li>
+</ul></li>
+<li class="drop"><button type="button" popovertarget="m-community">Community</button>
+<ul id="m-community" popover>
+<li><a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a></li>
+<li><a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a></li>
+<li><a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a></li>
+<li><a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener" aria-label="GitHub" class="gh"></a></li>
+</ul></li>
+<li class="get"><a href="releases.html">Get Sanctum</a></li>
+</ul>
+</nav>
+</header>
+
+<main>
+
+<div class="page-body">
+<div class="wrap">
+<div class="page-layout">
+
+<aside class="toc">
+<h4>On this page</h4>
+<a href="#covenant">Introduction</a>
+<a href="#install">Install</a>
+<a href="#account">Create an account</a>
+<a href="#flock">Create a flock</a>
+<a href="#nearby">Provision a phone next to you</a>
+<a href="#here">Provision this phone</a>
+<a href="#far">Provision a phone far away</a>
+<a href="#after">After provisioning</a>
+<a href="#desktop">Desktop</a>
+<a href="#link">Link to your phone</a>
+</aside>
+
+<div class="prose">
+
+<h2 id="covenant">Setting up Vigil for you and your family or friends</h2>
+<p>
+This guide walks you through setting up <a href="vigil.html">Vigil</a> for
+yourself and the people closest to you, so you can send messages, make
+audio calls and even video calls with each other, all over post-quantum
+secure on-demand sanctum tunnels.
+</p>
+
+<p>
+One person, most likely you, acts as the organizer. You use
+<b>Covenant</b> on your own phone to create a private group, called a
+<i>flock</i>, and hand out the keys to the phones of your family or
+friends. Only the phones you add can talk to one another. While Covenant
+can provision different types of configurations, this guide focuses on
+the "COMMS" type used for chat and calls.
+</p>
+
+<div class="callout notice">
+<p>Being the organizer does not let you read anyone's messages or listen
+in on their calls. Messages and calls between members of the flock are
+end-to-end encrypted with session keys the phones negotiate themselves
+using a fresh <a href="crypto.html">key exchange</a>. The organizer never
+sees those keys.</p>
+</div>
+
+<p>
+The setup requires a cathedral network. Covenant by default will use the
+community-driven
+<a href="https://reliquary.se" target="_blank" rel="noopener">Reliquary</a>,
+which is free to use. You can run your own Reliquary too as it is
+<a href="https://github.com/jorisvink/reliquary" target="_blank" rel="noopener">open-source</a>.
+</p>
+
+<p>
+In short, you will:
+</p>
+<ol>
+<li><a href="#install">Install</a> Vigil on every phone and Covenant on yours.</li>
+<li><a href="#account">Create an account</a> and <a href="#flock">a flock</a> for your group.</li>
+<li>Add <a href="#here">your own phone</a>, then the phones of your family
+or friends, whether <a href="#nearby">next to you</a> or
+<a href="#far">far away</a>.</li>
+<li><a href="#after">Start chatting and calling</a>.</li>
+</ol>
+
+<h2 id="install">Install</h2>
+<ol>
+<li>Install <b>Vigil</b> on every phone that will join your flock: yours and those of your family or friends.
+<p><a class="btn" href="#">INSTALL VIGIL</a></p>
+<details>
+<summary>Or build it from source</summary>
+<pre>$ git clone https://github.com/jorisvink/vigil
+$ cd vigil
+$ make android
+$ adb install -r app/build/app/outputs/flutter-apk/app-release.apk</pre>
+</details>
+</li>
+<li>Install <b>Covenant</b> on your phone, the controller that hands out the keys
+to everyone in your group.
+<p><a class="btn" href="#">INSTALL COVENANT</a></p>
+<details>
+<summary>Or build it from source</summary>
+<pre>$ git clone https://github.com/jorisvink/covenant
+$ cd covenant
+$ make android
+$ adb install -r app/build/app/outputs/flutter-apk/app-release.apk</pre>
+</details>
+</li>
+<li>Set a screen lock on the controller phone (PIN, pattern or password).
+Covenant keeps its keys in the hardware vault and asks for this
+lock whenever it signs or hands out keys.
+</li>
+</ol>
+
+<div class="callout">
+<p>Both apps can be built for iOS too, on a Mac with Xcode and a paid Apple
+Developer account. The signing setup is in the README of each repo.</p>
+</div>
+
+<h2 id="account">Create an account</h2>
+<ol>
+<li>Open Covenant. On the <b>Account</b> tab, tap <b>Create account</b>.
+If you have an account already, tap <b>Log in</b> and paste in the
+64-character account key.
+<figure class="shot"><img src="covenant/01-account.png" alt="Covenant welcome screen" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.526*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Accept the terms and tap <b>Create</b>. Covenant shows the account key
+only once.
+<figure class="shot"><img src="covenant/01b-create-confirm.png" alt="Create an account confirmation" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.925*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Write down the account key in a safe place. Neither Covenant nor Reliquary
+can recover it. Tap <b>Done</b>.
+<figure class="shot"><img src="covenant/02-account-key.png" alt="Your account key" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+</ol>
+
+<div class="callout warn">
+<p>The account key grants full access to your account. Store it as you
+would a password. An account lasts 24 hours; extend it from the Account tab
+to keep it.</p>
+</div>
+
+<h2 id="flock">Create a flock</h2>
+<p>
+A flock is the private group of devices that can talk to one another,
+for example you and your family, or you and a group of friends.
+</p>
+<ol>
+<li>Tap <b>Flocks</b>, then <b>Create a flock</b>.
+<figure class="shot"><img src="covenant/03-flocks.png" alt="No flocks yet" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.502*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Tap <b>Set up KEKs</b> and confirm. Covenant generates the flock its
+Key-Encryption-Keys on this phone and locks them in the vault. Secrets
+encrypted with these Key-Encryption-Keys are then uploaded to Reliquary,
+choose how long these encrypted secrets stay valid; you will be reminded
+before they expire.
+</li>
+
+<div class="callout notice">
+<p>The Reliquary cannot read any of the encrypted secrets Covenant uploads.
+They are private to your flock and only your devices can open their specific
+secrets.
+</p>
+</div>
+
+</ol>
+
+<h2 id="nearby">Provision a phone next to you</h2>
+<p>
+Make sure Vigil is installed on the phone you wish to provision.
+</p>
+<ol>
+<li>On the flock page, tap <b>Add a device</b>.
+<figure class="shot"><img src="covenant/04-flock.png" alt="Flock ready, add a device" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.298*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Choose <b>Phone next to you</b>.
+<figure class="shot"><img src="covenant/05-add-device.png" alt="Add a device" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.689*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Pick a name, select <b>COMMS</b>, leave the group number as the default one.
+<figure class="shot"><img src="covenant/06-comms.png" alt="Comms provisioning" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.457*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+
+<div class="callout notice">
+<p>The name you give to the device is the name that will be shown to others.</p>
+</div>
+
+<li>Tap <b>Provision</b> and unlock the vault. Covenant registers the
+device, adds it to the flock and shows a QR code.
+<figure><img src="covenant/07-qr.png" alt="Provisioning QR code" loading="lazy" width="320" height="711"></figure>
+</li>
+
+<div class="callout warn">
+<p>A QR code holds the complete set of keys for that device. Scan it
+directly off the screen; never send it as a photo or a screenshot. Anyone
+who scans it joins the flock.</p>
+</div>
+
+<li>Your friend opens Vigil and taps <b>Add config</b>.
+<figure class="shot"><img src="covenant/vigil-home.png" alt="Vigil, no tunnels yet" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.419*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>They choose <b>QR code</b>, scan your screen and tap <b>Import</b>.
+<figure class="shot"><img src="covenant/vigil-addconfig.png" alt="Vigil add config" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.174*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Once they have scanned it, tap <b>Done</b> on the controller phone in
+Covenant to go back to the flocks page.
+<figure class="shot"><img src="covenant/07-qr-done.png" alt="Provisioning QR code scanned" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+<figure><img src="covenant/08-devices.png" alt="Device in flock" loading="lazy" width="320" height="711"></figure>
+</li>
+</ol>
+
+<h2 id="here">Provision this phone</h2>
+<p>
+To add the controller phone itself to the flock:
+</p>
+<ol>
+<li>Tap <b>Add a device</b>, then <b>This phone</b>.</li>
+<li>Pick a name, select <b>COMMS</b>, set the group your other phones use
+and tap <b>Provision</b>.
+</li>
+
+
+<div class="callout notice">
+<p>The name you give to this device is the name that will be shown to others.</p>
+</div>
+
+<li>Unlock the vault. Covenant hands the configuration straight to Vigil,
+allowing you simply <b>Import</b> it.
+<figure class="shot"><img src="covenant/vigil-import.png" alt="Vigil import review" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+</ol>
+
+<h2 id="far">Provision a phone far away</h2>
+<p>
+When the two phones are not in the same room, provisioning happens over an
+on-demand Sanctum tunnel between the two apps rather than through a QR code.
+</p>
+<ol>
+<li>Tap <b>Add a device</b>, then <b>Device far away</b>. Select
+<b>COMMS</b> and a group as before, then <b>Provision</b>.
+</li>
+<li>Covenant shows 33 secret words. These must be entered in Vigil to join
+the flock. Communicate these over an out-of-bound secure channel like Signal.
+</li>
+<li>Your friend opens Vigil, taps <b>Add config</b>, picks <b>Covenant</b>
+and types in the words in the order they were given. Vigil connects back to
+Covenant and receives its configuration, tap <b>Import</b>.
+</li>
+</ol>
+
+<div class="callout warn">
+<p>The 33 words are the entire secret. Whoever types them in first takes
+the device's place. If a second device joins with the same words, Covenant
+removes both; start over with new words. The secret represented in the
+words is the equivalent of a 256-bit key.</p>
+</div>
+
+<h2 id="after">After provisioning</h2>
+<p>
+Make sure Vigil is started from <b>Gospel</b> tab.
+</p>
+<ol>
+<li>Tap <b>Start</b>. Vigil asks for permission for notifications
+(required) and microphone and camera (required for calls). Once all indicators
+are green you can chat and call with other peers.
+<figure class="shot"><img src="covenant/vigil-gospel.png" alt="Vigil gospel tab, start" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.163*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+
+<div class="callout">
+<p>Note that it can take up to 1 minute before Reliquary accepts your new
+device.
+</p>
+</div>
+
+<li>Active chats appear under <b>Chats</b>. Tap the <b>Peers</b> icon to see
+who is online, then the chat icon next to a peer.
+<figure class="shot"><img src="covenant/vigil-showall.png" alt="Vigil gospel tab, peers" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.086*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+<figure class="shot"><img src="covenant/vigil-online.png" alt="Peer online in Vigil" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.915*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+<figure><img src="covenant/vigil-chat.png" alt="Vigil chat with a peer online" loading="lazy" width="320" height="711"></figure>
+</li>
+</ol>
+<ul>
+<li>Tap <b>Allow in background</b> when Vigil asks, notifications only
+arrive and the phone only stays online while Android lets Vigil run.</li>
+<li>If no other tunnel exists in Vigil, the Gospel configuration is added
+and connected as a VPN tunnel to keep the phone reachable, though it
+technically is not one.</li>
+<li>Refresh the encrypted secrets before they expire: tap
+<b>Send encrypted secrets</b> on the flock page.</li>
+<li>Removing or replacing a device gives it a new key, so the old phone
+cannot open secrets made afterwards.</li>
+<li>To move the controller to a new phone, create a recovery key and a
+backup on the <b>Keys</b> tab first.</li>
+</ul>
+
+<h2 id="desktop">Desktop</h2>
+<p>
+Vigil on Linux is a companion for Vigil on your phone. It shows the
+chats of your phone, sends messages and takes calls as your phone.
+Peers only ever see your phone.
+</p>
+<ol>
+<li>Build and install it.
+<pre>$ git clone https://github.com/jorisvink/vigil
+$ cd vigil
+$ make linux
+$ make linux-install</pre>
+</li>
+<li>Start Vigil and pick a passphrase, click <b>OK</b>.
+<figure><img src="vigil/desktop-passphrase.png" alt="Vigil asks for a passphrase" loading="lazy" width="1120" height="760"></figure>
+</li>
+</ol>
+
+<h2 id="link">Link to your phone</h2>
+<p>
+The phone and the desktop get a flock of their own in
+Covenant. Add the desktop first, then the phone.
+</p>
+<ol>
+<li>In Covenant, create a new flock and set up its KEKs, see
+<a href="#flock">Create a flock</a>.</li>
+<li>Tap <b>Add a device</b>, then <b>Device far away</b>.
+<figure class="shot"><img src="vigil/covenant-far.png" alt="Covenant add a device, device far away" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.747*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Name the desktop, pick <b>Vigil Companion</b>, tap <b>Provision</b>.
+<figure class="shot"><img src="vigil/covenant-companion.png" alt="Covenant, Vigil Companion for the desktop" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.451*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Unlock your KEKs. Covenant shows 33 secret words.
+<figure><img src="vigil/covenant-words.png" alt="Covenant shows the secret words" loading="lazy" width="320" height="711"></figure>
+</li>
+<li>On the desktop, type the words and click <b>Join</b>.
+<figure><img src="vigil/desktop-words.png" alt="Vigil on the desktop, secret words typed in" loading="lazy" width="1120" height="760"></figure>
+</li>
+<li>Wait until Covenant says the device has its keys.</li>
+<li>Back on the flock page, tap <b>Add a device</b>, then <b>This phone</b>.
+<figure class="shot"><img src="vigil/covenant-here.png" alt="Covenant add a device, this phone" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.917*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Name the phone, pick <b>Vigil Companion</b>, tap <b>Provision</b>.
+<figure class="shot"><img src="vigil/covenant-companion-phone.png" alt="Covenant, Vigil Companion for the phone" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.401*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Unlock your KEKs. Vigil opens, tap <b>Import</b>.
+<figure class="shot"><img src="vigil/phone-import.png" alt="Vigil import of the desktop link" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.930*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Start Gospel on the phone. The desktop icon turns green once
+linked, tap it to see the status or to unlink.
+<figure class="shot"><img src="vigil/phone-linked.png" alt="Vigil gospel tab, desktop linked" loading="lazy" width="320" height="711"><svg class="arw" style="top:calc(13px + 0.086*(100% - 26px))" width="52" height="26" viewBox="0 0 52 26"><path d="M52 13 H16 M16 13 l9 -8 M16 13 l9 8" stroke="#ff2d2d" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></figure>
+</li>
+<li>Your chats now show on the desktop.
+<figure><img src="vigil/desktop-chat.png" alt="Vigil on the desktop, a chat with a peer" loading="lazy" width="1120" height="760"></figure>
+</li>
+</ol>
+
+<div class="callout">
+<p>Covenant on another phone? Use <b>Phone next to you</b> instead of
+<b>This phone</b> and scan the QR code with Vigil.</p>
+</div>
+
+<div class="callout notice">
+<p>The desktop only works while Gospel runs on your phone. What
+happens while the desktop is off syncs once it is back.</p>
+</div>
+
+<p>
+For help, join the
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>.
+</p>
+
+</div>
+</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+<div class="wrap">
+<div class="footer-grid">
+<div class="footer-brand">
+<a href="index.html" class="brand">SANCTUM</a>
+<p>A PQ-secure and fully privilege separated VPN daemon and protocol
+that runs under Linux, OpenBSD and MacOS. Open and free, released under
+the ISC license.</p>
+</div>
+
+<div class="footer-col">
+<h4>Introduction</h4>
+<a href="index.html">Overview</a>
+<a href="releases.html">Releases</a>
+<a href="topologies.html">Topologies</a>
+<a href="vigil.html">Vigil</a>
+</div>
+
+<div class="footer-col">
+<h4>Security</h4>
+<a href="errata.html">Errata</a>
+<a href="crypto.html">Cryptography</a>
+<a href="privsep.html">Privilege Separation</a>
+<a href="shroud.html">Traffic Analysis</a>
+</div>
+
+<div class="footer-col">
+<h4>Resources</h4>
+<a href="building.html">Building</a>
+<a href="contributing.html">Contributing</a>
+<a href="guide.html">Setup Guide</a>
+<a href="liturgy.html">Liturgy Guide</a>
+<a href="cathedral.html">Cathedral Guide</a>
+</div>
+
+<div class="footer-col">
+<h4>Community</h4>
+<a href="https://reliquary.se" target="_blank" rel="noopener">The Reliquary</a>
+<a href="https://conclave.se" target="_blank" rel="noopener">The Conclave</a>
+<a href="https://discord.gg/RRNtzJB7P3" target="_blank" rel="noopener">Discord</a>
+<a href="https://github.com/jorisvink/sanctum" target="_blank" rel="noopener">GitHub</a>
+</div>
+</div>
+
+<div class="footer-bottom">
+<span>Made with <span class="heart">&#9829;</span> in Sweden</span>
+<span>Ite, missa est.</span>
+<span>Security issues: <a href="mailto:priests@sanctorum.se">priests@sanctorum.se</a></span>
+</div>
+</div>
+</footer>
+
+</body>
+</html>
